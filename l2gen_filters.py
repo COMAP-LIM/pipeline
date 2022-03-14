@@ -135,9 +135,10 @@ class PCA_filter:
         M = M[l2.freqmask.reshape(l2.Nfeeds*l2.Nsb*l2.Nfreqs), :]
         M = np.dot(M.T, M)
         eigval, eigvec = np.linalg.eigh(M)
-        ak = np.sum(l2.tod[:,:,:,:,None]*eigvec[:,-4:], axis=2)
-        l2.tod = l2.tod - np.sum(ak[:,:,None]*eigvec[:,-4:], axis=-1)
-
+        # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec[:,-4:], axis=2)
+        ak = np.sum(l2.tod[:,:,:,:,None]*eigvec[:,-4:], axis=3)
+        # l2.tod = l2.tod - np.sum(ak[:,:,None]*eigvec[:,-4:], axis=-1)
+        l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[:,-4:][None,None,None,:,:], axis=-1)
 
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/comap_freqmask_1024channels.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
