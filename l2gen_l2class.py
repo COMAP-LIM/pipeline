@@ -34,11 +34,22 @@ class level2_file:
             self.Nsb = self.tod.shape[1]
             self.Nfreqs = self.tod.shape[2]
             self.Ntod = self.tod.shape[3]
-            
+    
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
-            self.freqmask[:,:,:4] = False
-            self.freqmask[:,:,-4:] = False
+            self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
             self.freqmask[(~np.isfinite(self.tod)).any(axis=-1)] = False
+            self.freqmask_reason[(~np.isfinite(self.tod)).any(axis=-1)] += 2**1
+            self.freqmask[:,:,:2] = False
+            self.freqmask[:,:,512] = False
+            self.freqmask_reason[:,:,:2] += 2**2
+            self.freqmask_reason[:,:,:512] += 2**2
+            with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+                AB_mask = f["/AB_mask"][()]
+                leak_mask = f["/leak_mask"][()]
+            self.freqmask[AB_mask[self.feeds-1] < 15] = False
+            self.freqmask[leak_mask[self.feeds-1] < 15] = False
+            self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**3
+            self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**4
 
 
     def write_level2_data(self, path, name_extension=""):
