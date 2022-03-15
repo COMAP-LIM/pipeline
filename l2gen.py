@@ -11,6 +11,8 @@ classes:
 
 Example usage:
 mpirun -n 10 -machinefile machinefile.txt python3 -W ignore -u l2gen.py
+mpirun -n 120 python3 -W ignore -u l2gen.py
+python3 -W ignore l2gen.py
 """
 import time
 import numpy as np
@@ -91,7 +93,10 @@ class l2gen:
         print(f"Finished l1 file read in {time.time()-t0:.1f} s.")
 
         if self.checkpoints[0]:
+            print(f"Writing pre-filtered data to file...")
+            t0 = time.time()
             self.l2file.write_level2_data("data/", name_extension="_0")
+            print(f"Finished pre-filter file write in {time.time()-t0:.1f} s.")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i]()
             print(f"Starting {filter.name}...")
