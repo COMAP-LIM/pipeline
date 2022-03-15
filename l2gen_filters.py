@@ -2,6 +2,7 @@ import copy
 import numpy as np
 import multiprocessing as mp
 import ctypes
+from tqdm import trange
 from scipy.fftpack import fft, ifft, next_fast_len
 from scipy.optimize import curve_fit
 
@@ -41,7 +42,7 @@ class Normalize_Gain:
     def __init__(self):
         self.name = "normalization"
 
-    def run(self, l2):
+    def run(self, l2, mp_threads=144):
         # print("1")
         # fastlen = next_fast_len(l2.tod.shape[-1]*2)
         # print(f" --- Normalization - lastlen {fastlen} from TOD len {l2.tod.shape[-1]}.")
@@ -55,15 +56,27 @@ class Normalize_Gain:
         # normlib.normalize(l2.tod, *l2.tod.shape, fastlen)
         # print("6")
 
+        # l2.tod = l2.tod.reshape((4*l2.Nfeeds, 1024, l2.Ntod))
         # with mp.Pool() as p:
-        #     tod_lowpass = p.map(lowpass_filter_safe, l2.tod.reshape(4*l2.Nfeeds, 1024, l2.Ntod))
-        # tod_lowpass = np.array(tod_lowpass).reshape(l2.Nfeeds, 4, 1024, l2.Ntod)
-        # l2.tod = l2.tod/tod_lowpass - 1
+        #     tod_lowpass = p.map(lowpass_filter_safe, l2.tod)
+        # for i in range(l2.Nfeeds*4):
+        #     l2.tod[i] = l2.tod[i]/tod_lowpass[i] - 1
+        # l2.tod = l2.tod.reshape((l2.Nfeeds, 4, 1024, l2.Ntod))
+        # del(tod_lowpass)
+
         for feed in range(l2.Nfeeds):
             for sb in range(4):
                 tod_lowpass = lowpass_filter(l2.tod[feed, sb])
                 l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
         del(tod_lowpass)
+
+        # for feed in range(l2.Nfeeds):
+        #     for sb in range(4):
+        #         with mp.Pool(mp_threads) as p:
+        #             tod_lowpass = np.array(p.map(lowpass_filter2, l2.tod[feed, sb]))
+        #             l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
+        # del(tod_lowpass)
+        
 
 
 class Decimate:
