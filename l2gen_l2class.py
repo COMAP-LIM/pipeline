@@ -5,6 +5,7 @@ import h5py
 class level2_file:
     def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename):
         self.scanid = scanid
+        self.obsid = scanid[:-2]
         self.mjd_start = mjd_start
         self.mjd_stop = mjd_stop
         self.fieldname = fieldname
@@ -42,7 +43,7 @@ class level2_file:
             self.freqmask[:,:,:2] = False
             self.freqmask[:,:,512] = False
             self.freqmask_reason[:,:,:2] += 2**2
-            self.freqmask_reason[:,:,:512] += 2**2
+            self.freqmask_reason[:,:,512] += 2**2
             with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
                 AB_mask = f["/AB_mask"][()]
                 leak_mask = f["/leak_mask"][()]
@@ -51,10 +52,14 @@ class level2_file:
             self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**3
             self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**4
 
+            self.tod[~self.freqmask] = np.nan
+
 
     def write_level2_data(self, path, name_extension=""):
         with h5py.File(path + self.l2_filename + name_extension + ".h5", "w") as f:
             f["tod"] = self.tod
+            f["freqmask"] = self.freqmask
+            f["freqmask_reason"] = self.freqmask_reason
 
 
 

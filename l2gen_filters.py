@@ -5,6 +5,10 @@ import ctypes
 from tqdm import trange
 from scipy.fftpack import fft, ifft, next_fast_len
 from scipy.optimize import curve_fit
+import h5py
+from tqdm import trange
+import matplotlib.pyplot as plt
+import scipy.linalg
 
 C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
 
@@ -40,7 +44,8 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50):
 
 class Normalize_Gain:
     def __init__(self):
-        self.name = "normalization"
+        self.name = "norm"
+        self.name_long = "normalization"
 
     def run(self, l2, mp_threads=144):
         # print("1")
@@ -79,9 +84,10 @@ class Normalize_Gain:
         
 
 
-class Decimate:
+class Decimation:
     def __init__(self):
-        self.name = "decimation"
+        self.name = "dec"
+        self.name_long = "decimation"
 
     def run(self, l2):
         dec_factor = 16
@@ -96,7 +102,8 @@ class Decimate:
 
 class Pointing_Template_Subtraction:
     def __init__(self):
-        self.name = "pointing template subtraction"
+        self.name = "pointing"
+        self.name_long = "pointing template subtraction"
     
     def run(self, l2):
         def az_func(x, d, c):
@@ -124,34 +131,38 @@ class Pointing_Template_Subtraction:
 
 class Polynomial_filter:
     def __init__(self):
-        self.name = "polynomial filter"
+        self.name = "poly"
+        self.name_long = "polynomial filter"
 
     def run(self, l2):
         sb_freqs = np.linspace(-1, 1, 1024)
         for feed in range(l2.Nfeeds):
             for sb in range(4):
                 for idx in range(l2.Ntod):
-                    if np.isfinite(l2.tod[feed,sb,:,idx]).all():
-                        try:
-                            c1, c0 = np.polyfit(sb_freqs, l2.tod[feed,sb,:,idx], 1, w=l2.freqmask[feed,sb])
-                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1*sb_freqs - c0
-                        except:
-                            pass
+                    # if np.isfinite(l2.tod[feed,sb,:,idx]).all():
+                    tod_local = l2.tod[feed,sb,:,idx].copy()
+                    tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
+                    try:
+                        c1, c0 = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[feed,sb])
+                        l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1*sb_freqs - c0
+                    except:
+                        pass
 
 
 class PCA_filter:
-    def __init__(self):
-        self.name = "PCA filter"
+    def __init__(self, N_pca_modes=4):
+        self.name = "pca"
+        self.name_long = "PCA filter"
+        self.N_pca_modes = N_pca_modes
     
     def run(self, l2):
-        M = l2.tod.reshape(l2.Nfeeds*l2.Nsb*l2.Nfreqs, l2.Ntod)
-        M = M[l2.freqmask.reshape(l2.Nfeeds*l2.Nsb*l2.Nfreqs), :]
+        N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
+        M = l2.tod.reshape(N, l2.Ntod)
+        M = M[l2.freqmask.reshape(N), :]
         M = np.dot(M.T, M)
-        eigval, eigvec = np.linalg.eigh(M)
-        # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec[:,-4:], axis=2)
-        ak = np.sum(l2.tod[:,:,:,:,None]*eigvec[:,-4:], axis=3)
-        # l2.tod = l2.tod - np.sum(ak[:,:,None]*eigvec[:,-4:], axis=-1)
-        l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[:,-4:][None,None,None,:,:], axis=-1)
+        eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
+        ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
+        l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
 
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/comap_freqmask_1024channels.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
@@ -160,14 +171,108 @@ class PCA_filter:
 class Masking:
     def __init__(self):
         self.name = "masking"
+        self.name_long = "masking"
+        self.freqmask_reason_idx_start = 5
+        self.box_sizes = [32, 128, 512]
+        self.Nsigma_chi2_boxes = [6,6,6]
+        self.stripe_sizes = [32, 128, 1024]
+        self.Nsigma_chi2_stripes = [6,6,6]
         
     def run(self, l2):
         l2_local = copy.deepcopy(l2)
         
+        print(f"[{self.name}] Running local polyfilter for masking purposes...")
         poly = Polynomial_filter()
         poly.run(l2_local)
+        del(poly)
+        l2_local.write_level2_data("data/", name_extension=f"_mask_poly")
+        print(f"[{self.name}] Finished polyfilter.")
         
+        print(f"[{self.name}] Running local PCA filter for masking purposes...")
         pca = PCA_filter()
         pca.run(l2_local)
+        del(pca)
+        l2_local.write_level2_data("data/", name_extension=f"_mask_pca")
+        print(f"[{self.name}] Finished PCA filter.")
+
+        Nfreqs = l2_local.Nfreqs
+        Ntod = l2_local.Ntod
+
+        # Load 1st order polyfilter correlation template.
+        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/corr_template.h5", "r") as f:
+            T_small = f["corr"][()]
+        T = np.zeros((Nfreqs*2,Nfreqs*2))
+        for i in range(2):
+            T[i*1024:(i+1)*Nfreqs,i*Nfreqs:(i+1)*Nfreqs] = T_small
+
+        for ifeed in range(l2_local.tod.shape[0]):
+            for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
+                tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:]
+                tod = tod.reshape((2*tod.shape[1], tod.shape[2]))  # Merge sb dim and freq dim.
+                # Start from the already existing freqmasks.
+                freqmask = l2_local.freqmask[ifeed,ihalf*2:(ihalf+1)*2].flatten()
+                freqmask_reason = l2_local.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
+
+                C = np.corrcoef(tod)  # Correlation matrix.
+                C -= T  # Subtract polyfilter correlation template.
+                
+                # Put diagonal and 1-off diagonal components to zero, to be ignored in analysis,
+                # because of high and expected correlation.
+                for i in range(Nfreqs*2):
+                    C[i,i] = 0
+                    if i+1 < Nfreqs*2:
+                        C[i+1,i] = 0
+                        C[i,i+1] = 0
+                
+                # Ignore masked frequencies.
+                C[~freqmask,:] = 0
+                C[:,~freqmask] = 0
+
+                chi2_matrix = np.zeros((2, 3, 2048, 2048))
+                for ibox in range(len(self.box_sizes)):
+                    box_size = self.box_sizes[ibox]
+                    Nsigma_chi2_box = self.Nsigma_chi2_boxes[ibox]
+
+                    for i in range((2*Nfreqs)//box_size):
+                        for j in range((2*Nfreqs)//box_size):
+                            if i < j:
+                                box = C[i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size]
+                                dof = np.sum(box != 0)
+                                corr = np.sum(box**2)*Ntod
+                                chi2 = (corr - dof)/np.sqrt(2*dof)
+                                chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = chi2
+                                if chi2 > Nsigma_chi2_box:
+                                    freqmask[i*box_size:(i+1)*box_size] = False
+                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox + 1)
+                            else:
+                                chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
+
+
+                for istripe in range(len(self.stripe_sizes)):
+                    stripe_size = self.stripe_sizes[istripe]
+                    Nsigma_chi2_stripe = self.Nsigma_chi2_stripes[istripe]
+
+                    for i in range((2*Nfreqs)//stripe_size):
+                        stripe = C[i*stripe_size:(i+1)*stripe_size, :]
+                        dof = np.sum(stripe != 0)
+                        corr = np.sum(stripe**2)*Ntod
+                        chi2 = (corr - dof)/np.sqrt(2*dof)
+                        chi2_matrix[1, istripe, :, i*stripe_size:(i+1)*stripe_size] = chi2
+                        if chi2 > Nsigma_chi2_stripe:
+                            freqmask[i*stripe_size:(i+1)*stripe_size] = False
+                            freqmask_reason[i*stripe_size:(i+1)*stripe_size] += 2**(self.freqmask_reason_idx_start + len(self.box_sizes) + istripe + 1)
+
+                l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
+                l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
+                fig, ax = plt.subplots(2, 3, figsize=(14, 6))
+                for i in range(2):
+                    for j in range(3):
+                        plot = ax[i,j].imshow(np.abs(chi2_matrix[i,j]), vmin=0, vmax=12)
+                        plt.colorbar(plot, ax=ax[i,j])
+                plt.tight_layout()
+                plt.savefig(f"plots/{l2.scanid}_feed{l2.feeds[ifeed]}_half{ihalf}.png", bbox_inches="tight")
+        
+        l2.tod[~l2.freqmask] = np.nan
+        del(l2_local)
 
 

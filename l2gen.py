@@ -17,9 +17,10 @@ python3 -W ignore l2gen.py
 import time
 import numpy as np
 from os.path import join
+import h5py
 # from mpi4py import MPI
 from l2gen_l2class import level2_file
-from l2gen_filters import Normalize_Gain, Decimate, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter
+from l2gen_filters import Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter
 
 L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
@@ -99,16 +100,16 @@ class l2gen:
             print(f"Finished pre-filter file write in {time.time()-t0:.1f} s.")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i]()
-            print(f"Starting {filter.name}...")
+            print(f"Starting {filter.name_long}...")
             t0 = time.time()
             filter.run(self.l2file)
-            print(f"Finished {filter.name} in {time.time()-t0:.1f} s.")
+            print(f"Finished {filter.name_long} in {time.time()-t0:.1f} s.")
             if self.checkpoints[i+1]:
-                print(f"Writing result of {filter.name} to file...")
+                print(f"Writing result of {filter.name_long} to file...")
                 t0 = time.time()
-                self.l2file.write_level2_data("data/", name_extension=f"_{str(i+1)}")
-                print(f"Finished {filter.name} file write in {time.time()-t0:.1f} s.")
-
+                self.l2file.write_level2_data("data/", name_extension=f"_{str(i+1)}_{filter.name}")
+                print(f"Finished {filter.name_long} file write in {time.time()-t0:.1f} s.")
+            del(filter)
         print("Writing level2 file...")
         t0 = time.time()
         self.l2file.write_level2_data("data/")
@@ -116,7 +117,7 @@ class l2gen:
 
 
 if __name__ == "__main__":
-    runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/data/runlist_test.txt"
-    filters = [Normalize_Gain, Pointing_Template_Subtraction, Polynomial_filter, PCA_filter, Decimate]
+    runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_small.txt"
+    filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Decimation]
     l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)])
     l2r.run()
