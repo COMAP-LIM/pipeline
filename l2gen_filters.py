@@ -3,7 +3,7 @@ import numpy as np
 import multiprocessing as mp
 import ctypes
 from tqdm import trange
-from scipy.fftpack import fft, ifft, next_fast_len
+from scipy.fft import fft, ifft, next_fast_len
 from scipy.optimize import curve_fit
 import h5py
 from tqdm import trange
@@ -37,7 +37,7 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50):
 
     freq_full = np.fft.fftfreq(Nfull)*samprate
     W = 1.0/(1 + (freq_full/fknee)**alpha)
-    return ifft(fft(signal_padded)*W).real[:,:Ntod]
+    return ifft(fft(signal_padded, workers=-1)*W, workers=-1).real[:,:Ntod]
     
 
 
