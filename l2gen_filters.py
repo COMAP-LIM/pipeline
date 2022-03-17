@@ -9,6 +9,7 @@ import h5py
 from tqdm import trange
 import matplotlib.pyplot as plt
 import scipy.linalg
+import time
 
 C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
 
@@ -130,23 +131,46 @@ class Pointing_Template_Subtraction:
                     l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
 
 class Polynomial_filter:
-    def __init__(self):
+    def __init__(self, use_ctypes=True):
         self.name = "poly"
         self.name_long = "polynomial filter"
+        self.use_ctypes = use_ctypes
 
     def run(self, l2):
-        sb_freqs = np.linspace(-1, 1, 1024)
-        for feed in range(l2.Nfeeds):
-            for sb in range(4):
-                for idx in range(l2.Ntod):
-                    # if np.isfinite(l2.tod[feed,sb,:,idx]).all():
-                    tod_local = l2.tod[feed,sb,:,idx].copy()
-                    tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
-                    try:
-                        c1, c0 = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[feed,sb])
-                        l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1*sb_freqs - c0
-                    except:
-                        pass
+        if not self.use_ctypes:
+            sb_freqs = np.linspace(-1, 1, 1024)
+            for feed in range(l2.Nfeeds):
+                for sb in range(4):
+                    for idx in range(l2.Ntod):
+                        # if np.isfinite(l2.tod[feed,sb,:,idx]).all():
+                        tod_local = l2.tod[feed,sb,:,idx].copy()
+                        tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
+                        try:
+                            c1, c0 = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[feed,sb])
+                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1*sb_freqs - c0
+                        except:
+                            pass
+
+        else:
+            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/polyfit/polyfit.so.1"
+            polylib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+            float32_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=1, flags="contiguous")
+            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            polylib.polyfit.argtypes = [float32_array1, float32_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
+
+            sb_freqs = np.linspace(-1, 1, 1024, dtype=np.float32)
+            c0 = np.zeros(l2.Ntod) + np.nan
+            c1 = np.zeros(l2.Ntod) + np.nan
+            for feed in range(l2.Nfeeds):
+                for sb in range(4):
+                    tod_local = l2.tod[feed, sb].copy()
+                    tod_local[~np.isfinite(tod_local)] = 0
+                    weights = np.array(l2.freqmask[feed, sb], dtype=float)
+                    polylib.polyfit(sb_freqs, l2.tod[feed, sb], weights, l2.Nfreqs, l2.Ntod, c0, c1)
+                    for idx in range(l2.Ntod):
+                        if np.isfinite(c0[idx]) and np.isfinite(c1[idx]):
+                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1[idx]*sb_freqs - c0[idx]
 
 
 class PCA_filter:
