@@ -63,13 +63,13 @@ class l2gen_runner:
             n_obsids = int(lines[i][1])
             i = i + 1
             for j in range(n_obsids):
-                obsid = lines[i][0]
+                obsid = "0" + lines[i][0]
                 obsids.append(obsid)
                 n_scans = int(lines[i][3])
                 l1_filename = lines[i][-1]
                 l1_filename = L1_PATH + l1_filename
                 for k in range(n_scans):
-                    scan = lines[i+k+1][0]
+                    scan = "0" + lines[i+k+1][0]  # Runlist obsid lacking a leading 0?
                     mjd_start = float(lines[i+k+1][1])
                     mjd_stop = float(lines[i+k+1][2])
                     scantype = int(float(lines[i+k+1][3]))
