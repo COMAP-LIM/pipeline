@@ -20,7 +20,7 @@ from os.path import join
 import h5py
 # from mpi4py import MPI
 from l2gen_l2class import level2_file
-from l2gen_filters import Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter
+from l2gen_filters import Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration
 
 L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
@@ -118,6 +118,6 @@ class l2gen:
 
 if __name__ == "__main__":
     runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_small.txt"
-    filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Decimation]
+    filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration, Decimation]
     l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)])
     l2r.run()

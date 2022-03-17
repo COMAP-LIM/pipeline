@@ -276,3 +276,13 @@ class Masking:
         del(l2_local)
 
 
+class Calibration:
+    def __init__(self):
+        self.name = "calib"
+        self.name_long = "calibrations"
+    
+    def run(self, l2):
+        obsid = l2.obsid
+        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", "r") as f:
+            tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
+        l2.tod *= tsys[l2.feeds][:,:,:,None]
