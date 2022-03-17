@@ -285,4 +285,4 @@ class Calibration:
         obsid = l2.obsid
         with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", "r") as f:
             tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
-        l2.tod *= tsys[l2.feeds][:,:,:,None]
+        l2.tod *= tsys[l2.feeds-1][:,:,:,None]
