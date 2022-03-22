@@ -44,11 +44,12 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50):
 
 
 class Normalize_Gain:
-    def __init__(self):
+    def __init__(self, use_ctypes=False):
         self.name = "norm"
         self.name_long = "normalization"
+        self.use_ctypes = use_ctypes
 
-    def run(self, l2, mp_threads=144):
+    def run(self, l2):
         # print("1")
         # fastlen = next_fast_len(l2.tod.shape[-1]*2)
         # print(f" --- Normalization - lastlen {fastlen} from TOD len {l2.tod.shape[-1]}.")
@@ -70,12 +71,26 @@ class Normalize_Gain:
         # l2.tod = l2.tod.reshape((l2.Nfeeds, 4, 1024, l2.Ntod))
         # del(tod_lowpass)
 
-        for feed in range(l2.Nfeeds):
-            for sb in range(4):
-                tod_lowpass = lowpass_filter(l2.tod[feed, sb])
-                l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
-        del(tod_lowpass)
-
+        if not self.use_ctypes:
+            for feed in range(l2.Nfeeds):
+                for sb in range(l2.Nsb):
+                    tod_lowpass = lowpass_filter(l2.tod[feed, sb])
+                    l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
+            del(tod_lowpass)
+        else:
+            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/norm/normlib.so.1"
+            normlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+            normlib.normalize.argtypes = [float32_array2, ctypes.c_ulong, ctypes.c_ulong]
+            Nfull = next_fast_len(2*l2.Ntod)
+            for feed in range(l2.Nfeeds):
+                for sb in range(l2.Nsb):
+                    l2_padded = np.zeros((1024, Nfull), dtype=np.float32)
+                    l2_padded[:,:l2.Ntod] = l2.tod[feed,sb,:,:]
+                    l2_padded[:,l2.Ntod:l2.Ntod*2] = l2.tod[feed,sb,:,::-1]
+                    l2_padded[:,l2.Ntod*2:] = np.nanmean(l2.tod[feed,sb,:,:400], axis=-1)[:,None]
+                    normlib.normalize(l2_padded, l2.Nfreqs, Nfull)
+                    l2.tod[feed,sb] = l2_padded[:,:l2.Ntod]
         # for feed in range(l2.Nfeeds):
         #     for sb in range(4):
         #         with mp.Pool(mp_threads) as p:
