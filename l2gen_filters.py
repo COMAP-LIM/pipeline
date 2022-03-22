@@ -117,33 +117,63 @@ class Decimation:
 
 
 class Pointing_Template_Subtraction:
-    def __init__(self):
+    def __init__(self, use_ctypes=True):
         self.name = "pointing"
         self.name_long = "pointing template subtraction"
+        self.use_ctypes = use_ctypes
     
     def run(self, l2):
-        def az_func(x, d, c):
-            return d*x + c
-        def az_el_func(x, g, d, c):
-            return g*x[0] + d*x[1] + c
-        def az_el_template(feed, g, d, c):
-            return g/np.sin(l2.el[feed]*np.pi/180.0) + d*l2.az[feed] + c
+        if not self.use_ctypes:
+            def az_func(x, d, c):
+                return d*x + c
+            def az_el_func(x, g, d, c):
+                return g*x[0] + d*x[1] + c
+            def az_el_template(feed, g, d, c):
+                return g/np.sin(l2.el[feed]*np.pi/180.0) + d*l2.az[feed] + c
 
-        g, d, c = 0, 0, 0
-        for feed in range(l2.Nfeeds):
-            for sb in range(4):
-                for freq in range(1024):
-                    if l2.scantype == "ces":
-                        if np.isfinite(l2.tod[feed, sb, freq]).all():
-                            (d, c), _ = curve_fit(az_func, l2.az[feed], l2.tod[feed, sb, freq], (d, c))
+            g, d, c = 0, 0, 0
+            for feed in range(l2.Nfeeds):
+                for sb in range(4):
+                    for freq in range(1024):
+                        if l2.scantype == "ces":
+                            if np.isfinite(l2.tod[feed, sb, freq]).all():
+                                (d, c), _ = curve_fit(az_func, l2.az[feed], l2.tod[feed, sb, freq], (d, c))
+                            else:
+                                d, c = 0, 0
                         else:
-                            d, c = 0, 0
-                    else:
-                        if np.isfinite(l2.tod[feed, sb, freq]).all():
-                            (g, d, c), _ = curve_fit(az_el_func, (1.0/np.sin(l2.el[feed]*np.pi/180.0), l2.az[feed]), l2.tod_norm[feed, sb, freq], (g, d, c))
-                        else:
-                            g, d, c = 0, 0, 0
-                    l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
+                            if np.isfinite(l2.tod[feed, sb, freq]).all():
+                                (g, d, c), _ = curve_fit(az_el_func, (1.0/np.sin(l2.el[feed]*np.pi/180.0), l2.az[feed]), l2.tod[feed, sb, freq], (g, d, c))
+                            else:
+                                g, d, c = 0, 0, 0
+                        l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
+
+        else:
+            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/pointing/pointinglib.so.1"
+            pointinglib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
+            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            pointinglib.az_fit.argtypes = [float64_array1, float32_array3, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
+            pointinglib.az_el_fit.argtypes = [float64_array1, float64_array1, float32_array3, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1, float64_array1]
+            if l2.scantype == "ces":
+                for ifeed in range(l2.Nfeeds):
+                    c_est = np.zeros(l2.Nfreqs*l2.Nsb)
+                    d_est = np.zeros(l2.Nfreqs*l2.Nsb)
+                    pointinglib.az_fit(l2.az[ifeed], l2.tod[ifeed], l2.Nfreqs*l2.Nsb, l2.Ntod, c_est, d_est)
+                    c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
+                    d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
+                    l2.tod[ifeed] -= l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
+            else:
+                for ifeed in range(l2.Nfeeds):
+                    c_est = np.zeros(l2.Nfreqs*l2.Nsb)
+                    d_est = np.zeros(l2.Nfreqs*l2.Nsb)
+                    g_est = np.zeros(l2.Nfreqs*l2.Nsb)
+                    el_term = 1.0/np.sin(l2.el[ifeed]*np.pi/180.0)
+                    pointinglib.az_el_fit(l2.az[ifeed], el_term, l2.tod[ifeed], l2.Nfreqs*l2.Nsb, l2.Ntod, c_est, d_est, g_est)
+                    c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
+                    d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
+                    g_est = g_est.reshape((l2.Nsb, l2.Nfreqs))
+                    l2.tod[ifeed] -= el_term[None,None,:]*g_est[:,:,None] + l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
+
 
 class Polynomial_filter:
     def __init__(self, use_ctypes=True):
@@ -200,8 +230,11 @@ class PCA_filter:
         M = M[l2.freqmask.reshape(N), :]
         M = np.dot(M.T, M)
         eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
-        l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
+        # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
+        # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
+        for ifeed in range(l2.Nfeeds):
+            ak = np.sum(l2.tod[ifeed,:,:,:,None]*eigvec, axis=2)
+            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*eigvec[None,None,:,:], axis=-1)
 
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/comap_freqmask_1024channels.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
@@ -303,13 +336,14 @@ class Masking:
 
                 l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                 l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
-                fig, ax = plt.subplots(2, 3, figsize=(14, 6))
-                for i in range(2):
-                    for j in range(3):
-                        plot = ax[i,j].imshow(np.abs(chi2_matrix[i,j]), vmin=0, vmax=12)
-                        plt.colorbar(plot, ax=ax[i,j])
-                plt.tight_layout()
-                plt.savefig(f"plots/{l2.scanid}_feed{l2.feeds[ifeed]}_half{ihalf}.png", bbox_inches="tight")
+                # fig, ax = plt.subplots(2, 3, figsize=(14, 6))
+                # for i in range(2):
+                #     for j in range(3):
+                #         plot = ax[i,j].imshow(np.abs(chi2_matrix[i,j]), vmin=0, vmax=12)
+                #         plt.colorbar(plot, ax=ax[i,j])
+                # plt.tight_layout()
+                # plt.savefig(f"plots/{l2.scanid}_feed{l2.feeds[ifeed]}_half{ihalf}.png", bbox_inches="tight")
+                # plt.clf()
         
         l2.tod[~l2.freqmask] = np.nan
         del(l2_local)
