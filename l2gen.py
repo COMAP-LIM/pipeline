@@ -37,16 +37,16 @@ class l2gen_runner:
         comm = MPI.COMM_WORLD
         Nranks = comm.Get_size()
         rank = comm.Get_rank()
-        print(f"Spawning rank {rank} of {Nranks}.")
+        print(f"[{rank}] >>> Spawning rank {rank} of {Nranks}.")
 
         self.runlist = self.read_runlist()
         Nscans = len(self.runlist)
         for i_scan in range(Nscans):
             if i_scan%Nranks == rank:
-                print(f"Rank {rank} starting scan {i_scan}...")
+                print(f"[{rank}] >>> Starting scan {i_scan}...")
                 l2 = l2gen(self.runlist[i_scan], self.filter_list, self.checkpoints, omp_num_threads=self.omp_num_threads)
                 l2.run()
-                print(f"Rank {rank} done with scan {i_scan}.")
+                print(f"[{rank}] >>> Done with scan {i_scan}.")
 
 
     def read_runlist(self):
@@ -90,32 +90,36 @@ class l2gen:
         self.checkpoints = checkpoints
 
     def run(self):
-        print("Reading level1 data...")
+        comm = MPI.COMM_WORLD
+        Nranks = comm.Get_size()
+        rank = comm.Get_rank()
+
+        print(f"[{rank}] Reading level1 data...")
         t0 = time.time()
         self.l2file.load_level1_data()
-        print(f"Finished l1 file read in {time.time()-t0:.1f} s.")
+        print(f"[{rank}] Finished l1 file read in {time.time()-t0:.1f} s.")
 
         if self.checkpoints[0]:
-            print(f"Writing pre-filtered data to file...")
+            print(f"[{rank}] Writing pre-filtered data to file...")
             t0 = time.time()
             self.l2file.write_level2_data("data/", name_extension="_0")
-            print(f"Finished pre-filter file write in {time.time()-t0:.1f} s.")
+            print(f"[{rank}] Finished pre-filter file write in {time.time()-t0:.1f} s.")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i](omp_num_threads=self.omp_num_threads)
-            print(f"Starting {filter.name_long}...")
+            print(f"[{rank}] [{filter.name}] Starting {filter.name_long}...")
             t0 = time.time()
             filter.run(self.l2file)
-            print(f"Finished {filter.name_long} in {time.time()-t0:.1f} s.")
+            print(f"[{rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s.")
             if self.checkpoints[i+1]:
-                print(f"Writing result of {filter.name_long} to file...")
+                print(f"[{rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 t0 = time.time()
                 self.l2file.write_level2_data("data/", name_extension=f"_{str(i+1)}_{filter.name}")
-                print(f"Finished {filter.name_long} file write in {time.time()-t0:.1f} s.")
+                print(f"[{rank}] [{filter.name}] Finished {filter.name_long} file write in {time.time()-t0:.1f} s.")
             del(filter)
-        print("Writing level2 file...")
+        print(f"[{rank}] Writing level2 file...")
         t0 = time.time()
         self.l2file.write_level2_data("data/")
-        print(f"Finished l2 file write in {time.time()-t0:.1f} s.")
+        print(f"[{rank}] Finished l2 file write in {time.time()-t0:.1f} s.")
 
 
 if __name__ == "__main__":
@@ -124,5 +128,5 @@ if __name__ == "__main__":
     # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_liss_small.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/src/sim/Parameterfiles_and_runlists/runlist_new_pca.txt"
     filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration, Decimation]
-    l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)], omp_num_threads=24)
+    l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)], omp_num_threads=48)
     l2r.run()

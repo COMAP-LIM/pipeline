@@ -10,6 +10,7 @@ from tqdm import trange
 import matplotlib.pyplot as plt
 import scipy.linalg
 import time
+from mpi4py import MPI
 
 C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
 
@@ -261,26 +262,30 @@ class Masking:
         self.omp_num_threads = omp_num_threads
         
     def run(self, l2):
+        comm = MPI.COMM_WORLD
+        Nranks = comm.Get_size()
+        rank = comm.Get_rank()
+
         l2_local = copy.deepcopy(l2)
         
-        print(f"[{self.name}] Running local polyfilter for masking purposes...")
+        print(f"[{rank}] [{self.name}] Running local polyfilter for masking purposes...")
         t0 = time.time()
         poly = Polynomial_filter()
         poly.run(l2_local)
         del(poly)
         l2_local.write_level2_data("data/", name_extension=f"_mask_poly")
-        print(f"[{self.name}] Finished polyfilter in {time.time()-t0:.1f} s.")
+        print(f"[{rank}] [{self.name}] Finished local/masking polyfilter in {time.time()-t0:.1f} s.")
         
-        print(f"[{self.name}] Running local PCA filter for masking purposes...")
+        print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
         t0 = time.time()
         pca = PCA_filter()
         pca.run(l2_local)
         del(pca)
         l2_local.write_level2_data("data/", name_extension=f"_mask_pca")
-        print(f"[{self.name}] Finished PCA filter in {time.time()-t0:.1f} s.")
+        print(f"[{rank}] [{self.name}] Finished local/masking PCA filter in {time.time()-t0:.1f} s.")
 
 
-        print(f"[{self.name}] Starting correlation estimation and masking...")
+        print(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
         t0 = time.time()
         Nfreqs = l2_local.Nfreqs
         Ntod = l2_local.Ntod
@@ -361,6 +366,7 @@ class Masking:
         
         l2.tod[~l2.freqmask] = np.nan
         del(l2_local)
+        print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
 
 
 class Calibration:
