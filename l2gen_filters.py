@@ -229,7 +229,8 @@ class PCA_filter:
         M = l2.tod.reshape(N, l2.Ntod)
         M = M[l2.freqmask.reshape(N), :]
         M = np.dot(M.T, M)
-        eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
+        # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
+        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=4)
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
         for ifeed in range(l2.Nfeeds):
@@ -246,30 +247,37 @@ class Masking:
         self.name_long = "masking"
         self.freqmask_reason_idx_start = 5
         self.box_sizes = [32, 128, 512]
-        self.Nsigma_chi2_boxes = [6,6,6]
+        self.Nsigma_chi2_boxes = [6, 6, 6]
+        self.Nsigma_prod_boxes = [6, 5, 4]
+        self.Nsigma_mean_boxes = [6, 10, 14]
         self.stripe_sizes = [32, 128, 1024]
-        self.Nsigma_chi2_stripes = [6,6,6]
+        self.Nsigma_chi2_stripes = [6, 6, 6]
+        self.Nsigma_prod_stripes = [6, 5, 4]
         
     def run(self, l2):
         l2_local = copy.deepcopy(l2)
         
         print(f"[{self.name}] Running local polyfilter for masking purposes...")
+        t0 = time.time()
         poly = Polynomial_filter()
         poly.run(l2_local)
         del(poly)
         l2_local.write_level2_data("data/", name_extension=f"_mask_poly")
-        print(f"[{self.name}] Finished polyfilter.")
+        print(f"[{self.name}] Finished polyfilter in {time.time()-t0:.1f} s.")
         
         print(f"[{self.name}] Running local PCA filter for masking purposes...")
+        t0 = time.time()
         pca = PCA_filter()
         pca.run(l2_local)
         del(pca)
         l2_local.write_level2_data("data/", name_extension=f"_mask_pca")
-        print(f"[{self.name}] Finished PCA filter.")
+        print(f"[{self.name}] Finished PCA filter in {time.time()-t0:.1f} s.")
 
+
+        print(f"[{self.name}] Starting correlation estimation and masking...")
+        t0 = time.time()
         Nfreqs = l2_local.Nfreqs
         Ntod = l2_local.Ntod
-
         # Load 1st order polyfilter correlation template.
         with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/corr_template.h5", "r") as f:
             T_small = f["corr"][()]
