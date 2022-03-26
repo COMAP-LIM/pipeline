@@ -28,7 +28,7 @@ def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50):
     return ifft(fft(signal_padded)*W).real[:,:N]
 
 
-def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50):
+def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
     Ntod = signal.shape[-1]
     Nfull = next_fast_len(2*Ntod)
     signal_padded = np.zeros((1024, Nfull))
@@ -38,16 +38,17 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50):
 
     freq_full = np.fft.fftfreq(Nfull)*samprate
     W = 1.0/(1 + (freq_full/fknee)**alpha)
-    return ifft(fft(signal_padded, workers=-1)*W, workers=-1).real[:,:Ntod]
+    return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
     
 
 
 
 class Normalize_Gain:
-    def __init__(self, use_ctypes=False):
+    def __init__(self, use_ctypes=False, omp_num_threads=2):
         self.name = "norm"
         self.name_long = "normalization"
         self.use_ctypes = use_ctypes
+        self.omp_num_threads = omp_num_threads
 
     def run(self, l2):
         # print("1")
@@ -74,7 +75,7 @@ class Normalize_Gain:
         if not self.use_ctypes:
             for feed in range(l2.Nfeeds):
                 for sb in range(l2.Nsb):
-                    tod_lowpass = lowpass_filter(l2.tod[feed, sb])
+                    tod_lowpass = lowpass_filter(l2.tod[feed, sb], num_threads = self.omp_num_threads)
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
@@ -101,9 +102,10 @@ class Normalize_Gain:
 
 
 class Decimation:
-    def __init__(self):
+    def __init__(self, omp_num_threads=2):
         self.name = "dec"
         self.name_long = "decimation"
+        self.omp_num_threads = omp_num_threads
 
     def run(self, l2):
         dec_factor = 16
@@ -117,10 +119,11 @@ class Decimation:
 
 
 class Pointing_Template_Subtraction:
-    def __init__(self, use_ctypes=True):
+    def __init__(self, use_ctypes=True, omp_num_threads=2):
         self.name = "pointing"
         self.name_long = "pointing template subtraction"
         self.use_ctypes = use_ctypes
+        self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
         if not self.use_ctypes:
@@ -176,10 +179,11 @@ class Pointing_Template_Subtraction:
 
 
 class Polynomial_filter:
-    def __init__(self, use_ctypes=True):
+    def __init__(self, use_ctypes=True, omp_num_threads=2):
         self.name = "poly"
         self.name_long = "polynomial filter"
         self.use_ctypes = use_ctypes
+        self.omp_num_threads = omp_num_threads
 
     def run(self, l2):
         if not self.use_ctypes:
@@ -219,10 +223,11 @@ class Polynomial_filter:
 
 
 class PCA_filter:
-    def __init__(self, N_pca_modes=4):
+    def __init__(self, N_pca_modes=4, omp_num_threads=2):
         self.name = "pca"
         self.name_long = "PCA filter"
         self.N_pca_modes = N_pca_modes
+        self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
         N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
@@ -242,7 +247,7 @@ class PCA_filter:
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5"
 
 class Masking:
-    def __init__(self):
+    def __init__(self, omp_num_threads=2):
         self.name = "masking"
         self.name_long = "masking"
         self.freqmask_reason_idx_start = 5
@@ -253,6 +258,7 @@ class Masking:
         self.stripe_sizes = [32, 128, 1024]
         self.Nsigma_chi2_stripes = [6, 6, 6]
         self.Nsigma_prod_stripes = [6, 5, 4]
+        self.omp_num_threads = omp_num_threads
         
     def run(self, l2):
         l2_local = copy.deepcopy(l2)
@@ -358,9 +364,10 @@ class Masking:
 
 
 class Calibration:
-    def __init__(self):
+    def __init__(self, omp_num_threads=2):
         self.name = "calib"
         self.name_long = "calibrations"
+        self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
         obsid = l2.obsid
