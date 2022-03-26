@@ -218,9 +218,7 @@ class Polynomial_filter:
                     tod_local[~np.isfinite(tod_local)] = 0
                     weights = np.array(l2.freqmask[feed, sb], dtype=float)
                     polylib.polyfit(sb_freqs, l2.tod[feed, sb], weights, l2.Nfreqs, l2.Ntod, c0, c1)
-                    for idx in range(l2.Ntod):
-                        if np.isfinite(c0[idx]) and np.isfinite(c1[idx]):
-                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1[idx]*sb_freqs - c0[idx]
+                    l2.tod[feed, sb, :, :] = l2.tod[feed, sb, :, :] - c1[None,:]*sb_freqs[:,None] - c0[None,:]  # Future improvement: Move into C.
 
 
 class PCA_filter:
