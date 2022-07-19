@@ -18,6 +18,7 @@ import time
 import numpy as np
 from os.path import join
 import h5py
+import os
 from mpi4py import MPI
 from l2gen_l2class import level2_file
 from l2gen_filters import Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration
@@ -26,6 +27,10 @@ L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
 class l2gen_runner:
     def __init__(self, runlist_path, filter_list, checkpoints=None, omp_num_threads=2):
+        # os.system(f"export OMP_NUM_THREADS={omp_num_threads}")
+        os.environ["OMP_NUM_THREADS"] = f"{omp_num_threads}"
+        os.environ["OPENBLAS_NUM_THREADS"] = f"{omp_num_threads}"
+        os.environ["MKL_NUM_THREADS"] = f"{omp_num_threads}"
         self.runlist_path = runlist_path
         self.filter_list = filter_list
         self.checkpoints = checkpoints
@@ -123,10 +128,11 @@ class l2gen:
 
 
 if __name__ == "__main__":
-    # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_large.txt"
-    runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_small.txt"
+    # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_24obsids.txt"
+    # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_small.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_liss_small.txt"
+    runlist_path = "/mn/stornext/d22/cmbco/comap/protodir/runlists/jonas/runlist_16obsids.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/src/sim/Parameterfiles_and_runlists/runlist_new_pca.txt"
     filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration, Decimation]
-    l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)], omp_num_threads=48)
+    l2r = l2gen_runner(runlist_path, filters, [False for i in range(len(filters)+1)], omp_num_threads=1)
     l2r.run()
