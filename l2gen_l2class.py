@@ -1,6 +1,6 @@
 import numpy as np
 import h5py
-
+import os
 
 class level2_file:
     def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename):
@@ -31,6 +31,10 @@ class level2_file:
             self.el             = f["/spectrometer/pixel_pointing/pixel_el"][:,self.scan_start_idx:self.scan_stop_idx]
             self.tod            = f["/spectrometer/tod"][:,:,:,self.scan_start_idx:self.scan_stop_idx]
             self.feeds          = f["/spectrometer/feeds"][()]
+            try:
+                self.field      = f["/comap/"].attrs["source"]
+            except:
+                self.field      = "unknown"
             self.Nfeeds = self.tod.shape[0]
             self.Nsb = self.tod.shape[1]
             self.Nfreqs = self.tod.shape[2]
@@ -56,7 +60,8 @@ class level2_file:
 
 
     def write_level2_data(self, path, name_extension=""):
-        with h5py.File(path + self.l2_filename + name_extension + ".h5", "w") as f:
+        outfilename = os.path.join(path, self.field, self.l2_filename + name_extension + ".h5")
+        with h5py.File(outfilename, "w") as f:
             f["tod"] = self.tod
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
