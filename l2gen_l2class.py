@@ -60,7 +60,10 @@ class level2_file:
 
 
     def write_level2_data(self, path, name_extension=""):
-        outfilename = os.path.join(path, self.field, self.l2_filename + name_extension + ".h5")
+        outpath = os.path.join(path, self.field)
+        if not os.path.exists(outpath):
+            os.mkdir(outpath)
+        outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
         with h5py.File(outfilename, "w") as f:
             f["tod"] = self.tod
             f["freqmask"] = self.freqmask
