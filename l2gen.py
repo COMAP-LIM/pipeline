@@ -109,7 +109,7 @@ class l2gen:
         if self.checkpoints[0]:
             print(f"[{rank}] Writing pre-filtered data to file...")
             t0 = time.time()
-            self.l2file.write_level2_data("data/", name_extension="_0")
+            self.l2file.write_level2_data("level2/", name_extension="_0")
             print(f"[{rank}] Finished pre-filter file write in {time.time()-t0:.1f} s.")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i](omp_num_threads=self.omp_num_threads)
@@ -120,12 +120,12 @@ class l2gen:
             if self.checkpoints[i+1]:
                 print(f"[{rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 t0 = time.time()
-                self.l2file.write_level2_data("data/", name_extension=f"_{str(i+1)}_{filter.name}")
+                self.l2file.write_level2_data("level2/", name_extension=f"_{str(i+1)}_{filter.name}")
                 print(f"[{rank}] [{filter.name}] Finished {filter.name_long} file write in {time.time()-t0:.1f} s.")
             del(filter)
         print(f"[{rank}] Writing level2 file...")
         t0 = time.time()
-        self.l2file.write_level2_data("data/")
+        self.l2file.write_level2_data("level2/")
         print(f"[{rank}] Finished l2 file write in {time.time()-t0:.1f} s.")
 
 
