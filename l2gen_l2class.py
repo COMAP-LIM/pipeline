@@ -35,6 +35,7 @@ class level2_file:
                 self.field      = f["/comap/"].attrs["source"]
             except:
                 self.field      = "unknown"
+            self.l2_tofile_dict = {}
             self.Nfeeds = self.tod.shape[0]
             self.Nsb = self.tod.shape[1]
             self.Nfreqs = self.tod.shape[2]
@@ -68,6 +69,8 @@ class level2_file:
             f["tod"] = self.tod
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
+            for key in self.l2_tofile_dict:  # Custom user-defined data, usually from the filters.
+                f[key] = self.l2_tofile_dict[key]
 
 
 
