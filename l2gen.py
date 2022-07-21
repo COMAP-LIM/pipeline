@@ -13,6 +13,8 @@ Example usage:
 mpirun -n 10 -machinefile machinefile.txt python3 -W ignore -u l2gen.py
 mpirun -n 120 python3 -W ignore -u l2gen.py
 python3 -W ignore l2gen.py
+To get Numpy to respect number of threads (per MPI thread):
+export OMP_NUM_THREADS=20; export OPENBLAS_NUM_THREADS=20; export MKL_NUM_THREADS=20; python3 -u -W ignore l2gen.py
 """
 import time
 import numpy as np
@@ -134,5 +136,5 @@ if __name__ == "__main__":
     runlist_path = "/mn/stornext/d22/cmbco/comap/protodir/runlists/jonas/runlist_16obsids.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/src/sim/Parameterfiles_and_runlists/runlist_new_pca.txt"
     filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration, Decimation]
-    l2r = l2gen_runner(runlist_path, filters, [False for i in range(len(filters)+1)], omp_num_threads=1)
+    l2r = l2gen_runner(runlist_path, filters, [False for i in range(len(filters)+1)], omp_num_threads=20)
     l2r.run()
