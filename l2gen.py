@@ -23,7 +23,7 @@ import h5py
 import os
 from mpi4py import MPI
 from l2gen_l2class import level2_file
-from l2gen_filters import Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration
+from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration
 
 L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
@@ -95,6 +95,11 @@ class l2gen:
         self.filter_list = filter_list
         self.omp_num_threads = omp_num_threads
         self.checkpoints = checkpoints
+        self.filter_names = [filter.name for filter in filter_list]
+        for i, filter in enumerate(self.filter_list):  # For all filters, check if all dependencies are run first.
+            for dependency in filter.depends_upon:
+                if not dependency in self.filter_names[:i]:
+                    raise RuntimeError(f"Filter '{filter.name}' depends upon filter '{dependency}'.")
 
     def run(self):
         comm = MPI.COMM_WORLD
@@ -135,6 +140,13 @@ if __name__ == "__main__":
     # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_liss_small.txt"
     runlist_path = "/mn/stornext/d22/cmbco/comap/protodir/runlists/jonas/runlist_16obsids.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/src/sim/Parameterfiles_and_runlists/runlist_new_pca.txt"
-    filters = [Normalize_Gain, Pointing_Template_Subtraction, Masking, Polynomial_filter, PCA_filter, Calibration, Decimation]
-    l2r = l2gen_runner(runlist_path, filters, [False for i in range(len(filters)+1)], omp_num_threads=20)
+    filters = [ Tsys_calc,
+                Normalize_Gain,
+                Pointing_Template_Subtraction,
+                Masking,
+                Polynomial_filter,
+                PCA_filter,
+                Calibration,
+                Decimation]
+    l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)], omp_num_threads=20)
     l2r.run()

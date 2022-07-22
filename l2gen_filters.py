@@ -41,13 +41,19 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
     W = 1.0/(1 + (freq_full/fknee)**alpha)
     return ifft(fft(signal_padded, workers=1)*W, workers=1).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
     # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
-    
 
 
-class Normalize_Gain:
+class Filter:
+    name = ""  # Short name of filter, used for compact writes.
+    name_long = ""  # Verbose, more explanatory name of filter.
+    depends_upon = []  # Other filters which needs to be run before this one. List of strings (the short names).
+
+
+class Normalize_Gain(Filter):
+    name = "norm"
+    name_long = "normalization"
+
     def __init__(self, use_ctypes=False, omp_num_threads=2):
-        self.name = "norm"
-        self.name_long = "normalization"
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
 
@@ -102,10 +108,11 @@ class Normalize_Gain:
         
 
 
-class Decimation:
+class Decimation(Filter):
+    name = "dec"
+    name_long = "decimation"
+
     def __init__(self, omp_num_threads=2):
-        self.name = "dec"
-        self.name_long = "decimation"
         self.omp_num_threads = omp_num_threads
 
     def run(self, l2):
@@ -120,10 +127,11 @@ class Decimation:
 
 
 
-class Pointing_Template_Subtraction:
+class Pointing_Template_Subtraction(Filter):
+    name = "pointing"
+    name_long = "pointing template subtraction"
+
     def __init__(self, use_ctypes=True, omp_num_threads=2):
-        self.name = "pointing"
-        self.name_long = "pointing template subtraction"
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
     
@@ -181,10 +189,11 @@ class Pointing_Template_Subtraction:
 
 
 
-class Polynomial_filter:
+class Polynomial_filter(Filter):
+    name = "poly"
+    name_long = "polynomial filter"
+
     def __init__(self, use_ctypes=True, omp_num_threads=2):
-        self.name = "poly"
-        self.name_long = "polynomial filter"
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
 
@@ -226,10 +235,11 @@ class Polynomial_filter:
 
 
 
-class PCA_filter:
+class PCA_filter(Filter):
+    name = "pca"
+    name_long = "PCA filter"
+
     def __init__(self, N_pca_modes=4, omp_num_threads=2):
-        self.name = "pca"
-        self.name_long = "PCA filter"
         self.N_pca_modes = N_pca_modes
         self.omp_num_threads = omp_num_threads
     
@@ -256,10 +266,11 @@ class PCA_filter:
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/comap_freqmask_1024channels.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5"
-class Masking:
+class Masking(Filter):
+    name = "masking"
+    name_long = "masking"
+
     def __init__(self, omp_num_threads=2):
-        self.name = "masking"
-        self.name_long = "masking"
         self.freqmask_reason_idx_start = 5
         self.box_sizes = [32, 128, 512]
         self.Nsigma_chi2_boxes = [6, 6, 6]
@@ -397,14 +408,55 @@ class Masking:
         print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
 
 
-class Calibration:
+
+class Tsys_calc(Filter):
+    name = "tsys"
+    name_long = "Tsys calculation"
+    
     def __init__(self, omp_num_threads=2):
-        self.name = "calib"
-        self.name_long = "calibrations"
+        self.omp_num_threads = omp_num_threads
+
+    def run(self, l2):
+        Tcmb = 2.725
+        obsid = l2.obsid
+        t = l2.tod_times[l2.Ntod//2]  # scan center time.
+        l2.Tsys = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
+        Pcold = np.nanmean(l2.tod, axis=-1)
+
+        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", "r") as f:
+            # tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
+            Phot = f[f"/obsid/{obsid}/Phot"][()]
+            Thot = f[f"/obsid/{obsid}/Thot"][()]
+            calib_times = f[f"/obsid/{obsid}/calib_times"][()]
+            successful = f[f"/obsid/{obsid}/successful"][()]
+
+        for ifeed in range(l2.Nfeeds):
+            feed = l2.feeds[ifeed]
+            if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
+                t1 = (calib_times[feed-1,0,0] + calib_times[feed-1,0,1])/2.0
+                t2 = (calib_times[feed-1,1,0] + calib_times[feed-1,1,1])/2.0
+                P1, P2 = Phot[feed-1,:,:,0], Phot[feed-1,:,:,1]
+                Phot_interp = (P1*(t2 - t) + P2*(t - t1))/(t2 - t1)
+                T1, T2 = Thot[feed-1,0], Thot[feed-1,1]
+                Thot_interp = (T1*(t2 - t) + T2*(t - t1))/(t2 - t1)
+            elif successful[feed-1,0]:  # Only first calibration successful: Use values from that one.
+                Phot_interp = Phot[feed-1,:,:,0]
+                Thot_interp = Thot[feed-1,:,:,0]
+            elif successful[feed-1,1]:  # Only second...
+                Phot_interp = Phot[feed-1,:,:,1]
+                Thot_interp = Thot[feed-1,:,:,1]
+            l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
+
+        l2.tofile_dict["Tsys"] = l2.Tsys
+
+
+
+class Calibration(Filter):
+    name = "calib"
+    name_long = "calibrations"
+    depends_upon = ["tsys"]
+    def __init__(self, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
-        obsid = l2.obsid
-        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", "r") as f:
-            tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
-        l2.tod *= tsys[l2.feeds-1][:,:,:,None]
+        l2.tod *= l2.Tsys[:,:,:,None]
