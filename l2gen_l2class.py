@@ -31,11 +31,7 @@ class level2_file:
             self.el             = f["/spectrometer/pixel_pointing/pixel_el"][:,self.scan_start_idx:self.scan_stop_idx]
             self.tod            = f["/spectrometer/tod"][:,:,:,self.scan_start_idx:self.scan_stop_idx]
             self.feeds          = f["/spectrometer/feeds"][()]
-            try:
-                self.field      = f["/comap/"].attrs["source"]
-            except:
-                self.field      = "unknown"
-            self.l2_tofile_dict = {}
+            self.tofile_dict = {}  # Dict for adding custom data, which will be written to level2 file.
             self.Nfeeds = self.tod.shape[0]
             self.Nsb = self.tod.shape[1]
             self.Nfreqs = self.tod.shape[2]
@@ -61,7 +57,7 @@ class level2_file:
 
 
     def write_level2_data(self, path, name_extension=""):
-        outpath = os.path.join(path, self.field)
+        outpath = os.path.join(path, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
@@ -69,8 +65,8 @@ class level2_file:
             f["tod"] = self.tod
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
-            for key in self.l2_tofile_dict:  # Custom user-defined data, usually from the filters.
-                f[key] = self.l2_tofile_dict[key]
+            for key in self.tofile_dict:  # Writing custom data (usually from the filters) to file.
+                f[key] = self.tofile_dict[key]
 
 
 

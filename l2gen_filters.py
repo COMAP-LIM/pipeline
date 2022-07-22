@@ -44,7 +44,6 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
     
 
 
-
 class Normalize_Gain:
     def __init__(self, use_ctypes=False, omp_num_threads=2):
         self.name = "norm"
@@ -120,6 +119,7 @@ class Decimation:
         l2.tod = tod_decimated
 
 
+
 class Pointing_Template_Subtraction:
     def __init__(self, use_ctypes=True, omp_num_threads=2):
         self.name = "pointing"
@@ -180,6 +180,7 @@ class Pointing_Template_Subtraction:
                     l2.tod[ifeed] -= el_term[None,None,:]*g_est[:,:,None] + l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
 
 
+
 class Polynomial_filter:
     def __init__(self, use_ctypes=True, omp_num_threads=2):
         self.name = "poly"
@@ -188,6 +189,8 @@ class Polynomial_filter:
         self.omp_num_threads = omp_num_threads
 
     def run(self, l2):
+        c0 = np.zeros((l2.Nfeeds, l2.Nsb, l2.Ntod)) + np.nan
+        c1 = np.zeros((l2.Nfeeds, l2.Nsb, l2.Ntod)) + np.nan
         if not self.use_ctypes:
             sb_freqs = np.linspace(-1, 1, 1024)
             for feed in range(l2.Nfeeds):
@@ -197,8 +200,8 @@ class Polynomial_filter:
                         tod_local = l2.tod[feed,sb,:,idx].copy()
                         tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
                         try:
-                            c1, c0 = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[feed,sb])
-                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1*sb_freqs - c0
+                            c1[feed,sb,idx], c0[feed,sb,idx] = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[feed,sb])
+                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1[feed,sb,idx]*sb_freqs - c0[feed,sb,idx]
                         except:
                             pass
 
@@ -211,15 +214,16 @@ class Polynomial_filter:
             polylib.polyfit.argtypes = [float32_array1, float32_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
 
             sb_freqs = np.linspace(-1, 1, 1024, dtype=np.float32)
-            c0 = np.zeros(l2.Ntod) + np.nan
-            c1 = np.zeros(l2.Ntod) + np.nan
             for feed in range(l2.Nfeeds):
                 for sb in range(4):
                     tod_local = l2.tod[feed, sb].copy()
                     tod_local[~np.isfinite(tod_local)] = 0
                     weights = np.array(l2.freqmask[feed, sb], dtype=float)
-                    polylib.polyfit(sb_freqs, l2.tod[feed, sb], weights, l2.Nfreqs, l2.Ntod, c0, c1)
-                    l2.tod[feed, sb, :, :] = l2.tod[feed, sb, :, :] - c1[None,:]*sb_freqs[:,None] - c0[None,:]  # Future improvement: Move into C.
+                    polylib.polyfit(sb_freqs, l2.tod[feed, sb], weights, l2.Nfreqs, l2.Ntod, c0[feed,sb], c1[feed,sb])
+                    l2.tod[feed, sb, :, :] = l2.tod[feed, sb, :, :] - c1[feed,sb,None,:]*sb_freqs[:,None] - c0[feed,sb,None,:]  # Future improvement: Move into C.
+        l2.tofile_dict["poly_coeff"] = np.zeros((2, l2.Nfeeds, l2.Nsb, l2.Ntod))
+        l2.tofile_dict["poly_coeff"][:] = c0, c1
+
 
 
 class PCA_filter:
@@ -230,22 +234,28 @@ class PCA_filter:
         self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
+        pca_ampl = np.zeros((self.N_pca_modes, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+        # pca_comp = np.zeros((self.N_pca_modes, l2.Ntod))
         N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
         M = l2.tod.reshape(N, l2.Ntod)
         M = M[l2.freqmask.reshape(N), :]
         M = np.dot(M.T, M)
         # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=4)
+        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.N_pca_modes)
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
         for ifeed in range(l2.Nfeeds):
             ak = np.sum(l2.tod[ifeed,:,:,:,None]*eigvec, axis=2)
             l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*eigvec[None,None,:,:], axis=-1)
+            pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
+        l2.tofile_dict["pca_ampl"] = pca_ampl
+        l2.tofile_dict["pca_comp"] = np.transpose(eigvec, (1,0))
+
+
 
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/comap_freqmask_1024channels.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5"
-
 class Masking:
     def __init__(self, omp_num_threads=2):
         self.name = "masking"
