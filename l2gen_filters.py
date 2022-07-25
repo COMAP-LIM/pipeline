@@ -14,7 +14,7 @@ from mpi4py import MPI
 
 C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
 
-def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50):
+def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=2):
     """ Applies a lowpass filter to a signal, and returns the low-frequency result.
         Uses mirrored padding of signal to deal with edge effects.
         Assumes signal is of shape [freq, time].
@@ -136,6 +136,7 @@ class Pointing_Template_Subtraction(Filter):
         self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
+        el_az_amp = np.zeros((3, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         if not self.use_ctypes:
             def az_func(x, d, c):
                 return d*x + c
@@ -159,6 +160,7 @@ class Pointing_Template_Subtraction(Filter):
                             else:
                                 g, d, c = 0, 0, 0
                         l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
+                        el_az_amp[:,feed,sb,freq] = g, d, c
 
         else:
             C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/pointing/pointinglib.so.1"
@@ -175,6 +177,7 @@ class Pointing_Template_Subtraction(Filter):
                     c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
                     d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
                     l2.tod[ifeed] -= l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
+                    el_az_amp[:,ifeed,:,:] = np.zeros((l2.Nsb, l2.Nfreqs)), d_est, c_est
             else:
                 for ifeed in range(l2.Nfeeds):
                     c_est = np.zeros(l2.Nfreqs*l2.Nsb)
@@ -186,7 +189,9 @@ class Pointing_Template_Subtraction(Filter):
                     d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
                     g_est = g_est.reshape((l2.Nsb, l2.Nfreqs))
                     l2.tod[ifeed] -= el_term[None,None,:]*g_est[:,:,None] + l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
+                    el_az_amp[:,ifeed,:,:] = g_est, d_est, c_est
 
+        l2.tofile_dict["el_az_amp"] = el_az_amp
 
 
 class Polynomial_filter(Filter):
@@ -357,19 +362,19 @@ class Masking(Filter):
                                 chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = chi2
                                 if chi2 > Nsigma_chi2_box:
                                     freqmask[i*box_size:(i+1)*box_size] = False
-                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox + 1)
+                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox*3 + 1)
                                 # PROD MASKING
                                 jump = 16
                                 prod = np.sum(box[:-jump:2]*box[jump::2])*Ntod
                                 nprod = np.sum((box[:-jump:2]*box[jump::2]) != 0)
                                 if prod/nprod > Nsigma_prod_box*np.sqrt(1.0/nprod):
                                     freqmask[i*box_size:(i+1)*box_size] = False
-                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox + 2)
+                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox*3 + 2)
                                 # SUM MASKING
                                 box_sum = np.sum(box)*np.sqrt(Ntod)
                                 if np.abs(box_sum)/dof > Nsigma_mean_box*np.sqrt(1.0/dof):
                                     freqmask[i*box_size:(i+1)*box_size] = False
-                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox + 3)
+                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox*3 + 3)
 
                             else:
                                 chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
@@ -388,7 +393,7 @@ class Masking(Filter):
                         chi2_matrix[1, istripe, :, i*stripe_size:(i+1)*stripe_size] = chi2
                         if chi2 > Nsigma_chi2_stripe:
                             freqmask[i*stripe_size:(i+1)*stripe_size] = False
-                            freqmask_reason[i*stripe_size:(i+1)*stripe_size] += 2**(self.freqmask_reason_idx_start + len(self.box_sizes) + istripe + 1)
+                            freqmask_reason[i*stripe_size:(i+1)*stripe_size] += 2**(self.freqmask_reason_idx_start + len(self.box_sizes)*3 + istripe + 1)
                         # PROD MASKING
                         
 
@@ -460,3 +465,9 @@ class Calibration(Filter):
     
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
+        l2.freqmask[~np.isfinite(l2.Tsys)] = 0
+        l2.freqmask[l2.Tsys < 0] = 0
+        l2.freqmask[l2.Tsys > 100] = 0
+        l2.freqmask_reason[~np.isfinite(l2.Tsys)] = 2**30
+        l2.freqmask_reason[l2.Tsys < 0] = 2**30
+        l2.freqmask_reason[l2.Tsys > 100] = 2**30
