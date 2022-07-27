@@ -321,17 +321,26 @@ class Masking(Filter):
         for i in range(2):
             T[i*1024:(i+1)*Nfreqs,i*Nfreqs:(i+1)*Nfreqs] = T_small
 
-        for ifeed in range(l2_local.tod.shape[0]):
+        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+            AB_mask = f["/AB_mask"][()]
+            leak_mask = f["/leak_mask"][()]
+        l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
+        l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
+        l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
+        l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+
+        for ifeed in range(l2.tod.shape[0]):
             for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
                 tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:]
                 tod = tod.reshape((2*tod.shape[1], tod.shape[2]))  # Merge sb dim and freq dim.
                 # Start from the already existing freqmasks.
-                freqmask = l2_local.freqmask[ifeed,ihalf*2:(ihalf+1)*2].flatten()
-                freqmask_reason = l2_local.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
+                freqmask = l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2].flatten()
+                freqmask_reason = l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
 
                 C = np.corrcoef(tod)  # Correlation matrix.
-                C -= T  # Subtract polyfilter correlation template.
-                
+
                 # Put diagonal and 1-off diagonal components to zero, to be ignored in analysis,
                 # because of high and expected correlation.
                 for i in range(Nfreqs*2):
@@ -340,9 +349,13 @@ class Masking(Filter):
                         C[i+1,i] = 0
                         C[i,i+1] = 0
                 
+
+                C -= T  # Subtract polyfilter correlation template.
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
+
+                np.save(f"C_pre_{ifeed}_{ihalf}.npy", C)
 
                 chi2_matrix = np.zeros((2, 3, 2048, 2048))
                 for ibox in range(len(self.box_sizes)):
@@ -362,20 +375,39 @@ class Masking(Filter):
                                 chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = chi2
                                 if chi2 > Nsigma_chi2_box:
                                     freqmask[i*box_size:(i+1)*box_size] = False
-                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox*3 + 1)
+                                    for x in range(i*box_size, (i+1)*box_size):
+                                        if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 0) == 0:
+                                            freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 0)
+                                    freqmask[j*box_size:(j+1)*box_size] = False
+                                    for x in range(j*box_size, (j+1)*box_size):
+                                        if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 0) == 0:
+                                            freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 0)
+
                                 # PROD MASKING
                                 jump = 16
                                 prod = np.sum(box[:-jump:2]*box[jump::2])*Ntod
                                 nprod = np.sum((box[:-jump:2]*box[jump::2]) != 0)
                                 if prod/nprod > Nsigma_prod_box*np.sqrt(1.0/nprod):
                                     freqmask[i*box_size:(i+1)*box_size] = False
-                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox*3 + 2)
+                                    for x in range(i*box_size, (i+1)*box_size):
+                                        if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 1) == 0:
+                                            freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 1)
+                                    freqmask[j*box_size:(j+1)*box_size] = False
+                                    for x in range(j*box_size, (j+1)*box_size):
+                                        if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 1) == 0:
+                                            freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 1)
+
                                 # SUM MASKING
                                 box_sum = np.sum(box)*np.sqrt(Ntod)
                                 if np.abs(box_sum)/dof > Nsigma_mean_box*np.sqrt(1.0/dof):
                                     freqmask[i*box_size:(i+1)*box_size] = False
-                                    freqmask_reason[i*box_size:(i+1)*box_size] += 2**(self.freqmask_reason_idx_start + ibox*3 + 3)
-
+                                    for x in range(i*box_size, (i+1)*box_size):
+                                        if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 2) == 0:
+                                            freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 2)
+                                    freqmask[j*box_size:(j+1)*box_size] = False
+                                    for x in range(j*box_size, (j+1)*box_size):
+                                        if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 2) == 0:
+                                            freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 2)
                             else:
                                 chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
 
@@ -383,6 +415,7 @@ class Masking(Filter):
                 for istripe in range(len(self.stripe_sizes)):
                     stripe_size = self.stripe_sizes[istripe]
                     Nsigma_chi2_stripe = self.Nsigma_chi2_stripes[istripe]
+                    Nsigma_prod_stripe = self.Nsigma_prod_stripes[istripe]
 
                     for i in range((2*Nfreqs)//stripe_size):
                         stripe = C[i*stripe_size:(i+1)*stripe_size, :]
@@ -393,9 +426,18 @@ class Masking(Filter):
                         chi2_matrix[1, istripe, :, i*stripe_size:(i+1)*stripe_size] = chi2
                         if chi2 > Nsigma_chi2_stripe:
                             freqmask[i*stripe_size:(i+1)*stripe_size] = False
-                            freqmask_reason[i*stripe_size:(i+1)*stripe_size] += 2**(self.freqmask_reason_idx_start + len(self.box_sizes)*3 + istripe + 1)
+                            for x in range(i*stripe_size, (i+1)*stripe_size):
+                                if freqmask_reason[x] & 2**(l2.freqmask_counter + len(self.box_sizes)*3 + istripe*2 + 0) == 0:
+                                    freqmask_reason[x] += 2**(l2.freqmask_counter + len(self.box_sizes)*3 + istripe*2 + 0)
+
                         # PROD MASKING
-                        
+                        prod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2])
+                        nprod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2] != 0)
+                        if prod/nprod > Nsigma_prod_stripe*np.sqrt(1.0/nprod):
+                            freqmask[i*stripe_size:(i+1)*stripe_size] = False
+                            for x in range(i*stripe_size, (i+1)*stripe_size):
+                                if freqmask_reason[x] & 2**(l2.freqmask_counter + len(self.box_sizes)*3 + istripe*2 + 1) == 0:
+                                    freqmask_reason[x] += 2**(l2.freqmask_counter + len(self.box_sizes)*3 + istripe*2 + 1)
 
                 l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                 l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
@@ -408,6 +450,16 @@ class Masking(Filter):
                 # plt.savefig(f"plots/{l2.scanid}_feed{l2.feeds[ifeed]}_half{ihalf}.png", bbox_inches="tight")
                 # plt.clf()
         
+        # Since we have a "feed" outer loop, we need to do this afterwards:
+        for box_size in self.box_sizes:
+            for method in ["chi2", "prod", "sum"]:
+                l2.freqmask_reason_string.append(f"Box {box_size} {method}")
+                l2.freqmask_counter += 1
+        for stripe_size in self.stripe_sizes:
+            for method in ["chi2", "prod"]:
+                l2.freqmask_reason_string.append(f"Stripe {stripe_size} {method}")
+                l2.freqmask_counter += 1
+            
         l2.tod[~l2.freqmask] = np.nan
         del(l2_local)
         print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
@@ -465,9 +517,14 @@ class Calibration(Filter):
     
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
-        l2.freqmask[~np.isfinite(l2.Tsys)] = 0
-        l2.freqmask[l2.Tsys < 0] = 0
-        l2.freqmask[l2.Tsys > 100] = 0
-        l2.freqmask_reason[~np.isfinite(l2.Tsys)] = 2**30
-        l2.freqmask_reason[l2.Tsys < 0] = 2**30
-        l2.freqmask_reason[l2.Tsys > 100] = 2**30
+        l2.freqmask[~np.isfinite(l2.Tsys)] = False
+        l2.freqmask_reason[~np.isfinite(l2.Tsys)] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys NaN or inf")
+
+        l2.freqmask[l2.Tsys < 0] = False
+        l2.freqmask_reason[l2.Tsys < 0] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys < 0")
+
+        l2.freqmask[l2.Tsys > 100] = False
+        l2.freqmask_reason[l2.Tsys > 100] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys > 100")

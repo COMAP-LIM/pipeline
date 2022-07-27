@@ -39,19 +39,17 @@ class level2_file:
     
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
+            self.freqmask_reason_string = []
+            self.freqmask_counter = 0
+
             self.freqmask[(~np.isfinite(self.tod)).any(axis=-1)] = False
-            self.freqmask_reason[(~np.isfinite(self.tod)).any(axis=-1)] += 2**1
+            self.freqmask_reason[(~np.isfinite(self.tod)).any(axis=-1)] += 2**self.freqmask_counter; self.freqmask_counter += 1
+            self.freqmask_reason_string.append("NaN or inf in TOD")
             self.freqmask[:,:,:2] = False
             self.freqmask[:,:,512] = False
-            self.freqmask_reason[:,:,:2] += 2**2
-            self.freqmask_reason[:,:,512] += 2**2
-            with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
-                AB_mask = f["/AB_mask"][()]
-                leak_mask = f["/leak_mask"][()]
-            self.freqmask[AB_mask[self.feeds-1] < 15] = False
-            self.freqmask[leak_mask[self.feeds-1] < 15] = False
-            self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**3
-            self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**4
+            self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
+            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter; self.freqmask_counter += 1
+            self.freqmask_reason_string.append("Marked channels")
 
             self.tod[~self.freqmask] = np.nan
 
@@ -65,6 +63,7 @@ class level2_file:
             f["tod"] = self.tod
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
+            f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
             for key in self.tofile_dict:  # Writing custom data (usually from the filters) to file.
                 f[key] = self.tofile_dict[key]
 
