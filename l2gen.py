@@ -28,17 +28,17 @@ from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Templa
 L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
 class l2gen_runner:
-    def __init__(self, runlist_path, filter_list, checkpoints=None, omp_num_threads=2):
+    def __init__(self, filter_list, checkpoints=None, omp_num_threads=2):
         # os.system(f"export OMP_NUM_THREADS={omp_num_threads}")
         os.environ["OMP_NUM_THREADS"] = f"{omp_num_threads}"
         os.environ["OPENBLAS_NUM_THREADS"] = f"{omp_num_threads}"
         os.environ["MKL_NUM_THREADS"] = f"{omp_num_threads}"
-        self.runlist_path = runlist_path
         self.filter_list = filter_list
         self.checkpoints = checkpoints
         self.omp_num_threads = omp_num_threads
         if not self.checkpoints:
             self.checkpoints = [False for i in range(len(self.filter_list))]
+        self.read_param()
 
     def run(self):
         comm = MPI.COMM_WORLD
@@ -55,9 +55,15 @@ class l2gen_runner:
                 l2.run()
                 print(f"[{rank}] >>> Done with scan {i_scan}.")
 
+    def read_param(self):
+        from l2gen_argparser import parser
+        params = parser.parse_args()
+        if not params.runlist:
+            raise ValueError("A runlist must be specified in parameter file or terminal.")
+        self.params = params
 
     def read_runlist(self):
-        with open(self.runlist_path) as my_file:
+        with open(self.params.runlist) as my_file:
             lines = [line.split() for line in my_file]
         i = 0
         runlist = []
@@ -138,8 +144,11 @@ if __name__ == "__main__":
     # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_24obsids.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_small.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/runlist_test_liss_small.txt"
+    # runlist_path = "/mn/stornext/d22/cmbco/comap/protodir/runlists/jonas/runlist_1obsids.txt"
     runlist_path = "/mn/stornext/d22/cmbco/comap/protodir/runlists/jonas/runlist_16obsids.txt"
     # runlist_path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/src/sim/Parameterfiles_and_runlists/runlist_new_pca.txt"
+    # param_path = "/mn/stornext/d22/cmbco/comap/protodir/params/param_S2_oldpca.txt"
+    # param_path = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/param_test.py"
     filters = [ Tsys_calc,
                 Normalize_Gain,
                 Pointing_Template_Subtraction,
@@ -148,5 +157,5 @@ if __name__ == "__main__":
                 PCA_filter,
                 Calibration,
                 Decimation]
-    l2r = l2gen_runner(runlist_path, filters, [True for i in range(len(filters)+1)], omp_num_threads=20)
+    l2r = l2gen_runner(filters, [False for i in range(len(filters)+1)], omp_num_threads=4)
     l2r.run()
