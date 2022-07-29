@@ -35,7 +35,7 @@ class l2gen_runner:
         os.environ["MKL_NUM_THREADS"] = f"{omp_num_threads}"
         self.filter_list = filter_list
         self.omp_num_threads = omp_num_threads
-        self.read_param()
+        self.read_params()
 
     def run(self):
         comm = MPI.COMM_WORLD
@@ -52,7 +52,7 @@ class l2gen_runner:
                 l2.run()
                 print(f"[{rank}] >>> Done with scan {i_scan}.")
 
-    def read_param(self):
+    def read_params(self):
         from l2gen_argparser import parser
         params = parser.parse_args()
         if not params.runlist:
@@ -78,7 +78,8 @@ class l2gen_runner:
                 obsids.append(obsid)
                 n_scans = int(lines[i][3])
                 l1_filename = lines[i][-1]
-                l1_filename = L1_PATH + l1_filename
+                l1_filename = l1_filename.strip("/")  # The leading "/" will stop os.path.join from joining the filenames.
+                l1_filename = os.path.join(self.params.level1_dir, l1_filename)
                 for k in range(n_scans):
                     scan = "0" + lines[i+k+1][0]  # Runlist obsid lacking a leading 0?
                     mjd_start = float(lines[i+k+1][1])
