@@ -53,9 +53,11 @@ class Normalize_Gain(Filter):
     name = "norm"
     name_long = "normalization"
 
-    def __init__(self, use_ctypes=False, omp_num_threads=2):
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
+        self.fknee = params.gain_norm_fknee
+        self.alpha = params.gain_norm_alpha
 
     def run(self, l2):
         # print("1")
@@ -82,7 +84,7 @@ class Normalize_Gain(Filter):
         if not self.use_ctypes:
             for feed in range(l2.Nfeeds):
                 for sb in range(l2.Nsb):
-                    tod_lowpass = lowpass_filter(l2.tod[feed, sb], num_threads = self.omp_num_threads)
+                    tod_lowpass = lowpass_filter(l2.tod[feed, sb], num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
@@ -112,14 +114,13 @@ class Decimation(Filter):
     name = "dec"
     name_long = "decimation"
 
-    def __init__(self, omp_num_threads=2):
+    def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
+        self.Nfreqs = params.decimation_freqs
 
     def run(self, l2):
-        dec_factor = 16
-        Nfreqs = l2.tod.shape[2]//dec_factor
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
-        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], Nfreqs, l2.tod.shape[3]))
+        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]))
         for freq in range(64):
             tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*16:(freq+1)*16,:]*weight[:,:,freq*16:(freq+1)*16,None], axis=2)
             tod_decimated[:,:,freq,:] /= np.nansum(weight[:,:,freq*16:(freq+1)*16], axis=2)[:,:,None]
@@ -128,10 +129,10 @@ class Decimation(Filter):
 
 
 class Pointing_Template_Subtraction(Filter):
-    name = "pointing"
+    name = "point"
     name_long = "pointing template subtraction"
 
-    def __init__(self, use_ctypes=True, omp_num_threads=2):
+    def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
     
@@ -198,7 +199,7 @@ class Polynomial_filter(Filter):
     name = "poly"
     name_long = "polynomial filter"
 
-    def __init__(self, use_ctypes=True, omp_num_threads=2):
+    def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
 
@@ -244,19 +245,19 @@ class PCA_filter(Filter):
     name = "pca"
     name_long = "PCA filter"
 
-    def __init__(self, N_pca_modes=4, omp_num_threads=2):
-        self.N_pca_modes = N_pca_modes
+    def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
+        self.n_pca_comp = params.n_pca_comp
     
     def run(self, l2):
-        pca_ampl = np.zeros((self.N_pca_modes, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+        pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         # pca_comp = np.zeros((self.N_pca_modes, l2.Ntod))
         N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
         M = l2.tod.reshape(N, l2.Ntod)
         M = M[l2.freqmask.reshape(N), :]
         M = np.dot(M.T, M)
         # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.N_pca_modes)
+        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp)
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
         for ifeed in range(l2.Nfeeds):
@@ -272,19 +273,28 @@ class PCA_filter(Filter):
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
 "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5"
 class Masking(Filter):
-    name = "masking"
+    name = "mask"
     name_long = "masking"
 
-    def __init__(self, omp_num_threads=2):
-        self.freqmask_reason_idx_start = 5
-        self.box_sizes = [32, 128, 512]
-        self.Nsigma_chi2_boxes = [6, 6, 6]
-        self.Nsigma_prod_boxes = [6, 5, 4]
-        self.Nsigma_mean_boxes = [6, 10, 14]
-        self.stripe_sizes = [32, 128, 1024]
-        self.Nsigma_chi2_stripes = [6, 6, 6]
-        self.Nsigma_prod_stripes = [6, 5, 4]
+    def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
+        self.box_sizes = params.box_sizes
+        self.stripe_sizes = params.stripe_sizes
+        self.Nsigma_chi2_boxes = params.n_sigma_chi2_box
+        self.Nsigma_chi2_stripes = params.n_sigma_chi2_stripe
+        self.Nsigma_mean_boxes = params.n_sigma_mean_box
+        self.Nsigma_prod_boxes = params.n_sigma_prod_box
+        self.Nsigma_prod_stripes = params.n_sigma_prod_stripe
+        self.prod_offset = params.prod_offset
+        self.params = params
+
+        # self.box_sizes = [32, 128, 512]
+        # self.Nsigma_chi2_boxes = [6, 6, 6]
+        # self.Nsigma_prod_boxes = [6, 5, 4]
+        # self.Nsigma_mean_boxes = [6, 10, 14]
+        # self.stripe_sizes = [32, 128, 1024]
+        # self.Nsigma_chi2_stripes = [6, 6, 6]
+        # self.Nsigma_prod_stripes = [6, 5, 4]
         
     def run(self, l2):
         comm = MPI.COMM_WORLD
@@ -295,7 +305,7 @@ class Masking(Filter):
         
         print(f"[{rank}] [{self.name}] Running local polyfilter for masking purposes...")
         t0 = time.time()
-        poly = Polynomial_filter()
+        poly = Polynomial_filter(self.params)
         poly.run(l2_local)
         del(poly)
         # l2_local.write_level2_data("data/", name_extension=f"_mask_poly")
@@ -303,7 +313,7 @@ class Masking(Filter):
         
         print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
         t0 = time.time()
-        pca = PCA_filter()
+        pca = PCA_filter(self.params)
         pca.run(l2_local)
         del(pca)
         # l2_local.write_level2_data("data/", name_extension=f"_mask_pca")
@@ -470,8 +480,9 @@ class Tsys_calc(Filter):
     name = "tsys"
     name_long = "Tsys calculation"
     
-    def __init__(self, omp_num_threads=2):
+    def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
+        self.cal_database_file = params.cal_database_file
 
     def run(self, l2):
         Tcmb = 2.725
@@ -480,7 +491,7 @@ class Tsys_calc(Filter):
         l2.Tsys = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
         Pcold = np.nanmean(l2.tod, axis=-1)
 
-        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", "r") as f:
+        with h5py.File(self.cal_database_file, "r") as f:
             # tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
             Phot = f[f"/obsid/{obsid}/Phot"][()]
             Thot = f[f"/obsid/{obsid}/Thot"][()]
@@ -512,8 +523,10 @@ class Calibration(Filter):
     name = "calib"
     name_long = "calibrations"
     depends_upon = ["tsys"]
-    def __init__(self, omp_num_threads=2):
+    def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
+        self.max_tsys = params.max_tsys
+        self.min_tsys = params.min_tsys
     
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
@@ -521,10 +534,10 @@ class Calibration(Filter):
         l2.freqmask_reason[~np.isfinite(l2.Tsys)] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys NaN or inf")
 
-        l2.freqmask[l2.Tsys < 0] = False
-        l2.freqmask_reason[l2.Tsys < 0] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
-        l2.freqmask_reason_string.append("Tsys < 0")
+        l2.freqmask[l2.Tsys < self.min_tsys] = False
+        l2.freqmask_reason[l2.Tsys < self.min_tsys] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys < min_tsys")
 
-        l2.freqmask[l2.Tsys > 100] = False
-        l2.freqmask_reason[l2.Tsys > 100] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
-        l2.freqmask_reason_string.append("Tsys > 100")
+        l2.freqmask[l2.Tsys > self.max_tsys] = False
+        l2.freqmask_reason[l2.Tsys > self.max_tsys] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys > max_tsys")

@@ -3,7 +3,8 @@ import h5py
 import os
 
 class level2_file:
-    def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename):
+    def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, params):
+        self.level2_dir = params.level2_dir
         self.scanid = scanid
         self.obsid = scanid[:-2]
         self.mjd_start = mjd_start
@@ -54,8 +55,8 @@ class level2_file:
             self.tod[~self.freqmask] = np.nan
 
 
-    def write_level2_data(self, path, name_extension=""):
-        outpath = os.path.join(path, self.fieldname)
+    def write_level2_data(self, name_extension=""):
+        outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
