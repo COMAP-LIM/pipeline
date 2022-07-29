@@ -257,7 +257,7 @@ class PCA_filter(Filter):
         M = M[l2.freqmask.reshape(N), :]
         M = np.dot(M.T, M)
         # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp)
+        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
         for ifeed in range(l2.Nfeeds):
