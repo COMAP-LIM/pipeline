@@ -16,7 +16,7 @@ parser.add_argument("--runlist",            type=str,                       help
 
 
 ### Paths and files
-# parser.add_argument("--level1_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level1/",    help="(unused) Path to level1 files. Found from runlist.")
+parser.add_argument("--level1_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level1/",    help="Path to level1 files.")
 parser.add_argument("--level2_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level2/Ka/", help="Location of level2 files (made by l2gen).")
 # parser.add_argument("--map_dir",            type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/maps/",      help="(unused) Location of map files (made by tod2comap).")
 parser.add_argument("--cal_database_file",  type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", help="Location of calibration hdf5 database.")
@@ -31,6 +31,9 @@ parser.add_argument("--gain_norm_alpha",    type=float, default=4.0,    help="(n
 
 ### Polynomial filter
 # parser.add_argument("--polyorder",          type=int,   default=1,      help="(unused)(poly) Order of the frequency polynomial to be subtracted.")
+
+### Frequency filter
+parser.add_argument("--freqfilter_prior_file", type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Cf_prior.h5", help="(freq) Location of hdf5 file which contains sigma0, fknee and alpha for the freqfilter PS prior.")
 
 ### PCA filter
 parser.add_argument("--n_pca_comp",         type=int,   default=4,      help="(pca) Number of feed-global PCA components to be subtracted.")

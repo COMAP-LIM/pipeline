@@ -39,7 +39,7 @@ def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
 
     freq_full = np.fft.fftfreq(Nfull)*samprate
     W = 1.0/(1 + (freq_full/fknee)**alpha)
-    return ifft(fft(signal_padded, workers=1)*W, workers=1).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
+    return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
     # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
 
 
@@ -238,6 +238,79 @@ class Polynomial_filter(Filter):
                     l2.tod[feed, sb, :, :] = l2.tod[feed, sb, :, :] - c1[feed,sb,None,:]*sb_freqs[:,None] - c0[feed,sb,None,:]  # Future improvement: Move into C.
         l2.tofile_dict["poly_coeff"] = np.zeros((2, l2.Nfeeds, l2.Nsb, l2.Ntod))
         l2.tofile_dict["poly_coeff"][:] = c0, c1
+
+
+class Frequency_filter(Filter):
+    name = "freq"
+    name_long = "frequency filter"
+
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.prior_file = params.freqfilter_prior_file
+
+    def PS_1f(self, freqs, sigma0, fknee, alpha, wn=True, Wiener=False, fknee_W=0.01, alpha_W=-4.0):
+        PS = np.zeros_like(freqs)
+        if wn:
+            PS[1:] = sigma0**2*(1 + (freqs[1:]/fknee)**alpha)
+        else:
+            PS[1:] = sigma0**2*((freqs[1:]/fknee)**alpha)
+        if Wiener:
+            PS[1:] /= 1 + (freqs[1:]/fknee_W)**alpha_W
+        return PS
+
+    def gain_temp_sep(self, y, P, F, sigma0_g, fknee_g, alpha_g):
+        Nfreqs, Ntod = y.shape
+        # Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
+        # Cf[0] = 1
+        
+        sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
+        sigma0_est = np.mean(sigma0_est)
+        Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
+        
+        RHS = np.fft.fft(F.T.dot(Z).dot(y))
+        z = F.T.dot(Z).dot(F)
+        a_bestfit_f = RHS/(z + sigma0_est**2)
+        # a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
+        a_bestfit = np.fft.ifft(a_bestfit_f)
+        m_bestfit = np.linalg.inv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
+        
+        return a_bestfit, m_bestfit
+
+
+    def run(self, l2):
+        with h5py.File(self.prior_file, "r") as f:
+            sigma0_prior = f["sigma0_prior"][l2.feeds-1]
+            fknee_prior = f["fknee_prior"][l2.feeds-1]
+            alpha_prior = f["alpha_prior"][l2.feeds-1]
+        
+        self.tod_frequency_filtered = np.zeros_like(l2.tod)
+        sb_freqs = np.linspace(-1, 1, l2.Nfreqs)
+        P = np.zeros((l2.Nfreqs, 2))
+        F = np.zeros((l2.Nfreqs, 1))
+        for feed in range(l2.Nfeeds):
+            for sb in range(l2.Nsb):
+                y = l2.tod[feed,sb].copy()
+                P[:,0] = 1/l2.Tsys[feed,sb]
+                P[:,1] = sb_freqs/l2.Tsys[feed,sb]
+                F[:,0] = 1
+                y[l2.freqmask[feed,sb] == 0] = 0
+                P[l2.freqmask[feed,sb] == 0, :] = 0
+                F[l2.freqmask[feed,sb] == 0, :] = 0
+
+                P[~np.isfinite(P)] = 0
+                F[~np.isfinite(F)] = 0
+
+                if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
+                    a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                else:
+                    print(feed,sb)
+                    a = np.zeros((1, l2.Ntod))
+                    m = np.zeros((2, l2.Ntod))
+
+                l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
+
+        
+
 
 
 
