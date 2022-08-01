@@ -278,6 +278,11 @@ class Frequency_filter(Filter):
 
 
     def run(self, l2):
+        l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
+        l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
+        l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, l2.Nsb, 2, l2.Ntod))
+        l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, l2.Nsb, 1, l2.Ntod))
+
         with h5py.File(self.prior_file, "r") as f:
             sigma0_prior = f["sigma0_prior"][l2.feeds-1]
             fknee_prior = f["fknee_prior"][l2.feeds-1]
@@ -309,8 +314,10 @@ class Frequency_filter(Filter):
 
                 l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
 
-        
-
+                l2.tofile_dict["freqfilter_P"][feed, sb] = P
+                l2.tofile_dict["freqfilter_F"][feed, sb] = F
+                l2.tofile_dict["freqfilter_m"][feed, sb] = m
+                l2.tofile_dict["freqfilter_a"][feed, sb] = a
 
 
 
