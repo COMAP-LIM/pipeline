@@ -23,7 +23,7 @@ import h5py
 import os
 from mpi4py import MPI
 from l2gen_l2class import level2_file
-from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, Calibration
+from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
 
 L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
@@ -143,10 +143,11 @@ if __name__ == "__main__":
                 Normalize_Gain,
                 Pointing_Template_Subtraction,
                 Masking,
-                # Polynomial_filter,
-                Frequency_filter,
+                Polynomial_filter,
+                # Frequency_filter,
                 PCA_filter,
+                PCA_feed_filter,
                 Calibration,
                 Decimation]
-    l2r = l2gen_runner(filters, omp_num_threads=4)
+    l2r = l2gen_runner(filters, omp_num_threads=144)
     l2r.run()

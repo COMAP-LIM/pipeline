@@ -344,8 +344,55 @@ class PCA_filter(Filter):
             ak = np.sum(l2.tod[ifeed,:,:,:,None]*eigvec, axis=2)
             l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*eigvec[None,None,:,:], axis=-1)
             pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-        l2.tofile_dict["pca_ampl"] = pca_ampl
-        l2.tofile_dict["pca_comp"] = np.transpose(eigvec, (1,0))
+        l2.tofile_dict["pca_ampl"] = pca_ampl[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+        l2.tofile_dict["pca_comp"] = np.transpose(eigvec, (1,0))[::-1]
+
+
+
+class PCA_feed_filter(Filter):
+    name = "pcaf"
+    name_long = "PCA feed filter"
+
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.n_pca_comp = 4
+        self.deci_factor = 16
+    
+    def run(self, l2):
+        self.N_deci_freqs = l2.Nfreqs//self.deci_factor
+
+        pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+        pca_comp = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Ntod))
+        l2.corr_template = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, l2.Nsb*l2.Nfreqs))
+
+        N = l2.Nsb*self.N_deci_freqs
+
+        weight = 1.0/np.nanvar(l2.tod, axis=-1)
+        weight[~l2.freqmask] = 0.0
+        for ifeed in range(l2.Nfeeds):
+            M = np.zeros((N, l2.Ntod))
+            for isb in range(l2.Nsb):
+                for ifreq in range(self.N_deci_freqs):
+                    i = isb*self.N_deci_freqs + ifreq
+                    M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
+                    M[i,:] /= np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+            M[~np.isfinite(M)] = 0
+            M = M[np.sum(M != 0, axis=-1) != 0]
+            M = np.dot(M.T, M)
+            eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
+            ak = np.sum(l2.tod[ifeed,:,:,:,None]*eigvec, axis=2)
+            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*eigvec[None,None,:,:], axis=-1)
+            pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
+            pca_comp[:,ifeed] = np.transpose(eigvec, (1,0))
+
+            b = pca_ampl[:,ifeed].reshape((self.n_pca_comp, l2.Nsb*l2.Nfreqs)).T
+            b[~np.isfinite(b)] = 0
+            for i in range(4):
+                b[:,i] /= np.linalg.norm(b[:,i])
+            l2.corr_template[ifeed] = -b.dot(b.T)
+
+        l2.tofile_dict["pca_feed_ampl"] = pca_ampl[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+        l2.tofile_dict["pca_feed_comp"] = pca_comp[::-1]
 
 
 
@@ -388,7 +435,7 @@ class Masking(Filter):
         poly = Polynomial_filter(self.params)
         poly.run(l2_local)
         del(poly)
-        # l2_local.write_level2_data("data/", name_extension=f"_mask_poly")
+        # l2_local.write_level2_data(name_extension=f"_mask_poly")
         print(f"[{rank}] [{self.name}] Finished local/masking polyfilter in {time.time()-t0:.1f} s.")
         
         print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
@@ -396,8 +443,16 @@ class Masking(Filter):
         pca = PCA_filter(self.params)
         pca.run(l2_local)
         del(pca)
-        # l2_local.write_level2_data("data/", name_extension=f"_mask_pca")
+        # l2_local.write_level2_data(name_extension=f"_mask_pca")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA filter in {time.time()-t0:.1f} s.")
+
+        print(f"[{rank}] [{self.name}] Running local PCA feed filter for masking purposes...")
+        t0 = time.time()
+        pcaf = PCA_feed_filter(self.params)
+        pcaf.run(l2_local)
+        del(pcaf)
+        # l2_local.write_level2_data(name_extension=f"_mask_pcaf")
+        print(f"[{rank}] [{self.name}] Finished local/masking PCA feed filter in {time.time()-t0:.1f} s.")
 
 
         print(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
@@ -441,11 +496,11 @@ class Masking(Filter):
                 
 
                 C -= T  # Subtract polyfilter correlation template.
+                C -= l2_local.corr_template[ifeed, ihalf*2048:(ihalf+1)*2048, ihalf*2048:(ihalf+1)*2048]
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
 
-                np.save(f"C_pre_{ifeed}_{ihalf}.npy", C)
 
                 chi2_matrix = np.zeros((2, 3, 2048, 2048))
                 for ibox in range(len(self.box_sizes)):
