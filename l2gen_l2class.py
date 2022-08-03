@@ -4,6 +4,7 @@ import os
 
 class level2_file:
     def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, params):
+        self.params = params
         self.level2_dir = params.level2_dir
         self.scanid = scanid
         self.obsid = scanid[:-2]
@@ -67,10 +68,8 @@ class level2_file:
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
             for key in self.tofile_dict:  # Writing custom data (usually from the filters) to file.
                 f[key] = self.tofile_dict[key]
-
-
-
-if __name__ == "__main__":
-    l2 = level2_file()
-    l2.load_level1_data("/mn/stornext/d22/cmbco/comap/protodir/level1/2019-05/comp_comap-0005990-2019-05-18-143347.hd5", 58621.6160891319, 58621.6186759375)
-    print(l2.tod.shape)
+            for key in vars(self.params):  # Writing entire parameter file to separate hdf5 group.
+                if getattr(self.params, key) == None:  # hdf5 didn't like the None type.
+                    f[f"params/{key}"] = "None"
+                else:
+                    f[f"params/{key}"] = getattr(self.params, key)
