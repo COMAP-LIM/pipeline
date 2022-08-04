@@ -23,8 +23,9 @@ class level2_file:
     def load_level1_data(self):
         with h5py.File(self.l1_filename, "r") as f:
             self.tod_times = f["/spectrometer/MJD"][()]
-            self.scan_start_idx = np.argmin(np.abs(self.mjd_start - self.tod_times))
-            self.scan_stop_idx = np.argmin(np.abs(self.mjd_stop - self.tod_times)) + 1  # stop_idx is the first index NOT in the scan.
+            # Start and stop the scan at the first points *inside* the edges defined by mjd_start and mjd_stop.
+            self.scan_start_idx = np.searchsorted(self.tod_times, self.mjd_start, side="left")
+            self.scan_stop_idx = np.searchsorted(self.tod_times, self.mjd_stop, side="right")  # stop_idx is the first index NOT in the scan.
             self.tod_times = self.tod_times[self.scan_start_idx:self.scan_stop_idx]
             self.tod_times_seconds = (self.tod_times-self.tod_times[0])*24*60*60
             self.array_features = f["/hk/array/frame/features"][()]
