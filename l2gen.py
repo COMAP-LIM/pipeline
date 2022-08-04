@@ -47,10 +47,10 @@ class l2gen_runner:
         Nscans = len(self.runlist)
         for i_scan in range(Nscans):
             if i_scan%Nranks == rank:
-                print(f"[{rank}] >>> Starting scan {i_scan}...")
+                print(f"[{rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})...")
                 l2 = l2gen(self.runlist[i_scan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
-                print(f"[{rank}] >>> Done with scan {i_scan}.")
+                print(f"[{rank}] >>> Done with scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans}).")
 
     def read_params(self):
         from l2gen_argparser import parser
