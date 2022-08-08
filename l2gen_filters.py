@@ -239,6 +239,13 @@ class Polynomial_filter(Filter):
         l2.tofile_dict["poly_coeff"] = np.zeros((2, l2.Nfeeds, l2.Nsb, l2.Ntod))
         l2.tofile_dict["poly_coeff"][:] = c0, c1
 
+        # Adjust correlation template.
+        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/corr_template.h5", "r") as f:
+            T = f["corr"][()]        
+        for i in range(4):
+            l2.corr_template[:,l2.Nfreqs*i:l2.Nfreqs*(i+1),l2.Nfreqs*i:l2.Nfreqs*(i+1)] += T
+
+
 
 class Frequency_filter(Filter):
     name = "freq"
@@ -363,7 +370,7 @@ class PCA_feed_filter(Filter):
 
         pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         pca_comp = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Ntod))
-        l2.corr_template = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, l2.Nsb*l2.Nfreqs))
+        # l2.corr_template = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, l2.Nsb*l2.Nfreqs))
 
         N = l2.Nsb*self.N_deci_freqs
 
@@ -389,7 +396,7 @@ class PCA_feed_filter(Filter):
             b[~np.isfinite(b)] = 0
             for i in range(4):
                 b[:,i] /= np.linalg.norm(b[:,i])
-            l2.corr_template[ifeed] = -b.dot(b.T)
+            l2.corr_template[ifeed] += -b.dot(b.T)
 
         l2.tofile_dict["pca_feed_ampl"] = pca_ampl[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
         l2.tofile_dict["pca_feed_comp"] = pca_comp[::-1]
@@ -459,12 +466,6 @@ class Masking(Filter):
         t0 = time.time()
         Nfreqs = l2_local.Nfreqs
         Ntod = l2_local.Ntod
-        # Load 1st order polyfilter correlation template.
-        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/corr_template.h5", "r") as f:
-            T_small = f["corr"][()]
-        T = np.zeros((Nfreqs*2,Nfreqs*2))
-        for i in range(2):
-            T[i*1024:(i+1)*Nfreqs,i*Nfreqs:(i+1)*Nfreqs] = T_small
 
         with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
             AB_mask = f["/AB_mask"][()]
@@ -495,7 +496,6 @@ class Masking(Filter):
                         C[i,i+1] = 0
                 
 
-                C -= T  # Subtract polyfilter correlation template.
                 C -= l2_local.corr_template[ifeed, ihalf*2048:(ihalf+1)*2048, ihalf*2048:(ihalf+1)*2048]
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0

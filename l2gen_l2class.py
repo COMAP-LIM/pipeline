@@ -39,12 +39,11 @@ class level2_file:
             self.Nsb = self.tod.shape[1]
             self.Nfreqs = self.tod.shape[2]
             self.Ntod = self.tod.shape[3]
-    
+            self.corr_template = np.zeros((self.Nfeeds, self.Nsb*self.Nfreqs, self.Nsb*self.Nfreqs))  # The correlated induced by different filters, to be subtracted in masking.
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
             self.freqmask_reason_string = []
             self.freqmask_counter = 0
-
             self.freqmask[(~np.isfinite(self.tod)).any(axis=-1)] = False
             self.freqmask_reason[(~np.isfinite(self.tod)).any(axis=-1)] += 2**self.freqmask_counter; self.freqmask_counter += 1
             self.freqmask_reason_string.append("NaN or inf in TOD")
