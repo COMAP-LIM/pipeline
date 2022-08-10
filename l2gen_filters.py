@@ -1,9 +1,11 @@
 import copy
+from re import search
 import numpy as np
 import multiprocessing as mp
 import ctypes
 from tqdm import trange
-from scipy.fft import fft, ifft, next_fast_len
+from scipy.fft import fft, ifft, rfft, irfft, next_fast_len
+from pixell import fft as pfft
 from scipy.optimize import curve_fit
 import h5py
 from tqdm import trange
@@ -29,24 +31,34 @@ def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=
     return ifft(fft(signal_padded)*W).real[:,:N]
 
 
-def lowpass_filter(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
+def lowpass_filter(signal, next_fast_len, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
+    tx = time.time()
     Ntod = signal.shape[-1]
-    Nfull = next_fast_len(2*Ntod)
-    signal_padded = np.zeros((1024, Nfull))
-    signal_padded[:,:Ntod] = signal[:,:]
-    signal_padded[:,Ntod:Ntod*2] = signal[:,::-1]
-    signal_padded[:,Ntod*2:] = np.nanmean(signal[:,:400], axis=-1)[:,None]
+    fastlen = next_fast_len
+    signal_padded = np.zeros((1024, fastlen))
 
-    freq_full = np.fft.fftfreq(Nfull)*samprate
+    signal_padded[:,:Ntod] = signal[:]
+    signal_padded[:,-Ntod:] = signal[:,::-1]
+    signal_padded[:,Ntod:fastlen//2] = signal[:,-(fastlen//2-Ntod):][::-1]
+    signal_padded[:,fastlen//2:fastlen-Ntod] = signal[:,-(fastlen//2-Ntod):]
+
+    # signal_padded[:,:Ntod] = signal[:,:]
+    # signal_padded[:,Ntod:Ntod*2] = signal[:,::-1]
+    # signal_padded[:,Ntod*2:] = np.nanmean(signal[:,:400], axis=-1)[:,None]
+
+    freq_full = np.fft.rfftfreq(fastlen)*samprate
     W = 1.0/(1 + (freq_full/fknee)**alpha)
-    return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
+    # return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
     # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
+    return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
+
 
 
 class Filter:
     name = ""  # Short name of filter, used for compact writes.
     name_long = ""  # Verbose, more explanatory name of filter.
     depends_upon = []  # Other filters which needs to be run before this one. List of strings (the short names).
+
 
 
 class Normalize_Gain(Filter):
@@ -82,9 +94,17 @@ class Normalize_Gain(Filter):
         # del(tod_lowpass)
 
         if not self.use_ctypes:
+            Ntod = l2.tod.shape[-1]
+            fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times.npy")
+            search_length = int(Ntod/100)  # We add at most 1% to the TOD to find fastest length during FFT.
+            if 2*Ntod+search_length < fft_times.shape[-1]:  # If search search is within the catalogue, use it. Otherwise, use scipy.
+                fastlen = np.argmin(fft_times[2*Ntod:2*Ntod+search_length]) + 2*Ntod  # Find fastest FFT time within the search length.
+            else:
+                fastlen = next_fast_len(2*Ntod)
+            
             for feed in range(l2.Nfeeds):
                 for sb in range(l2.Nsb):
-                    tod_lowpass = lowpass_filter(l2.tod[feed, sb], num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    tod_lowpass = lowpass_filter(l2.tod[feed, sb], fastlen, num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
@@ -195,6 +215,7 @@ class Pointing_Template_Subtraction(Filter):
         l2.tofile_dict["el_az_amp"] = el_az_amp
 
 
+
 class Polynomial_filter(Filter):
     name = "poly"
     name_long = "polynomial filter"
@@ -267,18 +288,19 @@ class Frequency_filter(Filter):
 
     def gain_temp_sep(self, y, P, F, sigma0_g, fknee_g, alpha_g):
         Nfreqs, Ntod = y.shape
-        # Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
-        # Cf[0] = 1
+        freqs = np.fft.rfftfreq(Ntod, 1/50.0)
+        Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
+        Cf[0] = 1
         
         sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
-        sigma0_est = np.mean(sigma0_est)
+        sigma0_est = np.mean(sigma0_est[sigma0_est != 0])
         Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
         
-        RHS = np.fft.fft(F.T.dot(Z).dot(y))
+        RHS = np.fft.rfft(F.T.dot(Z).dot(y))
         z = F.T.dot(Z).dot(F)
-        a_bestfit_f = RHS/(z + sigma0_est**2)
-        # a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
-        a_bestfit = np.fft.ifft(a_bestfit_f)
+        # a_bestfit_f = RHS/(z + sigma0_est**2)
+        a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
+        a_bestfit = np.fft.irfft(a_bestfit_f, n=Ntod)
         m_bestfit = np.linalg.inv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
         
         return a_bestfit, m_bestfit
@@ -439,10 +461,10 @@ class Masking(Filter):
         
         print(f"[{rank}] [{self.name}] Running local polyfilter for masking purposes...")
         t0 = time.time()
-        poly = Polynomial_filter(self.params)
+        poly = Frequency_filter(self.params)
         poly.run(l2_local)
         del(poly)
-        # l2_local.write_level2_data(name_extension=f"_mask_poly")
+        l2_local.write_level2_data(name_extension=f"_mask_poly")
         print(f"[{rank}] [{self.name}] Finished local/masking polyfilter in {time.time()-t0:.1f} s.")
         
         print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
@@ -450,7 +472,7 @@ class Masking(Filter):
         pca = PCA_filter(self.params)
         pca.run(l2_local)
         del(pca)
-        # l2_local.write_level2_data(name_extension=f"_mask_pca")
+        l2_local.write_level2_data(name_extension=f"_mask_pca")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA filter in {time.time()-t0:.1f} s.")
 
         print(f"[{rank}] [{self.name}] Running local PCA feed filter for masking purposes...")
@@ -458,7 +480,7 @@ class Masking(Filter):
         pcaf = PCA_feed_filter(self.params)
         pcaf.run(l2_local)
         del(pcaf)
-        # l2_local.write_level2_data(name_extension=f"_mask_pcaf")
+        l2_local.write_level2_data(name_extension=f"_mask_pcaf")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA feed filter in {time.time()-t0:.1f} s.")
 
 
@@ -625,7 +647,8 @@ class Tsys_calc(Filter):
         t = l2.tod_times[l2.Ntod//2]  # scan center time.
         l2.Tsys = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
         Pcold = np.nanmean(l2.tod, axis=-1)
-
+        Phot_interp = np.zeros(l2.Nfeeds)
+        
         with h5py.File(self.cal_database_file, "r") as f:
             # tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
             Phot = f[f"/obsid/{obsid}/Phot"][()]
@@ -636,8 +659,8 @@ class Tsys_calc(Filter):
         for ifeed in range(l2.Nfeeds):
             feed = l2.feeds[ifeed]
             if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
-                t1 = (calib_times[feed-1,0,0] + calib_times[feed-1,0,1])/2.0
-                t2 = (calib_times[feed-1,1,0] + calib_times[feed-1,1,1])/2.0
+                t1 = calib_times[feed-1,0,0]
+                t2 = calib_times[feed-1,1,1]
                 P1, P2 = Phot[feed-1,:,:,0], Phot[feed-1,:,:,1]
                 Phot_interp = (P1*(t2 - t) + P2*(t - t1))/(t2 - t1)
                 T1, T2 = Thot[feed-1,0], Thot[feed-1,1]
@@ -651,6 +674,18 @@ class Tsys_calc(Filter):
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
 
         l2.tofile_dict["Tsys"] = l2.Tsys
+        l2.tofile_dict["Pcold"] = Pcold
+        l2.tofile_dict["Thot"] = Thot
+        l2.tofile_dict["Phot"] = Phot
+
+        l2.tofile_dict["t"] = t
+        l2.tofile_dict["t1"] = t1
+        l2.tofile_dict["t2"] = t2
+        l2.tofile_dict["T1"] = T1
+        l2.tofile_dict["T2"] = T2
+        l2.tofile_dict["P1"] = P1
+        l2.tofile_dict["P2"] = P2
+
 
 
 
