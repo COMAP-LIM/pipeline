@@ -31,10 +31,9 @@ def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=
     return ifft(fft(signal_padded)*W).real[:,:N]
 
 
-def lowpass_filter(signal, next_fast_len, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
+def lowpass_filter(signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
     tx = time.time()
     Ntod = signal.shape[-1]
-    fastlen = next_fast_len
     signal_padded = np.zeros((1024, fastlen))
 
     signal_padded[:,:Ntod] = signal[:]
@@ -51,6 +50,19 @@ def lowpass_filter(signal, next_fast_len, fknee=0.01, alpha=4.0, samprate=50, nu
     # return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
     # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
     return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
+
+
+def lowpass_filter_new(signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
+    Ntod = signal.shape[-1]
+    signal_padded = np.zeros((1024, fastlen))
+    x = np.linspace(0, 1, Ntod)
+    c0 = np.nanmean(signal[:,:1000], axis=-1)
+    c1 = np.nanmean(signal[:,-1000:], axis=-1) - c0
+    lin_fit = c1[:,None]*x[None,:] + c0[:,None]
+    signal_padded[:,:Ntod] = signal - lin_fit
+    freq_full = np.fft.rfftfreq(fastlen)*samprate
+    W = 1.0/(1 + (freq_full/fknee)**alpha)
+    return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod] + lin_fit
 
 
 
@@ -95,16 +107,18 @@ class Normalize_Gain(Filter):
 
         if not self.use_ctypes:
             Ntod = l2.tod.shape[-1]
-            fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times.npy")
-            search_length = int(Ntod/100)  # We add at most 1% to the TOD to find fastest length during FFT.
-            if 2*Ntod+search_length < fft_times.shape[-1]:  # If search search is within the catalogue, use it. Otherwise, use scipy.
-                fastlen = np.argmin(fft_times[2*Ntod:2*Ntod+search_length]) + 2*Ntod  # Find fastest FFT time within the search length.
+            fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times_owl33_10runs.npy")
+            search_start = int(Ntod*1.05)
+            search_stop = int(Ntod*1.10)  # We add at most 10% to the TOD to find fastest length during FFT.
+            if search_stop < fft_times.shape[-1]:  # If search search is within the catalogue, use it. Otherwise, use scipy.
+                fastlen = np.argmin(fft_times[search_start:search_stop]) + search_start  # Find fastest FFT time within the search length.
             else:
-                fastlen = next_fast_len(2*Ntod)
-            
+                fastlen = next_fast_len(Ntod)
+            # fastlen = next_fast_len(2*Ntod)
+            # print(Ntod, fastlen)
             for feed in range(l2.Nfeeds):
                 for sb in range(l2.Nsb):
-                    tod_lowpass = lowpass_filter(l2.tod[feed, sb], fastlen, num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    tod_lowpass = lowpass_filter_new(l2.tod[feed, sb], fastlen, num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
@@ -659,8 +673,8 @@ class Tsys_calc(Filter):
         for ifeed in range(l2.Nfeeds):
             feed = l2.feeds[ifeed]
             if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
-                t1 = calib_times[feed-1,0,0]
-                t2 = calib_times[feed-1,1,1]
+                t1 = calib_times[feed-1,0]
+                t2 = calib_times[feed-1,1]
                 P1, P2 = Phot[feed-1,:,:,0], Phot[feed-1,:,:,1]
                 Phot_interp = (P1*(t2 - t) + P2*(t - t1))/(t2 - t1)
                 T1, T2 = Thot[feed-1,0], Thot[feed-1,1]
