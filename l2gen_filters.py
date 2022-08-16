@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import scipy.linalg
 import time
 from mpi4py import MPI
+from sklearn.decomposition import PCA
 
 C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
 
@@ -384,17 +385,21 @@ class PCA_filter(Filter):
         N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
         M = l2.tod.reshape(N, l2.Ntod)
         M = M[l2.freqmask.reshape(N), :]
-        M = np.dot(M.T, M)
+        # M = np.dot(M.T, M)
         # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
+        eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
+        # pca = PCA(n_components=4)
+        # comps = pca.fit_transform(M.T)
+        # for i in range(self.n_pca_comp):
+        #     comps[:,i] /= np.linalg.norm(comps[:,i])
         for ifeed in range(l2.Nfeeds):
-            ak = np.sum(l2.tod[ifeed,:,:,:,None]*eigvec, axis=2)
-            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*eigvec[None,None,:,:], axis=-1)
+            ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
+            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
             pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
         l2.tofile_dict["pca_ampl"] = pca_ampl[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
-        l2.tofile_dict["pca_comp"] = np.transpose(eigvec, (1,0))[::-1]
+        l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))[::-1]
 
 
 
@@ -428,11 +433,15 @@ class PCA_feed_filter(Filter):
             M[~np.isfinite(M)] = 0
             M = M[np.sum(M != 0, axis=-1) != 0]
             M = np.dot(M.T, M)
-            eigval, eigvec = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
-            ak = np.sum(l2.tod[ifeed,:,:,:,None]*eigvec, axis=2)
-            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*eigvec[None,None,:,:], axis=-1)
+            eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
+            # pca = PCA(n_components=4)
+            # comps = pca.fit_transform(M.T)
+            # for i in range(self.n_pca_comp):
+            #     comps[:,i] /= np.linalg.norm(comps[:,i])
+            ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
+            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
             pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-            pca_comp[:,ifeed] = np.transpose(eigvec, (1,0))
+            pca_comp[:,ifeed] = np.transpose(comps, (1,0))
 
             b = pca_ampl[:,ifeed].reshape((self.n_pca_comp, l2.Nsb*l2.Nfreqs)).T
             b[~np.isfinite(b)] = 0
@@ -652,6 +661,12 @@ class Masking(Filter):
             
         l2.tod[~l2.freqmask] = np.nan
         del(l2_local)
+
+        printstring = f"Amount masked: {np.sum(~l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:.1f}. By feed:\n"
+        for ifeed in range(l2.Nfeeds):
+            printstring += f"{l2.feeds[ifeed]}: {np.sum(~l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:.1f}% "
+        print(printstring)
+
         print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
 
 
