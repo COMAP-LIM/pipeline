@@ -357,6 +357,12 @@ class Frequency_filter(Filter):
 
                 l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
 
+                b = P
+                b[~np.isfinite(b)] = 0
+                b[:,0] /= np.linalg.norm(b[:,0])
+                b[:,1] /= np.linalg.norm(b[:,1])
+                l2.corr_template[feed, l2.Nfreqs*sb:l2.Nfreqs*(sb+1), l2.Nfreqs*sb:l2.Nfreqs*(sb+1)] += -b.dot(b.T)
+
                 l2.tofile_dict["freqfilter_P"][feed, sb] = P
                 l2.tofile_dict["freqfilter_F"][feed, sb] = F
                 l2.tofile_dict["freqfilter_m"][feed, sb] = m
@@ -513,6 +519,8 @@ class Masking(Filter):
         l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
 
+        l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
+        l2.tofile_dict["C_template"] = l2_local.corr_template
         for ifeed in range(l2.tod.shape[0]):
             for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
                 tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:]
@@ -536,6 +544,7 @@ class Masking(Filter):
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
+                l2.tofile_dict["C"][ifeed,ihalf] = C
 
 
                 chi2_matrix = np.zeros((2, 3, 2048, 2048))
