@@ -385,21 +385,24 @@ class PCA_filter(Filter):
         N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
         M = l2.tod.reshape(N, l2.Ntod)
         M = M[l2.freqmask.reshape(N), :]
+        if M.shape[0] == 0:
+            return
+
         # M = np.dot(M.T, M)
         # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
+        # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
-        # pca = PCA(n_components=4)
-        # comps = pca.fit_transform(M.T)
-        # for i in range(self.n_pca_comp):
-        #     comps[:,i] /= np.linalg.norm(comps[:,i])
+        pca = PCA(n_components=4)
+        comps = pca.fit_transform(M.T)
+        for i in range(self.n_pca_comp):
+            comps[:,i] /= np.linalg.norm(comps[:,i])
         for ifeed in range(l2.Nfeeds):
             ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
             l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
             pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-        l2.tofile_dict["pca_ampl"] = pca_ampl[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
-        l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))[::-1]
+        l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+        l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
 
 
 
@@ -432,12 +435,14 @@ class PCA_feed_filter(Filter):
                     M[i,:] /= np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
             M[~np.isfinite(M)] = 0
             M = M[np.sum(M != 0, axis=-1) != 0]
-            M = np.dot(M.T, M)
-            eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
-            # pca = PCA(n_components=4)
-            # comps = pca.fit_transform(M.T)
-            # for i in range(self.n_pca_comp):
-            #     comps[:,i] /= np.linalg.norm(comps[:,i])
+            if M.shape[0] == 0:
+                continue
+            # M = np.dot(M.T, M)
+            # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
+            pca = PCA(n_components=4)
+            comps = pca.fit_transform(M.T)
+            for i in range(self.n_pca_comp):
+                comps[:,i] /= np.linalg.norm(comps[:,i])
             ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
             l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
             pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
@@ -449,8 +454,8 @@ class PCA_feed_filter(Filter):
                 b[:,i] /= np.linalg.norm(b[:,i])
             l2.corr_template[ifeed] += -b.dot(b.T)
 
-        l2.tofile_dict["pca_feed_ampl"] = pca_ampl[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
-        l2.tofile_dict["pca_feed_comp"] = pca_comp[::-1]
+        l2.tofile_dict["pca_feed_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+        l2.tofile_dict["pca_feed_comp"] = pca_comp#[::-1]
 
 
 
@@ -662,7 +667,7 @@ class Masking(Filter):
         l2.tod[~l2.freqmask] = np.nan
         del(l2_local)
 
-        printstring = f"Amount masked: {np.sum(~l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:.1f}. By feed:\n"
+        printstring = f"[{rank}] [{self.name}] Amount masked: {np.sum(~l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:.1f}%. By feed:\n"
         for ifeed in range(l2.Nfeeds):
             printstring += f"{l2.feeds[ifeed]}: {np.sum(~l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:.1f}% "
         print(printstring)
