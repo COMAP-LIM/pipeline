@@ -13,6 +13,7 @@ class level2_file:
         self.fieldname = fieldname
         self.l1_filename = l1_filename
         self.l2_filename = fieldname + "_" + scanid
+        self.feature_bit = scantype
         if scantype&2**4:
             self.scantype = "circ"
         elif scantype&2**5:
@@ -44,7 +45,8 @@ class level2_file:
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
             self.freqmask_reason_string = []
             self.freqmask_counter = 0
-            self.freqmask[(~np.isfinite(self.tod)).any(axis=-1)] = False
+            self.n_nans = (~np.isfinite(self.tod)).any(axis=-1)
+            self.freqmask[self.n_nans] = False
             self.freqmask_reason[(~np.isfinite(self.tod)).any(axis=-1)] += 2**self.freqmask_counter; self.freqmask_counter += 1
             self.freqmask_reason_string.append("NaN or inf in TOD")
             self.freqmask[:,:,:2] = False
@@ -62,10 +64,20 @@ class level2_file:
             os.mkdir(outpath)
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
         with h5py.File(outfilename, "w") as f:
+            f["feeds"] = self.feeds
             f["tod"] = self.tod
+            f["tod_time"] = self.tod_times
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
+            f["cal_method"] = 2
+            f["feature"] = self.feature_bit
+            f["mjd_start"] = self.tod_times[0]
+            f["scanid"] = self.scanid
+            f["obsid"] = self.obsid
+            f["sigma0"] = np.std(self.tod[:,:,:,1:] - self.tod[:,:,:,:-1])/np.sqrt(2)
+            f["n_nans"] = self.n_nans
+
             for key in self.tofile_dict:  # Writing custom data (usually from the filters) to file.
                 f[key] = self.tofile_dict[key]
             for key in vars(self.params):  # Writing entire parameter file to separate hdf5 group.

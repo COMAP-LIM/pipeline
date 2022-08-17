@@ -155,12 +155,18 @@ class Decimation(Filter):
 
     def run(self, l2):
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
+        weight[l2.freqmask] = 0
         tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]))
         for freq in range(64):
             tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*16:(freq+1)*16,:]*weight[:,:,freq*16:(freq+1)*16,None], axis=2)
             tod_decimated[:,:,freq,:] /= np.nansum(weight[:,:,freq*16:(freq+1)*16], axis=2)[:,:,None]
         l2.tod = tod_decimated
-
+        l2.Nfreqs = 64
+        l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, 64))
+        for freq in range(64):
+            l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*16:(freq+1)*16].all()
+        l2.tofile_dict["freqmask_decimated"] = l2.freqmask_decimated
+        l2.tofile_dict["decimation_nu"] = l2.Nfreqs//l2.params.decimation_freqs
 
 
 class Pointing_Template_Subtraction(Filter):
@@ -352,7 +358,6 @@ class Frequency_filter(Filter):
                 if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
                     a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
                 else:
-                    print(feed,sb)
                     a = np.zeros((1, l2.Ntod))
                     m = np.zeros((2, l2.Ntod))
 
@@ -493,12 +498,12 @@ class Masking(Filter):
 
         l2_local = copy.deepcopy(l2)
         
-        print(f"[{rank}] [{self.name}] Running local polyfilter for masking purposes...")
+        print(f"[{rank}] [{self.name}] Running local freqfilter for masking purposes...")
         t0 = time.time()
         poly = Frequency_filter(self.params)
         poly.run(l2_local)
         del(poly)
-        l2_local.write_level2_data(name_extension=f"_mask_poly")
+        # l2_local.write_level2_data(name_extension=f"_mask_poly")
         print(f"[{rank}] [{self.name}] Finished local/masking polyfilter in {time.time()-t0:.1f} s.")
         
         print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
@@ -506,7 +511,7 @@ class Masking(Filter):
         pca = PCA_filter(self.params)
         pca.run(l2_local)
         del(pca)
-        l2_local.write_level2_data(name_extension=f"_mask_pca")
+        # l2_local.write_level2_data(name_extension=f"_mask_pca")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA filter in {time.time()-t0:.1f} s.")
 
         print(f"[{rank}] [{self.name}] Running local PCA feed filter for masking purposes...")
@@ -514,7 +519,7 @@ class Masking(Filter):
         pcaf = PCA_feed_filter(self.params)
         pcaf.run(l2_local)
         del(pcaf)
-        l2_local.write_level2_data(name_extension=f"_mask_pcaf")
+        # l2_local.write_level2_data(name_extension=f"_mask_pcaf")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA feed filter in {time.time()-t0:.1f} s.")
 
 
@@ -532,6 +537,9 @@ class Masking(Filter):
         l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
         l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+        l2.tofile_dict["AB_aliasing"] = AB_mask
+        l2.tofile_dict["leak_aliasing"] = leak_mask
+
 
         l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
         l2.tofile_dict["C_template"] = l2_local.corr_template
@@ -653,6 +661,7 @@ class Masking(Filter):
                 # plt.tight_layout()
                 # plt.savefig(f"plots/{l2.scanid}_feed{l2.feeds[ifeed]}_half{ihalf}.png", bbox_inches="tight")
                 # plt.clf()
+        del(l2_local)
         
         # Since we have a "feed" outer loop, we need to do this afterwards:
         for box_size in self.box_sizes:
@@ -665,7 +674,8 @@ class Masking(Filter):
                 l2.freqmask_counter += 1
             
         l2.tod[~l2.freqmask] = np.nan
-        del(l2_local)
+        l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
+        l2.tofile_dict["acceptrate"] = l2.acceptrate
 
         printstring = f"[{rank}] [{self.name}] Amount masked: {np.sum(~l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:.1f}%. By feed:\n"
         for ifeed in range(l2.Nfeeds):
@@ -699,6 +709,7 @@ class Tsys_calc(Filter):
             calib_times = f[f"/obsid/{obsid}/calib_times"][()]
             successful = f[f"/obsid/{obsid}/successful"][()]
 
+        n_cals = np.zeros(l2.Nfeeds)
         for ifeed in range(l2.Nfeeds):
             feed = l2.feeds[ifeed]
             if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
@@ -708,27 +719,23 @@ class Tsys_calc(Filter):
                 Phot_interp = (P1*(t2 - t) + P2*(t - t1))/(t2 - t1)
                 T1, T2 = Thot[feed-1,0], Thot[feed-1,1]
                 Thot_interp = (T1*(t2 - t) + T2*(t - t1))/(t2 - t1)
+                n_cals[ifeed] = 2
             elif successful[feed-1,0]:  # Only first calibration successful: Use values from that one.
                 Phot_interp = Phot[feed-1,:,:,0]
                 Thot_interp = Thot[feed-1,:,:,0]
+                n_cals[ifeed] = 1
             elif successful[feed-1,1]:  # Only second...
                 Phot_interp = Phot[feed-1,:,:,1]
                 Thot_interp = Thot[feed-1,:,:,1]
+                n_cals[ifeed] = 1
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
 
         l2.tofile_dict["Tsys"] = l2.Tsys
         l2.tofile_dict["Pcold"] = Pcold
         l2.tofile_dict["Thot"] = Thot
         l2.tofile_dict["Phot"] = Phot
-
-        l2.tofile_dict["t"] = t
-        l2.tofile_dict["t1"] = t1
-        l2.tofile_dict["t2"] = t2
-        l2.tofile_dict["T1"] = T1
-        l2.tofile_dict["T2"] = T2
-        l2.tofile_dict["P1"] = P1
-        l2.tofile_dict["P2"] = P2
-
+        l2.tofile_dict["Thot_times"] = calib_times[l2.feeds-1]
+        l2.tofile_dict["n_cals"] = n_cals
 
 
 
