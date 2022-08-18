@@ -15,6 +15,16 @@ import time
 from mpi4py import MPI
 from sklearn.decomposition import PCA
 
+"""TODO:
+mask_outliers (add to param)
+runID
+sb_mean
+time_of_day
+tod_mean
+
+(all freqs, edges, centeres etc. fix)
+"""
+
 C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
 
 def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=2):
@@ -155,7 +165,7 @@ class Decimation(Filter):
 
     def run(self, l2):
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
-        weight[l2.freqmask] = 0
+        weight[~l2.freqmask] = 0
         tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]))
         for freq in range(64):
             tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*16:(freq+1)*16,:]*weight[:,:,freq*16:(freq+1)*16,None], axis=2)
@@ -398,7 +408,7 @@ class PCA_filter(Filter):
         # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
         # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
-        pca = PCA(n_components=4)
+        pca = PCA(n_components=4, random_state=49)
         comps = pca.fit_transform(M.T)
         for i in range(self.n_pca_comp):
             comps[:,i] /= np.linalg.norm(comps[:,i])
@@ -444,7 +454,7 @@ class PCA_feed_filter(Filter):
                 continue
             # M = np.dot(M.T, M)
             # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
-            pca = PCA(n_components=4)
+            pca = PCA(n_components=4, random_state=21)
             comps = pca.fit_transform(M.T)
             for i in range(self.n_pca_comp):
                 comps[:,i] /= np.linalg.norm(comps[:,i])
@@ -503,7 +513,7 @@ class Masking(Filter):
         poly = Frequency_filter(self.params)
         poly.run(l2_local)
         del(poly)
-        # l2_local.write_level2_data(name_extension=f"_mask_poly")
+        l2_local.write_level2_data(name_extension=f"_mask_freqfilter")
         print(f"[{rank}] [{self.name}] Finished local/masking polyfilter in {time.time()-t0:.1f} s.")
         
         print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
@@ -511,7 +521,7 @@ class Masking(Filter):
         pca = PCA_filter(self.params)
         pca.run(l2_local)
         del(pca)
-        # l2_local.write_level2_data(name_extension=f"_mask_pca")
+        l2_local.write_level2_data(name_extension=f"_mask_pca")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA filter in {time.time()-t0:.1f} s.")
 
         print(f"[{rank}] [{self.name}] Running local PCA feed filter for masking purposes...")
@@ -519,7 +529,7 @@ class Masking(Filter):
         pcaf = PCA_feed_filter(self.params)
         pcaf.run(l2_local)
         del(pcaf)
-        # l2_local.write_level2_data(name_extension=f"_mask_pcaf")
+        l2_local.write_level2_data(name_extension=f"_mask_pcaf")
         print(f"[{rank}] [{self.name}] Finished local/masking PCA feed filter in {time.time()-t0:.1f} s.")
 
 
@@ -527,18 +537,6 @@ class Masking(Filter):
         t0 = time.time()
         Nfreqs = l2_local.Nfreqs
         Ntod = l2_local.Ntod
-
-        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
-            AB_mask = f["/AB_mask"][()]
-            leak_mask = f["/leak_mask"][()]
-        l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
-        l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
-        l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-        l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
-        l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-        l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
-        l2.tofile_dict["AB_aliasing"] = AB_mask
-        l2.tofile_dict["leak_aliasing"] = leak_mask
 
 
         l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
@@ -677,9 +675,13 @@ class Masking(Filter):
         l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
         l2.tofile_dict["acceptrate"] = l2.acceptrate
 
-        printstring = f"[{rank}] [{self.name}] Amount masked: {np.sum(~l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:.1f}%. By feed:\n"
+        printstring = f"[{rank}] [{self.name}] Acceptrate by feed:\n"
+        printstring += f"    all"
         for ifeed in range(l2.Nfeeds):
-            printstring += f"{l2.feeds[ifeed]}: {np.sum(~l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:.1f}% "
+            printstring += f"{l2.feeds[ifeed]:7d}"
+        printstring += f"\n{np.sum(l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:6.1f}%"
+        for ifeed in range(l2.Nfeeds):
+            printstring += f"{np.sum(l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:6.1f}%"
         print(printstring)
 
         print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
@@ -705,6 +707,8 @@ class Tsys_calc(Filter):
         with h5py.File(self.cal_database_file, "r") as f:
             # tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
             Phot = f[f"/obsid/{obsid}/Phot"][()]
+            for isb in l2.flipped_sidebands:
+                Phot[:,isb,:] = Phot[:,isb,::-1]
             Thot = f[f"/obsid/{obsid}/Thot"][()]
             calib_times = f[f"/obsid/{obsid}/calib_times"][()]
             successful = f[f"/obsid/{obsid}/successful"][()]

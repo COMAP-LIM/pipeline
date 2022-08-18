@@ -143,11 +143,11 @@ if __name__ == "__main__":
                 Normalize_Gain,
                 Pointing_Template_Subtraction,
                 Masking,
-                Polynomial_filter,
-                # Frequency_filter,
+                # Polynomial_filter,
+                Frequency_filter,
                 PCA_filter,
                 PCA_feed_filter,
                 Calibration,
                 Decimation]
-    l2r = l2gen_runner(filters, omp_num_threads=144)
+    l2r = l2gen_runner(filters, omp_num_threads=128)
     l2r.run()
