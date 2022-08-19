@@ -3,8 +3,9 @@ import h5py
 import os
 
 class level2_file:
-    def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, params):
+    def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, filter_list, params):
         self.params = params
+        self.filter_list = filter_list
         self.level2_dir = params.level2_dir
         self.scanid = scanid
         self.obsid = scanid[:-2]
@@ -109,8 +110,8 @@ class level2_file:
             f["tod_time"] = self.tod_times
             f["tod_mean"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
-            # f["freq_bin_edges"] = self.freq_bin_edges
-            # f["freq_bin_centers"] = self.freq_bin_centers
+            f["freq_bin_edges"] = self.freq_bin_edges
+            f["freq_bin_centers"] = self.freq_bin_centers
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
@@ -146,10 +147,10 @@ class level2_file:
                 f["hk_winddir"]     = l1file["hk/array/weather/windDirection"][()]
                 f["hk_windspeed"]   = l1file["hk/array/weather/windSpeed"][()]
                 f["hk_mjd"]         = l1file["hk/array/weather/utc"][()]
-            pix2ind_python = np.zeros(20, dtype=int) + 999
+            # pix2ind_python = np.zeros(20, dtype=int) + 999
             pix2ind_fortran = np.zeros(20, dtype=int)
             for ifeed in range(self.Nfeeds):
-                pix2ind_python[self.feeds[ifeed]] = ifeed
-                pix2ind_fortran[self.feeds[ifeed]] = ifeed+1
-            f["pix2ind_python"] = pix2ind_python
+                # pix2ind_python[self.feeds[ifeed]-1] = ifeed
+                pix2ind_fortran[self.feeds[ifeed]-1] = ifeed+1
+            # f["pix2ind_python"] = pix2ind_python
             f["pix2ind_fortran"] = pix2ind_fortran

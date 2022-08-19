@@ -9,9 +9,10 @@ class LoadFromFile(argparse.Action):
 
 parser = argparse.ArgumentParser()
 
+parser.add_argument("-v", "--verbose",                 action="store_true", help="Enable verbose printing.")
 
 ### Parameter file and runlist
-parser.add_argument("--param_file",         type=open, action=LoadFromFile, help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.")
+parser.add_argument("-p", "--param",        type=open, action=LoadFromFile, help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.")
 parser.add_argument("--runlist",            type=str,                       help="(REQUIRED) Path to runlist.")
 
 
