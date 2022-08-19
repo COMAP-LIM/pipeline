@@ -45,13 +45,16 @@ class level2_file:
             self.Nsb = self.tod.shape[1]
             self.Nfreqs = self.tod.shape[2]
             self.Ntod = self.tod.shape[3]
+            self.corr_template = np.zeros((self.Nfeeds, self.Nsb*self.Nfreqs, self.Nsb*self.Nfreqs))  # The correlated induced by different filters, to be subtracted in masking.
 
             ### Preliminary Masking ###
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
             self.freqmask_reason_string = []
             self.freqmask_counter = 0
-            self.corr_template = np.zeros((self.Nfeeds, self.Nsb*self.Nfreqs, self.Nsb*self.Nfreqs))  # The correlated induced by different filters, to be subtracted in masking.
+            self.freqmask[self.feeds==20] = False
+            self.freqmask_reason[self.feeds==20] += 2**self.freqmask_counter; self.freqmask_counter += 1
+            self.freqmask_reason_string.append("Feed 20")
             self.n_nans = np.sum(~np.isfinite(self.tod), axis=-1)
             self.freqmask[self.n_nans > 0] = False
             self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_counter; self.freqmask_counter += 1

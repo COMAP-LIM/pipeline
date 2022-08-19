@@ -373,7 +373,7 @@ class Frequency_filter(Filter):
 
                 l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
 
-                b = P
+                b = P.copy()
                 b[~np.isfinite(b)] = 0
                 b[:,0] /= np.linalg.norm(b[:,0])
                 b[:,1] /= np.linalg.norm(b[:,1])
@@ -514,7 +514,7 @@ class Masking(Filter):
         poly.run(l2_local)
         del(poly)
         l2_local.write_level2_data(name_extension=f"_mask_freqfilter")
-        print(f"[{rank}] [{self.name}] Finished local/masking polyfilter in {time.time()-t0:.1f} s.")
+        print(f"[{rank}] [{self.name}] Finished local/masking freqfilter in {time.time()-t0:.1f} s.")
         
         print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
         t0 = time.time()
