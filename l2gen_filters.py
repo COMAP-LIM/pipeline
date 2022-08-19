@@ -446,7 +446,7 @@ class PCA_feed_filter(Filter):
                     M[i,:] /= np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
             M[~np.isfinite(M)] = 0
             M = M[np.sum(M != 0, axis=-1) != 0]
-            if M.shape[0] == 0:
+            if M.shape[0] < 4:
                 continue
             # M = np.dot(M.T, M)
             # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
