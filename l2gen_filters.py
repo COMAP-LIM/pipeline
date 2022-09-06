@@ -311,21 +311,24 @@ class Frequency_filter(Filter):
             PS[1:] /= 1 + (freqs[1:]/fknee_W)**alpha_W
         return PS
 
-    def gain_temp_sep(self, y, P, F, sigma0_g, fknee_g, alpha_g):
+    def gain_temp_sep(self, y, P, F, sigma0_g=None, fknee_g=None, alpha_g=None):
         Nfreqs, Ntod = y.shape
-        freqs = np.fft.rfftfreq(Ntod, 1/50.0)
-        Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
-        Cf[0] = 1
-        
-        sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
-        sigma0_est = np.mean(sigma0_est[sigma0_est != 0])
-        Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
-        
-        RHS = np.fft.rfft(F.T.dot(Z).dot(y))
-        z = F.T.dot(Z).dot(F)
-        # a_bestfit_f = RHS/(z + sigma0_est**2)
-        a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
-        a_bestfit = np.fft.irfft(a_bestfit_f, n=Ntod)
+        if sigma0_g and fknee_g and alpha_g:  # Set any of the prior parameters to None or False to skip prior.
+            freqs = np.fft.rfftfreq(Ntod, 1/50.0)
+            freqs[0] = freqs[1]/2
+            Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
+            sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
+            sigma0_est = np.mean(sigma0_est[sigma0_est != 0])
+            Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
+            RHS = np.fft.rfft(F.T.dot(Z).dot(y))
+            z = F.T.dot(Z).dot(F)
+            a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
+            a_bestfit = np.fft.irfft(a_bestfit_f, n=Ntod)
+        else:
+            Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
+            RHS = F.T.dot(Z).dot(y)
+            z = F.T.dot(Z).dot(F)
+            a_bestfit = RHS/z
         m_bestfit = np.linalg.inv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
         
         return a_bestfit, m_bestfit
@@ -360,7 +363,8 @@ class Frequency_filter(Filter):
                 F[~np.isfinite(F)] = 0
 
                 if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
-                    a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                    # a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                    a, m = self.gain_temp_sep(y, P, F)  # No prior
                 else:
                     a = np.zeros((1, l2.Ntod))
                     m = np.zeros((2, l2.Ntod))
