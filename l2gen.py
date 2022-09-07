@@ -18,9 +18,12 @@ export OMP_NUM_THREADS=20; export OPENBLAS_NUM_THREADS=20; export MKL_NUM_THREAD
 """
 import time
 import numpy as np
-from os.path import join
 import h5py
+import logging
+import datetime
 import os
+import shutil
+from os.path import join
 from mpi4py import MPI
 from l2gen_l2class import level2_file
 from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
@@ -29,6 +32,10 @@ L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
 class l2gen_runner:
     def __init__(self, filter_list, omp_num_threads=2):
+        self.comm = MPI.COMM_WORLD
+        self.Nranks = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()
+
         # os.system(f"export OMP_NUM_THREADS={omp_num_threads}")
         os.environ["OMP_NUM_THREADS"] = f"{omp_num_threads}"
         os.environ["OPENBLAS_NUM_THREADS"] = f"{omp_num_threads}"
@@ -36,21 +43,39 @@ class l2gen_runner:
         self.filter_list = filter_list
         self.omp_num_threads = omp_num_threads
         self.read_params()
+        self.configure_logging()
+        self.runlist = self.read_runlist()
+
 
     def run(self):
-        comm = MPI.COMM_WORLD
-        Nranks = comm.Get_size()
-        rank = comm.Get_rank()
-        print(f"[{rank}] >>> Spawning rank {rank} of {Nranks}.")
+        self.comm.Barrier()
+        print(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks}.")
+        logging.info(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks}.")
 
-        self.runlist = self.read_runlist()
         Nscans = len(self.runlist)
         for i_scan in range(Nscans):
-            if i_scan%Nranks == rank:
-                print(f"[{rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time()
+            if i_scan%self.Nranks == self.rank:
+                print(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time()
+                logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time()
                 l2 = l2gen(self.runlist[i_scan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
-                print(f"[{rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {(time.time()-t0)/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {(time.time()-t0)/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {(time.time()-t0)/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+
+
+    def configure_logging(self):
+        runID = 0
+        if self.rank == 0:
+            runID = str(datetime.datetime.now())[2:].replace(" ", "-").replace(":", "-")
+        runID = self.comm.bcast(runID, root=0)
+        
+        self.params.runID = int(runID.replace("-", "").replace(".", ""))
+        logfilepath = os.path.join(self.params.log_dir, f"l2gen-{runID}.log")
+        logging.basicConfig(filename=logfilepath, filemode="a", format="%(levelname)s %(asctime)s - %(message)s", level=logging.DEBUG)
+        if self.rank == 0:
+            logging.info(f"Log initialized for runID {runID}")
+            print(f"Log initialized for runID {runID}")
+
 
     def read_params(self):
         from l2gen_argparser import parser
@@ -59,7 +84,20 @@ class l2gen_runner:
             raise ValueError("A runlist must be specified in parameter file or terminal.")
         self.params = params
 
+
     def read_runlist(self):
+        # Create list of already processed scanids.
+        existing_scans = []
+        for dir in os.listdir(self.params.level2_dir):
+            if os.path.isdir(os.path.join(self.params.level2_dir, dir)):
+                for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
+                    if file[-3:] == ".h5" or file[-4:] == ".hd5":
+                        existing_scans.append(int(file.split(".")[0].split("_")[1]))
+        if len(existing_scans) > 0:
+            if self.rank == 0:
+                print(f"Ignoring {len(existing_scans)} already processed scans.")
+                logging.info(f"Ignoring {len(existing_scans)} already processed scans.")
+
         with open(self.params.runlist) as my_file:
             lines = [line.split() for line in my_file]
         i = 0
@@ -85,9 +123,10 @@ class l2gen_runner:
                     mjd_start = float(lines[i+k+1][1])
                     mjd_stop = float(lines[i+k+1][2])
                     scantype = int(float(lines[i+k+1][3]))
-                    if scantype != 8192:
-                        runlist.append([scan, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
-                        n_scans_tot += 1
+                    if not int(scan) in existing_scans:
+                        if scantype != 8192:
+                            runlist.append([scan, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
+                            n_scans_tot += 1
                 i = i + n_scans + 1 
         return runlist
 
@@ -95,6 +134,9 @@ class l2gen_runner:
 
 class l2gen:
     def __init__(self, scan_info, filter_list, params, omp_num_threads):
+        self.comm = MPI.COMM_WORLD
+        self.Nranks = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()
         self.l2file = level2_file(*scan_info, filter_list, params)
         self.filter_list = filter_list
         self.omp_num_threads = omp_num_threads
@@ -106,28 +148,21 @@ class l2gen:
                 if not dependency in self.filter_names[:i]:
                     raise RuntimeError(f"Filter '{filter.name}' depends upon filter '{dependency}'.")
 
-    def run(self):
-        comm = MPI.COMM_WORLD
-        Nranks = comm.Get_size()
-        rank = comm.Get_rank()
 
-        if self.verbose:
-            print(f"[{rank}] Reading level1 data...")
+    def run(self):
+        logging.debug(f"[{self.rank}] Reading level1 data...")
         t0 = time.time()
         self.l2file.load_level1_data()
-        if self.verbose:
-            print(f"[{rank}] Finished l1 file read in {time.time()-t0:.1f} s.")
+        logging.debug(f"[{self.rank}] Finished l1 file read in {time.time()-t0:.1f} s.")
 
         if self.params.write_inter_files:
-            if self.verbose:
-                print(f"[{rank}] Writing pre-filtered data to file...")
+            logging.debug(f"[{self.rank}] Writing pre-filtered data to file...")
             t0 = time.time()
             self.l2file.write_level2_data(name_extension="_0")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i](self.params, omp_num_threads=self.omp_num_threads)
-            if self.verbose:
-                print(f"[{rank}] [{filter.name}] Starting {filter.name_long}...")
-                t0 = time.time()
+            logging.debug(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
+            t0 = time.time()
             filter.run(self.l2file)
             # bad_nans = 0
             # try:
@@ -137,20 +172,17 @@ class l2gen:
             #     pass
             # if bad_nans > 0:
             #     raise ValueError(f"NaNs in TOD not masked by freqmask after {filter.name_long}.")
-            if self.verbose:
-                print(f"[{rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s.")
+            logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s.")
             if self.params.write_inter_files:
-                if self.verbose:
-                    print(f"[{rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
+                logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 t0 = time.time()
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
-        if self.verbose:
-            print(f"[{rank}] Writing level2 file...")
-            t0 = time.time()
+        logging.debug(f"[{self.rank}] Writing level2 file...")
+        t0 = time.time()
         self.l2file.write_level2_data()
-        if self.verbose:
-            print(f"[{rank}] Finished l2 file write in {time.time()-t0:.1f} s.")
+        logging.debug(f"[{self.rank}] Finished l2 file write in {time.time()-t0:.1f} s.")
+
 
 
 if __name__ == "__main__":

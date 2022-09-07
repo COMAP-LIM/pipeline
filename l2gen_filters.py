@@ -12,6 +12,7 @@ from tqdm import trange
 import matplotlib.pyplot as plt
 import scipy.linalg
 import time
+import logging
 from mpi4py import MPI
 from sklearn.decomposition import PCA
 
@@ -511,14 +512,14 @@ class Masking(Filter):
         
         for masking_filter in l2.filter_list:  # Look through filter list and see if any filter needs to be run prior to masking.
             if masking_filter.run_when_masking:
-                # print(f"[{rank}] [{self.name}] Running local {masking_filter.name_long} for masking purposes...")
+                logging.debug(f"[{rank}] [{self.name}] Running local {masking_filter.name_long} for masking purposes...")
                 t0 = time.time()
                 filter_local = masking_filter(self.params)
                 filter_local.run(l2_local)
                 del(filter_local)
                 if self.params.write_inter_files:
                     l2_local.write_level2_data(name_extension=f"_mask_{masking_filter.name}")
-                # print(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s.")
+                logging.debug(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s.")
 
 
         # print(f"[{rank}] [{self.name}] Running local freqfilter for masking purposes...")
@@ -546,8 +547,7 @@ class Masking(Filter):
         # print(f"[{rank}] [{self.name}] Finished local/masking PCA feed filter in {time.time()-t0:.1f} s.")
 
 
-        if self.verbose:
-            print(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
+        logging.debug(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
         t0 = time.time()
         Nfreqs = l2_local.Nfreqs
         Ntod = l2_local.Ntod
@@ -698,7 +698,7 @@ class Masking(Filter):
             for ifeed in range(l2.Nfeeds):
                 printstring += f"{np.sum(l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:6.1f}%"
             print(printstring)
-            print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
+            logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s.")
 
 
 

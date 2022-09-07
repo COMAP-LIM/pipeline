@@ -19,6 +19,7 @@ parser.add_argument("--runlist",            type=str,                       help
 ### Paths and files
 parser.add_argument("--level1_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level1/",    help="Path to level1 files.")
 parser.add_argument("--level2_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level2/Ka/", help="Location of level2 files (made by l2gen).")
+parser.add_argument("--log_dir",            type=str,   default="/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/logs/", help="Path to outputed logs.")
 # parser.add_argument("--map_dir",            type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/maps/",      help="(unused) Location of map files (made by tod2comap).")
 parser.add_argument("--cal_database_file",  type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", help="Location of calibration hdf5 database.")
 
