@@ -194,5 +194,9 @@ if __name__ == "__main__":
                 PCA_feed_filter,
                 Calibration,
                 Decimation]
-    l2r = l2gen_runner(filters, omp_num_threads=24)
+    if "OMP_NUM_THREADS" in os.environ:
+        omp_num_threads = os.environ["OMP_NUM_THREADS"]
+    else:
+        omp_num_threads = 1
+    l2r = l2gen_runner(filters, omp_num_threads=omp_num_threads)
     l2r.run()
