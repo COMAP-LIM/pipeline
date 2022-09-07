@@ -364,8 +364,8 @@ class Frequency_filter(Filter):
                 F[~np.isfinite(F)] = 0
 
                 if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
-                    # a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
-                    a, m = self.gain_temp_sep(y, P, F)  # No prior
+                    a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                    # a, m = self.gain_temp_sep(y, P, F)  # No prior
                 else:
                     a = np.zeros((1, l2.Ntod))
                     m = np.zeros((2, l2.Ntod))
@@ -689,16 +689,15 @@ class Masking(Filter):
         l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
         l2.tofile_dict["acceptrate"] = l2.acceptrate
 
-        if self.verbose:
-            printstring = f"[{rank}] [{self.name}] Acceptrate by feed:\n"
-            printstring += f"    all"
-            for ifeed in range(l2.Nfeeds):
-                printstring += f"{l2.feeds[ifeed]:7d}"
-            printstring += f"\n{np.sum(l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:6.1f}%"
-            for ifeed in range(l2.Nfeeds):
-                printstring += f"{np.sum(l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:6.1f}%"
-            print(printstring)
-            logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+        printstring = f"[{rank}] [{self.name}] Acceptrate by feed:\n"
+        printstring += f"    all"
+        for ifeed in range(l2.Nfeeds):
+            printstring += f"{l2.feeds[ifeed]:7d}"
+        printstring += f"\n{np.sum(l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:6.1f}%"
+        for ifeed in range(l2.Nfeeds):
+            printstring += f"{np.sum(l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:6.1f}%"
+        print(printstring)
+        logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
 
 
