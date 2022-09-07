@@ -286,10 +286,15 @@ class Polynomial_filter(Filter):
         l2.tofile_dict["poly_coeff"][:] = c0, c1
 
         # Adjust correlation template.
-        with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/corr_template.h5", "r") as f:
-            T = f["corr"][()]        
-        for i in range(4):
-            l2.corr_template[:,l2.Nfreqs*i:l2.Nfreqs*(i+1),l2.Nfreqs*i:l2.Nfreqs*(i+1)] += T
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                b = np.zeros((l2.Nfreqs, 2))
+                b[:,0] = np.ones(l2.Nfreqs)
+                b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
+                b[:,0] /= np.linalg.norm(b[:,0])
+                b[:,1] /= np.linalg.norm(b[:,1])
+                b[~l2.freqmask[ifeed,isb],:] = 0
+                l2.corr_template[ifeed,l2.Nfreqs*isb:l2.Nfreqs*(isb+1),l2.Nfreqs*isb:l2.Nfreqs*(isb+1)] += -b.dot(b.T)
 
 
 
