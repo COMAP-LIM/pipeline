@@ -55,12 +55,13 @@ class l2gen_runner:
         Nscans = len(self.runlist)
         for i_scan in range(Nscans):
             if i_scan%self.Nranks == self.rank:
-                print(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time()
-                logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time()
+                print(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})...");
+                logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
                 l2 = l2gen(self.runlist[i_scan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
-                print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {(time.time()-t0)/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
-                logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {(time.time()-t0)/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                dt = time.time() - t0; pdt = time.process_time() - pt0
+                print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
 
 
     def configure_logging(self):
@@ -151,18 +152,17 @@ class l2gen:
 
     def run(self):
         logging.debug(f"[{self.rank}] Reading level1 data...")
-        t0 = time.time()
+        t0 = time.time(); pt0 = time.process_time()
         self.l2file.load_level1_data()
-        logging.debug(f"[{self.rank}] Finished l1 file read in {time.time()-t0:.1f} s.")
+        logging.debug(f"[{self.rank}] Finished l1 file read in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
         if self.params.write_inter_files:
             logging.debug(f"[{self.rank}] Writing pre-filtered data to file...")
-            t0 = time.time()
             self.l2file.write_level2_data(name_extension="_0")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i](self.params, omp_num_threads=self.omp_num_threads)
             logging.debug(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
-            t0 = time.time()
+            t0 = time.time(); pt0 = time.process_time()
             filter.run(self.l2file)
             # bad_nans = 0
             # try:
@@ -172,16 +172,14 @@ class l2gen:
             #     pass
             # if bad_nans > 0:
             #     raise ValueError(f"NaNs in TOD not masked by freqmask after {filter.name_long}.")
-            logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s.")
+            logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
             if self.params.write_inter_files:
                 logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
-                t0 = time.time()
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
         logging.debug(f"[{self.rank}] Writing level2 file...")
-        t0 = time.time()
         self.l2file.write_level2_data()
-        logging.debug(f"[{self.rank}] Finished l2 file write in {time.time()-t0:.1f} s.")
+        logging.debug(f"[{self.rank}] Finished l2 file write.")
 
 
 
@@ -196,5 +194,5 @@ if __name__ == "__main__":
                 PCA_feed_filter,
                 Calibration,
                 Decimation]
-    l2r = l2gen_runner(filters, omp_num_threads=2)
+    l2r = l2gen_runner(filters, omp_num_threads=24)
     l2r.run()
