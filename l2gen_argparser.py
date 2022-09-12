@@ -14,7 +14,8 @@ parser.add_argument("-v", "--verbose",                 action="store_true", help
 ### Parameter file and runlist
 parser.add_argument("-p", "--param",        type=open, action=LoadFromFile, help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.")
 parser.add_argument("--runlist",            type=str,                       help="(REQUIRED) Path to runlist.")
-
+parser.add_argument("-f", "--filters",      type=str,  nargs="+", default=["Tsys_calc", "Normalize_Gain", "Pointing_Template_Subtraction", "Masking", "Frequency_filter", "PCA_filter", "PCA_feed_filter", "Calibration", "Decimation"],
+                                                                            help="Name of each filter, in order, to include in the l2gen run.")
 
 ### Paths and files
 parser.add_argument("--level1_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level1/",    help="Path to level1 files.")

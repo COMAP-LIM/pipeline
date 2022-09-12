@@ -26,12 +26,13 @@ import shutil
 from os.path import join
 from mpi4py import MPI
 from l2gen_l2class import level2_file
-from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
+import l2gen_filters
+# from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
 
 L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
 
 class l2gen_runner:
-    def __init__(self, filter_list, omp_num_threads=2):
+    def __init__(self, omp_num_threads=2):
         self.comm = MPI.COMM_WORLD
         self.Nranks = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
@@ -40,11 +41,11 @@ class l2gen_runner:
         os.environ["OMP_NUM_THREADS"] = f"{omp_num_threads}"
         os.environ["OPENBLAS_NUM_THREADS"] = f"{omp_num_threads}"
         os.environ["MKL_NUM_THREADS"] = f"{omp_num_threads}"
-        self.filter_list = filter_list
         self.omp_num_threads = omp_num_threads
         self.read_params()
         self.configure_logging()
-        self.runlist = self.read_runlist()
+        self.configure_filters()
+        self.read_runlist()
 
 
     def run(self):
@@ -62,6 +63,14 @@ class l2gen_runner:
                 dt = time.time() - t0; pdt = time.process_time() - pt0
                 print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
                 logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+        
+
+    def read_params(self):
+        from l2gen_argparser import parser
+        params = parser.parse_args()
+        if not params.runlist:
+            raise ValueError("A runlist must be specified in parameter file or terminal.")
+        self.params = params
 
 
     def configure_logging(self):
@@ -78,12 +87,11 @@ class l2gen_runner:
             print(f"Log initialized for runID {runID}")
 
 
-    def read_params(self):
-        from l2gen_argparser import parser
-        params = parser.parse_args()
-        if not params.runlist:
-            raise ValueError("A runlist must be specified in parameter file or terminal.")
-        self.params = params
+    def configure_filters(self):
+        self.filter_list = []
+        for filter_str in self.params.filters:
+            filter = getattr(l2gen_filters, filter_str)
+            self.filter_list.append(filter)
 
 
     def read_runlist(self):
@@ -129,7 +137,7 @@ class l2gen_runner:
                             runlist.append([scan, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
                             n_scans_tot += 1
                 i = i + n_scans + 1 
-        return runlist
+        self.runlist = runlist
 
 
 
@@ -184,19 +192,19 @@ class l2gen:
 
 
 if __name__ == "__main__":
-    filters = [ Tsys_calc,
-                Normalize_Gain,
-                Pointing_Template_Subtraction,
-                Masking,
-                # Polynomial_filter,
-                Frequency_filter,
-                PCA_filter,
-                PCA_feed_filter,
-                Calibration,
-                Decimation]
+    # filters = [ Tsys_calc,
+    #             Normalize_Gain,
+    #             Pointing_Template_Subtraction,
+    #             Masking,
+    #             Polynomial_filter,
+    #             # Frequency_filter,
+    #             PCA_filter,
+    #             PCA_feed_filter,
+    #             Calibration,
+    #             Decimation]
     if "OMP_NUM_THREADS" in os.environ:
         omp_num_threads = os.environ["OMP_NUM_THREADS"]
     else:
         omp_num_threads = 1
-    l2r = l2gen_runner(filters, omp_num_threads=omp_num_threads)
+    l2r = l2gen_runner(omp_num_threads=omp_num_threads)
     l2r.run()
