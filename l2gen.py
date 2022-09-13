@@ -36,6 +36,8 @@ class l2gen_runner:
         self.comm = MPI.COMM_WORLD
         self.Nranks = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
+        if self.rank == 0:
+            print("######## Initializing l2gen ########")
 
         # os.system(f"export OMP_NUM_THREADS={omp_num_threads}")
         os.environ["OMP_NUM_THREADS"] = f"{omp_num_threads}"
@@ -46,6 +48,8 @@ class l2gen_runner:
         self.configure_logging()
         self.configure_filters()
         self.read_runlist()
+        if self.rank == 0:
+            print("######## Done initializing l2gen ########")
 
 
     def run(self):
@@ -71,6 +75,8 @@ class l2gen_runner:
         if not params.runlist:
             raise ValueError("A runlist must be specified in parameter file or terminal.")
         self.params = params
+        if self.rank == 0:
+            print(f"Parameter file: {params.param}")
 
 
     def configure_logging(self):
@@ -95,6 +101,10 @@ class l2gen_runner:
 
 
     def read_runlist(self):
+        if self.rank == 0:
+            print(f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]")
+            print(f"Runlist file: {self.params.runlist}")
+    
         # Create list of already processed scanids.
         existing_scans = []
         for dir in os.listdir(self.params.level2_dir):
@@ -102,10 +112,10 @@ class l2gen_runner:
                 for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
                     if file[-3:] == ".h5" or file[-4:] == ".hd5":
                         existing_scans.append(int(file.split(".")[0].split("_")[1]))
-        if len(existing_scans) > 0:
-            if self.rank == 0:
-                print(f"Ignoring {len(existing_scans)} already processed scans.")
-                logging.info(f"Ignoring {len(existing_scans)} already processed scans.")
+        # if len(existing_scans) > 0:
+        #     if self.rank == 0:
+        #         print(f"Ignoring {len(existing_scans)} already processed scans.")
+        #         logging.info(f"Ignoring {len(existing_scans)} already processed scans.")
 
         with open(self.params.runlist) as my_file:
             lines = [line.split() for line in my_file]
@@ -114,29 +124,42 @@ class l2gen_runner:
         n_fields = int(lines[i][0])
         i = i + 1
         for i_field in range(n_fields):
-            obsids = []
             runlist = []
             n_scans_tot = 0
+            n_scans_outside_range = 0
+            n_scans_already_processed = 0
             fieldname = lines[i][0]
             n_obsids = int(lines[i][1])
             i = i + 1
             for j in range(n_obsids):
                 obsid = "0" + lines[i][0]
-                obsids.append(obsid)
                 n_scans = int(lines[i][3])
                 l1_filename = lines[i][-1]
                 l1_filename = l1_filename.strip("/")  # The leading "/" will stop os.path.join from joining the filenames.
                 l1_filename = os.path.join(self.params.level1_dir, l1_filename)
                 for k in range(n_scans):
-                    scan = "0" + lines[i+k+1][0]  # Runlist obsid lacking a leading 0?
-                    mjd_start = float(lines[i+k+1][1])
-                    mjd_stop = float(lines[i+k+1][2])
                     scantype = int(float(lines[i+k+1][3]))
-                    if not int(scan) in existing_scans:
-                        if scantype != 8192:
-                            runlist.append([scan, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
-                            n_scans_tot += 1
-                i = i + n_scans + 1 
+                    if scantype != 8192:
+                        n_scans_tot += 1
+                        if self.params.obsid_start <= int(obsid) <= self.params.obsid_stop:
+                            scan = "0" + lines[i+k+1][0]  # Runlist obsid lacking a leading 0?
+                            mjd_start = float(lines[i+k+1][1])
+                            mjd_stop = float(lines[i+k+1][2])
+                            if not int(scan) in existing_scans:
+                                runlist.append([scan, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
+                            else:
+                                n_scans_already_processed += 1
+                        else:
+                            n_scans_outside_range += 1
+                i = i + n_scans + 1
+            if self.rank == 0:
+                print(f"Field name:                 {fieldname}")
+                print(f"Obsids in runlist file:     {n_obsids}")
+                print(f"Scans in runlist file:      {n_scans_tot}")
+                print(f"Scans included in run:      {len(runlist)}")
+                print(f"Scans outside obsid range:  {n_scans_outside_range}")
+                print(f"Scans already processed:    {n_scans_already_processed}")
+
         self.runlist = runlist
 
 
@@ -203,7 +226,7 @@ if __name__ == "__main__":
     #             Calibration,
     #             Decimation]
     if "OMP_NUM_THREADS" in os.environ:
-        omp_num_threads = os.environ["OMP_NUM_THREADS"]
+        omp_num_threads = int(os.environ["OMP_NUM_THREADS"])
     else:
         omp_num_threads = 1
     l2r = l2gen_runner(omp_num_threads=omp_num_threads)
