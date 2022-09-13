@@ -65,7 +65,7 @@ def lowpass_filter_new(signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_
     freq_full = np.fft.rfftfreq(fastlen)*samprate
     W = 1.0/(1 + (freq_full/fknee)**alpha)
     # return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod] + lin_fit
-    return irfft(rfft(signal_padded)*W).real[:,:Ntod] + lin_fit
+    return irfft(rfft(signal_padded)*W, n=Ntod).real[:,:Ntod] + lin_fit
 
 
 
@@ -330,6 +330,7 @@ class Frequency_filter(Filter):
             z = F.T.dot(Z).dot(F)
             a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
             a_bestfit = np.fft.irfft(a_bestfit_f, n=Ntod)
+            del(freqs, Cf, Z, RHS, a_bestfit_f)
         else:
             Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
             RHS = F.T.dot(Z).dot(y)
@@ -345,6 +346,7 @@ class Frequency_filter(Filter):
         l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
         l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, l2.Nsb, 2, l2.Ntod))
         l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, l2.Nsb, 1, l2.Ntod))
+        l2.tofile_dict["freqfilter_a_m_corr"] = np.zeros((l2.Nfeeds, l2.Nsb, 2))
 
         with h5py.File(self.prior_file, "r") as f:
             sigma0_prior = f["sigma0_prior"][l2.feeds-1]
@@ -387,7 +389,7 @@ class Frequency_filter(Filter):
                 l2.tofile_dict["freqfilter_F"][feed, sb] = F
                 l2.tofile_dict["freqfilter_m"][feed, sb] = m
                 l2.tofile_dict["freqfilter_a"][feed, sb] = a
-
+                l2.tofile_dict["freqfilter_a_m_corr"][feed, sb] = np.sum((a - np.mean(a, axis=-1)[:,None])*(m - np.mean(m, axis=-1)[:,None]), axis=-1)/(m.shape[-1]*np.std(a, axis=-1)*np.std(m, axis=-1))
 
 
 class PCA_filter(Filter):
@@ -415,6 +417,7 @@ class PCA_filter(Filter):
         # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
         pca = PCA(n_components=4, random_state=49)
         comps = pca.fit_transform(M.T)
+        del(M, pca)
         for i in range(self.n_pca_comp):
             comps[:,i] /= np.linalg.norm(comps[:,i])
         for ifeed in range(l2.Nfeeds):
@@ -462,6 +465,7 @@ class PCA_feed_filter(Filter):
             # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
             pca = PCA(n_components=4, random_state=21)
             comps = pca.fit_transform(M.T)
+            del(M, pca)
             for i in range(self.n_pca_comp):
                 comps[:,i] /= np.linalg.norm(comps[:,i])
             ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
