@@ -694,13 +694,17 @@ class Masking(Filter):
         l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
         l2.tofile_dict["acceptrate"] = l2.acceptrate
 
-        printstring = f"[{rank}] [{self.name}] Acceptrate by feed:\n"
-        printstring += f"    all"
+        printstring = f"[{rank}] [{self.name}] Acceptrate by feed and sideband:\n"
+        printstring += f"           all"
         for ifeed in range(l2.Nfeeds):
             printstring += f"{l2.feeds[ifeed]:7d}"
-        printstring += f"\n{np.sum(l2.freqmask)/(l2.Nfeeds*l2.Nsb*l2.Nfreqs)*100:6.1f}%"
+        printstring += f"\nall    {np.sum(l2.acceptrate)/(l2.Nfeeds*l2.Nsb)*100:6.1f}%"
         for ifeed in range(l2.Nfeeds):
-            printstring += f"{np.sum(l2.freqmask[ifeed])/(l2.Nsb*l2.Nfreqs)*100:6.1f}%"
+            printstring += f"{np.sum(l2.acceptrate[ifeed])/(l2.Nsb)*100:6.1f}%"
+        for isb in range(l2.Nsb):
+            printstring += f"\n  {isb}    {np.sum(l2.acceptrate[:,isb])/(l2.Nfeeds)*100:6.1f}%"
+            for ifeed in range(l2.Nfeeds):
+                printstring += f"{np.sum(l2.acceptrate[ifeed,isb])*100:6.1f}%"
         print(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
