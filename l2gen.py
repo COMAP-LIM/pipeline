@@ -23,6 +23,7 @@ import logging
 import datetime
 import os
 import shutil
+import psutil
 from os.path import join
 from mpi4py import MPI
 from l2gen_l2class import level2_file
@@ -60,7 +61,10 @@ class l2gen_runner:
         Nscans = len(self.runlist)
         for i_scan in range(Nscans):
             if i_scan%self.Nranks == self.rank:
-                print(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})...");
+                while psutil.virtual_memory().available/psutil.virtual_memory().total < 0.2:
+                    logging.debug(f"[{self.rank}] Only {psutil.virtual_memory().available/psutil.virtual_memory().total:.1f}% available memory. Checking again in 30 seconds.")
+                    time.sleep(30)
+                print(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})...")
                 logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
                 l2 = l2gen(self.runlist[i_scan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
