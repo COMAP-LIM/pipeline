@@ -146,11 +146,11 @@ class l2gen_runner:
                     if scantype != 8192:
                         n_scans_tot += 1
                         if self.params.obsid_start <= int(obsid) <= self.params.obsid_stop:
-                            scan = "0" + lines[i+k+1][0]  # Runlist obsid lacking a leading 0?
+                            scanid = int(lines[i+k+1][0])
                             mjd_start = float(lines[i+k+1][1])
                             mjd_stop = float(lines[i+k+1][2])
-                            if not int(scan) in existing_scans:
-                                runlist.append([scan, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
+                            if not scanid in existing_scans:
+                                runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
                             else:
                                 n_scans_already_processed += 1
                         else:

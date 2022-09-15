@@ -4,7 +4,7 @@ import numpy as np
 import multiprocessing as mp
 import ctypes
 from tqdm import trange
-from scipy.fft import fft, ifft, rfft, irfft, next_fast_len
+from scipy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
 from pixell import fft as pfft
 from scipy.optimize import curve_fit
 import h5py
@@ -307,6 +307,7 @@ class Frequency_filter(Filter):
         self.omp_num_threads = omp_num_threads
         self.prior_file = params.freqfilter_prior_file
 
+
     def PS_1f(self, freqs, sigma0, fknee, alpha, wn=True, Wiener=False, fknee_W=0.01, alpha_W=-4.0):
         PS = np.zeros_like(freqs)
         if wn:
@@ -316,6 +317,28 @@ class Frequency_filter(Filter):
         if Wiener:
             PS[1:] /= 1 + (freqs[1:]/fknee_W)**alpha_W
         return PS
+
+    
+    def binned_PS(self, data, Nbins=100):
+        # data - 4D TOD vector with time along the last axis.
+        # Returns the log-binned frequencies and power spectrum of the data along the last axis.
+        freqs = rfftfreq(data.shape[-1], 1.0/50.0)[1:]
+        log_freqs = np.log10(freqs)
+        PS = rfft(data).real[:,:,:,1:]**2
+        freq_bins = np.linspace(np.log10(freqs[0])-1e-6, np.log10(freqs[-1])+1e-6, Nbins)
+        indices = np.digitize(log_freqs, freq_bins)
+        PS_binned = np.zeros((PS.shape[0], PS.shape[1], PS.shape[2], Nbins))
+        PS_binned_freqs = np.zeros((Nbins))
+        for i in range(Nbins):
+            bin_indices = np.argwhere(indices==i)
+            if len(bin_indices) > 0:
+                bin_indices = bin_indices.T[0]
+                PS_binned_freqs[i] = np.mean(freqs[bin_indices])
+                PS_binned[:,:,:,i] = np.mean(PS[:,:,:,bin_indices],axis=-1)
+        PS_binned = PS_binned[:,:,:,PS_binned_freqs != 0]
+        PS_binned_freqs = PS_binned_freqs[PS_binned_freqs != 0]
+        return PS_binned_freqs, PS_binned
+
 
     def gain_temp_sep(self, y, P, F, sigma0_g=None, fknee_g=None, alpha_g=None):
         Nfreqs, Ntod = y.shape
@@ -724,7 +747,7 @@ class Tsys_calc(Filter):
 
     def run(self, l2):
         Tcmb = 2.725
-        obsid = l2.obsid
+        obsid = l2.obsid_str
         t = l2.tod_times[l2.Ntod//2]  # scan center time.
         l2.Tsys = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
         Pcold = np.nanmean(l2.tod, axis=-1)
