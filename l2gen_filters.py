@@ -413,6 +413,12 @@ class Frequency_filter(Filter):
                 l2.tofile_dict["freqfilter_m"][feed, sb] = m
                 l2.tofile_dict["freqfilter_a"][feed, sb] = a
                 l2.tofile_dict["freqfilter_a_m_corr"][feed, sb] = np.sum((a - np.mean(a, axis=-1)[:,None])*(m - np.mean(m, axis=-1)[:,None]), axis=-1)/(m.shape[-1]*np.std(a, axis=-1)*np.std(m, axis=-1))
+        PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"])
+        PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"])
+        l2.tofile_dict["freqfilter_PS_freqs"] = PS_freqs
+        l2.tofile_dict["freqfilter_PS_m"] = PS_m
+        l2.tofile_dict["freqfilter_PS_a"] = PS_a
+
 
 
 class PCA_filter(Filter):
@@ -721,18 +727,34 @@ class Masking(Filter):
         l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
         l2.tofile_dict["acceptrate"] = l2.acceptrate
 
-        printstring = f"[{rank}] [{self.name}] Acceptrate by feed and sideband:\n"
+        # Just printing stuff:
+        def get_color(value):
+            if value > 80:
+                return "\033[96m"
+            elif value > 65:
+                return "\033[94m"
+            elif value > 50:
+                return "\033[93m"
+            else:            
+                return "\033[91m"
+        printstring = f"[{rank}] [{l2.scanid}] [{self.name}] Acceptrate by feed and sideband:\n"
         printstring += f"           all"
         for ifeed in range(l2.Nfeeds):
             printstring += f"{l2.feeds[ifeed]:7d}"
-        printstring += f"\nall    {np.sum(l2.acceptrate)/(l2.Nfeeds*l2.Nsb)*100:6.1f}%"
+        acc = np.sum(l2.acceptrate)/(l2.Nfeeds*l2.Nsb)*100
+        printstring += f"\nall    {get_color(acc)}{acc:6.1f}%\033[0m"
         for ifeed in range(l2.Nfeeds):
-            printstring += f"{np.sum(l2.acceptrate[ifeed])/(l2.Nsb)*100:6.1f}%"
+            acc = np.sum(l2.acceptrate[ifeed])/(l2.Nsb)*100
+            printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
         for isb in range(l2.Nsb):
-            printstring += f"\n  {isb}    {np.sum(l2.acceptrate[:,isb])/(l2.Nfeeds)*100:6.1f}%"
+            acc = np.sum(l2.acceptrate[:,isb])/(l2.Nfeeds)*100
+            printstring += f"\n  {isb}    {get_color(acc)}{acc:6.1f}%\033[0m"
             for ifeed in range(l2.Nfeeds):
-                printstring += f"{np.sum(l2.acceptrate[ifeed,isb])*100:6.1f}%"
+                acc = np.sum(l2.acceptrate[ifeed,isb])*100
+                printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
         print(printstring)
+        print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+        logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
 
