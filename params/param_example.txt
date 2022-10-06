@@ -1,0 +1,3 @@
+--runlist /mn/stornext/d22/cmbco/comap/protodir/runlists/jonas/runlist_1obsids.txt
+--level2_dir /mn/stornext/d22/cmbco/comap/jonas/l2gen_python/level2_test/
+--filters Tsys_calc Normalize_Gain Pointing_Template_Subtraction Masking Polynomial_filter PCA_filter PCA_feed_filter Calibration Decimation
