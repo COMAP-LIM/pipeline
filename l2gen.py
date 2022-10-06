@@ -27,7 +27,14 @@ from l2gen_l2class import level2_file
 import l2gen_filters
 # from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
 
-L1_PATH = "/mn/stornext/d22/cmbco/comap/protodir/level1"
+import warnings
+warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
+warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
+warnings.filterwarnings("ignore", message="divide by zero encountered in true_divide")
+warnings.filterwarnings("ignore", message="Degrees of freedom <= 0 for slice.")
+warnings.filterwarnings("ignore", message="Mean of empty slice")
+
+
 
 class l2gen_runner:
     def __init__(self, omp_num_threads=2):
