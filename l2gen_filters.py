@@ -623,6 +623,18 @@ class Masking(Filter):
                 logging.debug(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
 
+        if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
+            with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+                AB_mask = f["/AB_mask"][()]
+                leak_mask = f["/leak_mask"][()]
+            l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
+            l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
+            l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
+            l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+            l2.tofile_dict["AB_aliasing"] = AB_mask
+            l2.tofile_dict["leak_aliasing"] = leak_mask
         # print(f"[{rank}] [{self.name}] Running local freqfilter for masking purposes...")
         # t0 = time.time()
         # poly = Frequency_filter(self.params)

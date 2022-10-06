@@ -8,12 +8,14 @@ class level2_file:
         self.filter_list = filter_list
         self.level2_dir = params.level2_dir
         self.scanid = scanid
-        self.obsid = scanid[:-2]
+        self.scanid_str = f"{scanid:09d}"
+        self.obsid_str = self.scanid_str[:-2]
+        self.obsid = int(self.obsid_str)
         self.mjd_start = mjd_start
         self.mjd_stop = mjd_stop
         self.fieldname = fieldname
         self.l1_filename = l1_filename
-        self.l2_filename = fieldname + "_" + scanid
+        self.l2_filename = fieldname + "_" + self.scanid_str
         self.feature_bit = scantype
         if scantype&2**4:
             self.scantype = "circ"
@@ -65,37 +67,25 @@ class level2_file:
             self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
             self.freqmask_reason[:,:,512] += 2**self.freqmask_counter; self.freqmask_counter += 1
             self.freqmask_reason_string.append("Marked channels")
-            if int(self.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
-                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
-                    AB_mask = f["/AB_mask"][()]
-                    leak_mask = f["/leak_mask"][()]
-                self.freqmask[AB_mask[self.feeds-1] < 15] = False
-                self.freqmask[leak_mask[self.feeds-1] < 15] = False
-                self.freqmask_reason[AB_mask[self.feeds-1] < 15] += 2**self.freqmask_counter; self.freqmask_counter += 1
-                self.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
-                self.freqmask_reason[leak_mask[self.feeds-1] < 15] += 2**self.freqmask_counter; self.freqmask_counter += 1
-                self.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
-                self.tofile_dict["AB_aliasing"] = AB_mask
-                self.tofile_dict["leak_aliasing"] = leak_mask
 
             self.tod[~self.freqmask] = np.nan
 
             ### Frequency bins ###
             self.flipped_sidebands = []
-            self.freq_bin_edges = np.zeros((self.freqs.shape[0], self.freqs.shape[1]+1))
-            self.freq_bin_centers = np.zeros_like(self.freqs)
-            for isb in range(self.freqs.shape[0]):
-                delta_nu = self.freqs[isb,1] - self.freqs[isb,0]
-                self.freq_bin_edges[isb,:-1] = self.freqs[isb]
-                self.freq_bin_edges[isb,-1] = self.freq_bin_edges[isb,-2] + delta_nu
-                if delta_nu < 0:
-                    self.flipped_sidebands.append(isb)
-                    self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
-                    self.tod[:,isb,:] = self.tod[:,isb,::-1]
-                    self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
-                    self.freqmask_reason[:,isb,:] = self.freqmask_reason[:,isb,::-1]
-                for ifreq in range(self.freqs.shape[1]):
-                    self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
+            # self.freq_bin_edges = np.zeros((self.freqs.shape[0], self.freqs.shape[1]+1))
+            # self.freq_bin_centers = np.zeros_like(self.freqs)
+            # for isb in range(self.freqs.shape[0]):
+            #     delta_nu = self.freqs[isb,1] - self.freqs[isb,0]
+            #     self.freq_bin_edges[isb,:-1] = self.freqs[isb]
+            #     self.freq_bin_edges[isb,-1] = self.freq_bin_edges[isb,-2] + delta_nu
+            #     if delta_nu < 0:
+            #         self.flipped_sidebands.append(isb)
+            #         self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
+            #         self.tod[:,isb,:] = self.tod[:,isb,::-1]
+            #         self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
+            #         self.freqmask_reason[:,isb,:] = self.freqmask_reason[:,isb,::-1]
+            #     for ifreq in range(self.freqs.shape[1]):
+            #         self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
 
 
     def write_level2_data(self, name_extension=""):
@@ -110,8 +100,8 @@ class level2_file:
             f["tod_time"] = self.tod_times
             f["tod_mean"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
-            f["freq_bin_edges"] = self.freq_bin_edges
-            f["freq_bin_centers"] = self.freq_bin_centers
+            # f["freq_bin_edges"] = self.freq_bin_edges
+            # f["freq_bin_centers"] = self.freq_bin_centers
             f["freqmask"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
