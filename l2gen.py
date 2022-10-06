@@ -1,20 +1,10 @@
 """
-classes:
-1. l2gen_runner     - responsible for reading param files and runlist, and starting l2gen runs in parallel.
-2. l2gen_runner     - responsible for applying a series of filters to a single scan.
-3. l2gen_filters    - A class taking a l2file and passing it through a filter.
-4. l2gen_l1file     - Class containing l1file equivalent content, and methods for reading l1files.
-5. l2gen_l2file     - Class containing l2file equivalent content, and methods for writing l2files.
-
-    * l2gen reads the param file and runlist.
-    * l2gen passes the information to the l2gen_l1file class, which reads 
-
 Example usage:
-mpirun -n 10 -machinefile machinefile.txt python3 -W ignore -u l2gen.py
-mpirun -n 120 python3 -W ignore -u l2gen.py
-python3 -W ignore l2gen.py
-To get Numpy to respect number of threads (per MPI thread):
-export OMP_NUM_THREADS=20; export OPENBLAS_NUM_THREADS=20; export MKL_NUM_THREADS=20; python3 -u -W ignore l2gen.py
+    mpirun -n 10 -machinefile machinefile.txt python3 -W ignore -u l2gen.py
+    mpirun -n 120 python3 -W ignore -u l2gen.py
+    python3 -W ignore l2gen.py
+    To get Numpy to respect number of threads (per MPI thread):
+    export OMP_NUM_THREADS=20; export OPENBLAS_NUM_THREADS=20; export MKL_NUM_THREADS=20; python3 -u -W ignore l2gen.py
 """
 import time
 import numpy as np
