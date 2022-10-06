@@ -115,7 +115,8 @@ class l2gen_runner:
             if os.path.isdir(os.path.join(self.params.level2_dir, dir)):
                 for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
                     if file[-3:] == ".h5" or file[-4:] == ".hd5":
-                        existing_scans.append(int(file.split(".")[0].split("_")[1]))
+                        if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
+                            existing_scans.append(int(file.split(".")[0].split("_")[1]))
         # if len(existing_scans) > 0:
         #     if self.rank == 0:
         #         print(f"Ignoring {len(existing_scans)} already processed scans.")
