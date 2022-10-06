@@ -365,17 +365,75 @@ class Frequency_filter(Filter):
 
 
     def run(self, l2):
+        with h5py.File(self.prior_file, "r") as f:
+            sigma0_prior = f["sigma0_prior"][l2.feeds-1]
+            fknee_prior = f["fknee_prior"][l2.feeds-1]
+            alpha_prior = f["alpha_prior"][l2.feeds-1]
+        
+        if False:
+            l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 2))
+            l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 1))
+            l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, 2, l2.Ntod))
+            l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, 1, l2.Ntod))
+            sb_freqs = np.linspace(-1, 1, l2.Nfreqs*4)
+            sb_freqs = sb_freqs.reshape((4, 1024))
+            sb_freqs[(0, 2), :] = sb_freqs[(0, 2), ::-1]
+            for feed in range(l2.Nfeeds):
+                P = np.zeros((4, l2.Nfreqs, 2))
+                F = np.zeros((4, l2.Nfreqs, 1))
+                y = l2.tod[feed].copy()
+                P[:,:,0] = 1/l2.Tsys[feed]
+                P[:,:,1] = sb_freqs/l2.Tsys[feed]
+                F[:,:,0] = 1
+                y[l2.freqmask[feed] == 0] = 0
+                P[l2.freqmask[feed] == 0, :] = 0
+                F[l2.freqmask[feed] == 0, :] = 0
+
+                end_cut = 100
+                y[:,:4] = 0
+                y[:,-end_cut:] = 0
+                P[:,:4] = 0
+                P[:,-end_cut:] = 0
+                F[:,:4] = 0
+                F[:,-end_cut:] = 0
+
+                P[~np.isfinite(P)] = 0
+                F[~np.isfinite(F)] = 0
+                
+                P = P.reshape((4*1024, 2))
+                F = F.reshape((4*1024, 1))
+                y = y.reshape((4*1024, y.shape[-1]))
+
+                if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
+                    print(feed, l2.feeds[feed])
+                    a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                    # a, m = self.gain_temp_sep(y, P, F)  # No prior
+                else:
+                    a = np.zeros((1, l2.Ntod))
+                    m = np.zeros((2, l2.Ntod))
+
+                for sb in range(4):
+                    l2.tod[feed,sb] = l2.tod[feed,sb] - F[1024*sb:1024*(sb+1)].dot(a) - P[1024*sb:1024*(sb+1)].dot(m)
+
+                    # b = P[1024*sb:1024*(sb+1)].copy()
+                    # b[~np.isfinite(b)] = 0
+                    # b[:,0] /= np.linalg.norm(b[:,0])
+                    # b[:,1] /= np.linalg.norm(b[:,1])
+                    # l2.corr_template[feed, l2.Nfreqs*sb:l2.Nfreqs*(sb+1), l2.Nfreqs*sb:l2.Nfreqs*(sb+1)] += -b.dot(b.T)
+
+                l2.tofile_dict["freqfilter_P"][feed] = P
+                l2.tofile_dict["freqfilter_F"][feed] = F
+                l2.tofile_dict["freqfilter_m"][feed] = m
+                l2.tofile_dict["freqfilter_a"][feed] = a
+
+                
+            
         l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
         l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
         l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, l2.Nsb, 2, l2.Ntod))
         l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, l2.Nsb, 1, l2.Ntod))
         l2.tofile_dict["freqfilter_a_m_corr"] = np.zeros((l2.Nfeeds, l2.Nsb, 2))
 
-        with h5py.File(self.prior_file, "r") as f:
-            sigma0_prior = f["sigma0_prior"][l2.feeds-1]
-            fknee_prior = f["fknee_prior"][l2.feeds-1]
-            alpha_prior = f["alpha_prior"][l2.feeds-1]
-        
         self.tod_frequency_filtered = np.zeros_like(l2.tod)
         sb_freqs = np.linspace(-1, 1, l2.Nfreqs)
         P = np.zeros((l2.Nfreqs, 2))
@@ -389,6 +447,14 @@ class Frequency_filter(Filter):
                 y[l2.freqmask[feed,sb] == 0] = 0
                 P[l2.freqmask[feed,sb] == 0, :] = 0
                 F[l2.freqmask[feed,sb] == 0, :] = 0
+
+                # end_cut = 100
+                # y[:4] = 0
+                # y[-end_cut:] = 0
+                # P[:4] = 0
+                # P[-end_cut:] = 0
+                # F[:4] = 0
+                # F[-end_cut:] = 0
 
                 P[~np.isfinite(P)] = 0
                 F[~np.isfinite(F)] = 0
