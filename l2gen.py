@@ -18,13 +18,10 @@ export OMP_NUM_THREADS=20; export OPENBLAS_NUM_THREADS=20; export MKL_NUM_THREAD
 """
 import time
 import numpy as np
-import h5py
 import logging
 import datetime
 import os
-import shutil
 import psutil
-from os.path import join
 from mpi4py import MPI
 from l2gen_l2class import level2_file
 import l2gen_filters
@@ -40,10 +37,6 @@ class l2gen_runner:
         if self.rank == 0:
             print("######## Initializing l2gen ########")
 
-        # os.system(f"export OMP_NUM_THREADS={omp_num_threads}")
-        os.environ["OMP_NUM_THREADS"] = f"{omp_num_threads}"
-        os.environ["OPENBLAS_NUM_THREADS"] = f"{omp_num_threads}"
-        os.environ["MKL_NUM_THREADS"] = f"{omp_num_threads}"
         self.omp_num_threads = omp_num_threads
         self.read_params()
         self.configure_logging()
@@ -117,10 +110,6 @@ class l2gen_runner:
                     if file[-3:] == ".h5" or file[-4:] == ".hd5":
                         if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
                             existing_scans.append(int(file.split(".")[0].split("_")[1]))
-        # if len(existing_scans) > 0:
-        #     if self.rank == 0:
-        #         print(f"Ignoring {len(existing_scans)} already processed scans.")
-        #         logging.info(f"Ignoring {len(existing_scans)} already processed scans.")
 
         with open(self.params.runlist) as my_file:
             lines = [line.split() for line in my_file]
@@ -200,14 +189,6 @@ class l2gen:
             logging.debug(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
             t0 = time.time(); pt0 = time.process_time()
             filter.run(self.l2file)
-            # bad_nans = 0
-            # try:
-            #     bad_nans = np.sum(~np.isfinite(self.l2file.tod[self.l2file.freqmask]))
-            #     print("bad nans:", bad_nans)
-            # except:
-            #     pass
-            # if bad_nans > 0:
-            #     raise ValueError(f"NaNs in TOD not masked by freqmask after {filter.name_long}.")
             logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
             if self.params.write_inter_files:
                 logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
@@ -220,16 +201,6 @@ class l2gen:
 
 
 if __name__ == "__main__":
-    # filters = [ Tsys_calc,
-    #             Normalize_Gain,
-    #             Pointing_Template_Subtraction,
-    #             Masking,
-    #             Polynomial_filter,
-    #             # Frequency_filter,
-    #             PCA_filter,
-    #             PCA_feed_filter,
-    #             Calibration,
-    #             Decimation]
     if "OMP_NUM_THREADS" in os.environ:
         omp_num_threads = int(os.environ["OMP_NUM_THREADS"])
     else:

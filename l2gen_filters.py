@@ -1,16 +1,13 @@
 import copy
 from re import search
 import numpy as np
-# import multiprocessing as mp
 import ctypes
-from tqdm import trange
 from scipy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
 # from pixell import fft as pfft
 from scipy.optimize import curve_fit
 import h5py
 from tqdm import trange
 import matplotlib.pyplot as plt
-# import scipy.linalg
 import time
 import logging
 from mpi4py import MPI
@@ -88,27 +85,6 @@ class Normalize_Gain(Filter):
         self.alpha = params.gain_norm_alpha
 
     def run(self, l2):
-        # print("1")
-        # fastlen = next_fast_len(l2.tod.shape[-1]*2)
-        # print(f" --- Normalization - lastlen {fastlen} from TOD len {l2.tod.shape[-1]}.")
-        # print("2")
-        # normlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
-        # print("3")
-        # float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
-        # print("4")
-        # normlib.normalize.argtypes = [float32_array4, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-        # print("5")
-        # normlib.normalize(l2.tod, *l2.tod.shape, fastlen)
-        # print("6")
-
-        # l2.tod = l2.tod.reshape((4*l2.Nfeeds, 1024, l2.Ntod))
-        # with mp.Pool() as p:
-        #     tod_lowpass = p.map(lowpass_filter_safe, l2.tod)
-        # for i in range(l2.Nfeeds*4):
-        #     l2.tod[i] = l2.tod[i]/tod_lowpass[i] - 1
-        # l2.tod = l2.tod.reshape((l2.Nfeeds, 4, 1024, l2.Ntod))
-        # del(tod_lowpass)
-
         if not self.use_ctypes:
             Ntod = l2.tod.shape[-1]
             fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times_owl33_10runs.npy")
@@ -138,14 +114,8 @@ class Normalize_Gain(Filter):
                     l2_padded[:,l2.Ntod:l2.Ntod*2] = l2.tod[feed,sb,:,::-1]
                     l2_padded[:,l2.Ntod*2:] = np.nanmean(l2.tod[feed,sb,:,:400], axis=-1)[:,None]
                     normlib.normalize(l2_padded, l2.Nfreqs, Nfull)
-                    l2.tod[feed,sb] = l2_padded[:,:l2.Ntod]
-        # for feed in range(l2.Nfeeds):
-        #     for sb in range(4):
-        #         with mp.Pool(mp_threads) as p:
-        #             tod_lowpass = np.array(p.map(lowpass_filter2, l2.tod[feed, sb]))
-        #             l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
-        # del(tod_lowpass)
-        
+                    l2.tod[feed,sb] = l2_padded[:,:l2.Ntod]        
+
 
 
 class Decimation(Filter):
@@ -170,6 +140,7 @@ class Decimation(Filter):
             l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*16:(freq+1)*16].any()
         l2.tofile_dict["freqmask_decimated"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = l2.Nfreqs//l2.params.decimation_freqs
+
 
 
 class Pointing_Template_Subtraction(Filter):
@@ -370,7 +341,7 @@ class Frequency_filter(Filter):
             fknee_prior = f["fknee_prior"][l2.feeds-1]
             alpha_prior = f["alpha_prior"][l2.feeds-1]
         
-        if False:
+        if False:  # Testing of all-sb instead of per-sb for gain.
             l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 2))
             l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 1))
             l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, 2, l2.Ntod))
@@ -448,6 +419,7 @@ class Frequency_filter(Filter):
                 P[l2.freqmask[feed,sb] == 0, :] = 0
                 F[l2.freqmask[feed,sb] == 0, :] = 0
 
+                # Some cuts Håvard included:
                 # end_cut = 100
                 # y[:4] = 0
                 # y[-end_cut:] = 0
@@ -574,9 +546,6 @@ class PCA_feed_filter(Filter):
 
 
 
-"/mn/stornext/d22/cmbco/comap/protodir/auxiliary/comap_freqmask_1024channels.txt"
-"/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Ka_detectors.txt"
-"/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5"
 class Masking(Filter):
     name = "mask"
     name_long = "masking"
@@ -594,14 +563,7 @@ class Masking(Filter):
         self.params = params
         self.verbose = self.params.verbose
 
-        # self.box_sizes = [32, 128, 512]
-        # self.Nsigma_chi2_boxes = [6, 6, 6]
-        # self.Nsigma_prod_boxes = [6, 5, 4]
-        # self.Nsigma_mean_boxes = [6, 10, 14]
-        # self.stripe_sizes = [32, 128, 1024]
-        # self.Nsigma_chi2_stripes = [6, 6, 6]
-        # self.Nsigma_prod_stripes = [6, 5, 4]
-        
+
     def run(self, l2):
         comm = MPI.COMM_WORLD
         Nranks = comm.Get_size()
@@ -620,7 +582,6 @@ class Masking(Filter):
                     l2_local.write_level2_data(name_extension=f"_mask_{masking_filter.name}")
                 logging.debug(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
-
         if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
             with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
                 AB_mask = f["/AB_mask"][()]
@@ -633,36 +594,11 @@ class Masking(Filter):
             l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
             l2.tofile_dict["AB_aliasing"] = AB_mask
             l2.tofile_dict["leak_aliasing"] = leak_mask
-        # print(f"[{rank}] [{self.name}] Running local freqfilter for masking purposes...")
-        # t0 = time.time()
-        # poly = Frequency_filter(self.params)
-        # poly.run(l2_local)
-        # del(poly)
-        # l2_local.write_level2_data(name_extension=f"_mask_freqfilter")
-        # print(f"[{rank}] [{self.name}] Finished local/masking freqfilter in {time.time()-t0:.1f} s.")
-        
-        # print(f"[{rank}] [{self.name}] Running local PCA filter for masking purposes...")
-        # t0 = time.time()
-        # pca = PCA_filter(self.params)
-        # pca.run(l2_local)
-        # del(pca)
-        # l2_local.write_level2_data(name_extension=f"_mask_pca")
-        # print(f"[{rank}] [{self.name}] Finished local/masking PCA filter in {time.time()-t0:.1f} s.")
-
-        # print(f"[{rank}] [{self.name}] Running local PCA feed filter for masking purposes...")
-        # t0 = time.time()
-        # pcaf = PCA_feed_filter(self.params)
-        # pcaf.run(l2_local)
-        # del(pcaf)
-        # l2_local.write_level2_data(name_extension=f"_mask_pcaf")
-        # print(f"[{rank}] [{self.name}] Finished local/masking PCA feed filter in {time.time()-t0:.1f} s.")
-
 
         logging.debug(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
         t0 = time.time(); pt0 = time.process_time()
         Nfreqs = l2_local.Nfreqs
         Ntod = l2_local.Ntod
-
 
         if self.params.write_C_matrix:
             l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
@@ -685,7 +621,6 @@ class Masking(Filter):
                         C[i+1,i] = 0
                         C[i,i+1] = 0
                 
-
                 C -= l2_local.corr_template[ifeed, ihalf*2048:(ihalf+1)*2048, ihalf*2048:(ihalf+1)*2048]
                 if self.params.write_C_matrix:
                     l2.tofile_dict["C"][ifeed,ihalf] = C
@@ -693,7 +628,6 @@ class Masking(Filter):
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
-
 
                 chi2_matrix = np.zeros((2, 3, 2048, 2048))
                 for ibox in range(len(self.box_sizes)):
@@ -749,7 +683,6 @@ class Masking(Filter):
                             else:
                                 chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
 
-
                 for istripe in range(len(self.stripe_sizes)):
                     stripe_size = self.stripe_sizes[istripe]
                     Nsigma_chi2_stripe = self.Nsigma_chi2_stripes[istripe]
@@ -779,14 +712,6 @@ class Masking(Filter):
 
                 l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                 l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
-                # fig, ax = plt.subplots(2, 3, figsize=(14, 6))
-                # for i in range(2):
-                #     for j in range(3):
-                #         plot = ax[i,j].imshow(np.abs(chi2_matrix[i,j]), vmin=0, vmax=12)
-                #         plt.colorbar(plot, ax=ax[i,j])
-                # plt.tight_layout()
-                # plt.savefig(f"plots/{l2.scanid}_feed{l2.feeds[ifeed]}_half{ihalf}.png", bbox_inches="tight")
-                # plt.clf()
         del(l2_local)
         
         # Since we have a "feed" outer loop, we need to do this afterwards:
@@ -852,7 +777,6 @@ class Tsys_calc(Filter):
         Phot_interp = np.zeros(l2.Nfeeds)
         
         with h5py.File(self.cal_database_file, "r") as f:
-            # tsys = f[f"/obsid/{obsid}/Tsys_obsidmean"][()]
             Phot = f[f"/obsid/{obsid}/Phot"][()]
             for isb in l2.flipped_sidebands:
                 Phot[:,isb,:] = Phot[:,isb,::-1]
