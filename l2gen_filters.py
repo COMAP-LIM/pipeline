@@ -539,7 +539,6 @@ class PCA_feed_filter(Filter):
 
         pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         pca_comp = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Ntod))
-        # l2.corr_template = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, l2.Nsb*l2.Nfreqs))
 
         N = l2.Nsb*self.N_deci_freqs
 
@@ -556,8 +555,6 @@ class PCA_feed_filter(Filter):
             M = M[np.sum(M != 0, axis=-1) != 0]
             if M.shape[0] < 4:
                 continue
-            # M = np.dot(M.T, M)
-            # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
             pca = PCA(n_components=4, random_state=21)
             comps = pca.fit_transform(M.T)
             del(M, pca)
