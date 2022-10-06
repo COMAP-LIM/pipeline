@@ -502,17 +502,15 @@ class PCA_filter(Filter):
         N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
         M = l2.tod.reshape(N, l2.Ntod)
         M = M[l2.freqmask.reshape(N), :]
-        if M.shape[0] == 0:
-            return
-
-        # M = np.dot(M.T, M)
-        # eigval, eigvec = scipy.linalg.eigh(M, subset_by_index=(l2.Ntod-self.N_pca_modes, l2.Ntod-1))
-        # eigval, comps = scipy.sparse.linalg.eigsh(M, k=self.n_pca_comp, v0=np.ones(l2.Ntod)/np.sqrt(l2.Ntod))
-        # ak = np.sum(l2.tod[:,:,:,:,None]*eigvec, axis=3)
-        # l2.tod = l2.tod - np.sum(ak[:,:,:,None,:]*eigvec[None,None,None,:,:], axis=-1)
-        pca = PCA(n_components=4, random_state=49)
-        comps = pca.fit_transform(M.T)
-        del(M, pca)
+        M[~np.isfinite(M)] = 0
+        M = M[np.sum(M != 0, axis=-1) != 0]
+        if M.shape[0] > 4:
+            pca = PCA(n_components=4, random_state=49)
+            comps = pca.fit_transform(M.T)
+            del(pca)
+        else:
+            comps = np.zeros((l2.Ntod, self.n_pca_comp))
+        del(M)
         for i in range(self.n_pca_comp):
             comps[:,i] /= np.linalg.norm(comps[:,i])
         for ifeed in range(l2.Nfeeds):
