@@ -1,16 +1,16 @@
 import copy
 from re import search
 import numpy as np
-import multiprocessing as mp
+# import multiprocessing as mp
 import ctypes
 from tqdm import trange
 from scipy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
-from pixell import fft as pfft
+# from pixell import fft as pfft
 from scipy.optimize import curve_fit
 import h5py
 from tqdm import trange
 import matplotlib.pyplot as plt
-import scipy.linalg
+# import scipy.linalg
 import time
 import logging
 from mpi4py import MPI
