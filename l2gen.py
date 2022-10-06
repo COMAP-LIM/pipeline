@@ -166,10 +166,6 @@ class l2gen:
         self.params = params
         self.verbose = self.params.verbose
         self.filter_names = [filter.name for filter in filter_list]
-        for i, filter in enumerate(self.filter_list):  # For all filters, check if all dependencies are run first.
-            for dependency in filter.depends_upon:
-                if not dependency in self.filter_names[:i]:
-                    raise RuntimeError(f"Filter '{filter.name}' depends upon filter '{dependency}'.")
 
 
     def run(self):

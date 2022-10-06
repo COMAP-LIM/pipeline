@@ -69,7 +69,6 @@ def lowpass_filter_new(signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_
 class Filter:
     name = ""  # Short name of filter, used for compact writes.
     name_long = ""  # Verbose, more explanatory name of filter.
-    depends_upon = []  # Other filters which needs to be run before this one. List of strings (the short names).
     run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
 
 
@@ -817,7 +816,6 @@ class Tsys_calc(Filter):
 class Calibration(Filter):
     name = "calib"
     name_long = "calibrations"
-    depends_upon = ["tsys"]
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.max_tsys = params.max_tsys
