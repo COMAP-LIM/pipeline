@@ -591,8 +591,9 @@ class Masking(Filter):
         Ntod = l2_local.Ntod
 
 
-        l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
-        l2.tofile_dict["C_template"] = l2_local.corr_template
+        if self.params.write_C_matrix:
+            l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
+            l2.tofile_dict["C_template"] = l2_local.corr_template
         for ifeed in range(l2.tod.shape[0]):
             for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
                 tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:]
@@ -613,10 +614,12 @@ class Masking(Filter):
                 
 
                 C -= l2_local.corr_template[ifeed, ihalf*2048:(ihalf+1)*2048, ihalf*2048:(ihalf+1)*2048]
+                if self.params.write_C_matrix:
+                    l2.tofile_dict["C"][ifeed,ihalf] = C
+
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
-                l2.tofile_dict["C"][ifeed,ihalf] = C
 
 
                 chi2_matrix = np.zeros((2, 3, 2048, 2048))

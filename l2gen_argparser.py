@@ -9,7 +9,7 @@ class LoadFromFile(argparse.Action):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-v", "--verbose",                 action="store_true", help="Enable verbose printing.")
+parser.add_argument("-v", "--verbose",  action="count", help="Enable verbose printing.")
 
 ### Parameter file and runlist
 parser.add_argument("-p", "--param",        type=open,  action=LoadFromFile, help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.")
@@ -54,7 +54,8 @@ parser.add_argument("--n_sigma_chi2_stripe",type=float, default=[6.0, 6.0, 6.0],
 parser.add_argument("--n_sigma_mean_box",   type=float, default=[6.0, 10.0, 14.0],  nargs="+",  help="(mask) Sigma tolerance of mean box cuts.")
 parser.add_argument("--n_sigma_prod_box",   type=float, default=[6.0, 5.0, 4.0],    nargs="+",  help="(mask) Sigma tolerance of product box cuts.")
 parser.add_argument("--n_sigma_prod_stripe",type=float, default=[6.0, 5.0, 4.0],    nargs="+",  help="(mask) Sigma tolerance of product stripe cuts.")
-parser.add_argument("--prod_offset",        type=int,   default=16, help="(mask) Offset length in box and stripe product test.")
+parser.add_argument("--prod_offset",        type=int,   default=16,                             help="(mask) Offset length in box and stripe product test.")
+parser.add_argument("--write_C_matrix",     type=bool,  default=False,                          help="(mask) Whether to write corr-matrix (and template) to file. Warning: It's big, do not use for large runs.")
 
 ### Decimation
 parser.add_argument("--decimation_freqs",   type=int,   default=64,     help="(dec) Number of frequencies to decimate each sideband into, from the original 1024.")
