@@ -731,9 +731,9 @@ class Masking(Filter):
 
         # Just printing stuff:
         def get_color(value):
-            if value > 80:
+            if value > 85:
                 return "\033[96m"
-            elif value > 65:
+            elif value > 70:
                 return "\033[94m"
             elif value > 50:
                 return "\033[93m"
