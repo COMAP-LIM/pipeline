@@ -126,19 +126,25 @@ class Decimation(Filter):
         self.Nfreqs = params.decimation_freqs
 
     def run(self, l2):
+        self.dnu = self.Nfreqs//l2.Nfreqs
+        l2.Nfreqs = self.Nfreqs
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
         weight[~l2.freqmask] = 0
         tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]))
-        for freq in range(64):
-            tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*16:(freq+1)*16,:]*weight[:,:,freq*16:(freq+1)*16,None], axis=2)
-            tod_decimated[:,:,freq,:] /= np.nansum(weight[:,:,freq*16:(freq+1)*16], axis=2)[:,:,None]
+        for freq in range(self.Nfreqs):
+            tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*self.dnu:(freq+1)*self.dnu,:]*weight[:,:,freq*self.dnu:(freq+1)*self.dnu,None], axis=2)
+            tod_decimated[:,:,freq,:] /= np.nansum(weight[:,:,freq*self.dnu:(freq+1)*self.dnu], axis=2)[:,:,None]
         l2.tod = tod_decimated
-        l2.Nfreqs = 64
-        l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, 64))
-        for freq in range(64):
-            l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*16:(freq+1)*16].any(axis=-1)
+        l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs))
+        for freq in range(self.Nfreqs):
+            l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*self.dnu:(freq+1)*self.dnu].any(axis=-1)
+        tsys_decimated = np.zeros((self.Nfreqs, l2.Nsb, self.Nfreqs))
+        for ifreq in range(self.Nfreqs):
+            delta_nu = np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)], axis=-1)
+            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(1.0/l2.tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
-        l2.tofile_dict["decimation_nu"] = l2.Nfreqs//l2.params.decimation_freqs
+        l2.tofile_dict["decimation_nu"] = self.Nfreqs//l2.params.decimation_freqs
+        l2.tofile_dict["Tsys_lowres"] = tsys_decimated
 
 
 
