@@ -137,7 +137,7 @@ class Decimation(Filter):
         l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, 64))
         for freq in range(64):
             l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*16:(freq+1)*16].any()
-        l2.tofile_dict["freqmask_decimated"] = l2.freqmask_decimated
+        l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = l2.Nfreqs//l2.params.decimation_freqs
 
 
@@ -151,7 +151,7 @@ class Pointing_Template_Subtraction(Filter):
         self.omp_num_threads = omp_num_threads
     
     def run(self, l2):
-        el_az_amp = np.zeros((3, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+        l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
         if not self.use_ctypes:
             def az_func(x, d, c):
                 return d*x + c
@@ -162,8 +162,8 @@ class Pointing_Template_Subtraction(Filter):
 
             g, d, c = 0, 0, 0
             for feed in range(l2.Nfeeds):
-                for sb in range(4):
-                    for freq in range(1024):
+                for sb in range(l2.Nsb):
+                    for freq in range(l2.Nfreqs):
                         if l2.scantype == "ces":
                             if np.isfinite(l2.tod[feed, sb, freq]).all():
                                 (d, c), _ = curve_fit(az_func, l2.az[feed], l2.tod[feed, sb, freq], (d, c))
@@ -175,7 +175,7 @@ class Pointing_Template_Subtraction(Filter):
                             else:
                                 g, d, c = 0, 0, 0
                         l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
-                        el_az_amp[:,feed,sb,freq] = g, d, c
+                        l2.tofile_dict["el_az_amp"][feed,sb,freq,:] = g, d, c
 
         else:
             C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/pointing/pointinglib.so.1"
@@ -192,7 +192,9 @@ class Pointing_Template_Subtraction(Filter):
                     c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
                     d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
                     l2.tod[ifeed] -= l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
-                    el_az_amp[:,ifeed,:,:] = np.zeros((l2.Nsb, l2.Nfreqs)), d_est, c_est
+                    l2.tofile_dict["el_az_amp"][ifeed,:,:,0] = np.zeros((l2.Nsb, l2.Nfreqs))
+                    l2.tofile_dict["el_az_amp"][ifeed,:,:,1] = d_est
+                    l2.tofile_dict["el_az_amp"][ifeed,:,:,2] = c_est
             else:
                 for ifeed in range(l2.Nfeeds):
                     c_est = np.zeros(l2.Nfreqs*l2.Nsb)
@@ -204,9 +206,9 @@ class Pointing_Template_Subtraction(Filter):
                     d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
                     g_est = g_est.reshape((l2.Nsb, l2.Nfreqs))
                     l2.tod[ifeed] -= el_term[None,None,:]*g_est[:,:,None] + l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
-                    el_az_amp[:,ifeed,:,:] = g_est, d_est, c_est
-
-        l2.tofile_dict["el_az_amp"] = el_az_amp
+                    l2.tofile_dict["el_az_amp"][ifeed,:,:,0] = g_est
+                    l2.tofile_dict["el_az_amp"][ifeed,:,:,1] = d_est
+                    l2.tofile_dict["el_az_amp"][ifeed,:,:,2] = c_est
 
 
 
@@ -783,7 +785,7 @@ class Tsys_calc(Filter):
             calib_times = f[f"/obsid/{obsid}/calib_times"][()]
             successful = f[f"/obsid/{obsid}/successful"][()]
 
-        n_cals = np.zeros(l2.Nfeeds)
+        n_cal = np.zeros(l2.Nfeeds)
         for ifeed in range(l2.Nfeeds):
             feed = l2.feeds[ifeed]
             if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
@@ -793,23 +795,23 @@ class Tsys_calc(Filter):
                 Phot_interp = (P1*(t2 - t) + P2*(t - t1))/(t2 - t1)
                 T1, T2 = Thot[feed-1,0], Thot[feed-1,1]
                 Thot_interp = (T1*(t2 - t) + T2*(t - t1))/(t2 - t1)
-                n_cals[ifeed] = 2
+                n_cal[ifeed] = 2
             elif successful[feed-1,0]:  # Only first calibration successful: Use values from that one.
                 Phot_interp = Phot[feed-1,:,:,0]
                 Thot_interp = Thot[feed-1,:,:,0]
-                n_cals[ifeed] = 1
+                n_cal[ifeed] = 1
             elif successful[feed-1,1]:  # Only second...
                 Phot_interp = Phot[feed-1,:,:,1]
                 Thot_interp = Thot[feed-1,:,:,1]
-                n_cals[ifeed] = 1
+                n_cal[ifeed] = 1
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
 
         l2.tofile_dict["Tsys"] = l2.Tsys
         l2.tofile_dict["Pcold"] = Pcold
-        l2.tofile_dict["Thot"] = Thot
-        l2.tofile_dict["Phot"] = Phot
+        l2.tofile_dict["Thot"] = Thot[l2.feeds-1]
+        l2.tofile_dict["Phot"] = Phot[l2.feeds-1]
         l2.tofile_dict["Thot_times"] = calib_times[l2.feeds-1]
-        l2.tofile_dict["n_cals"] = n_cals
+        l2.tofile_dict["n_cal"] = n_cal
 
 
 

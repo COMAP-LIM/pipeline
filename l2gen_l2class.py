@@ -27,9 +27,12 @@ class level2_file:
     def load_level1_data(self):
         with h5py.File(self.l1_filename, "r") as f:
             self.tod_times = f["/spectrometer/MJD"][()]
+            self.hk_times = f["/hk/array/frame/utc"][()]
             # Start and stop the scan at the first points *inside* the edges defined by mjd_start and mjd_stop.
             self.scan_start_idx = np.searchsorted(self.tod_times, self.mjd_start, side="left")
             self.scan_stop_idx = np.searchsorted(self.tod_times, self.mjd_stop, side="right")  # stop_idx is the first index NOT in the scan.
+            self.scan_start_idx_hk = np.searchsorted(self.hk_times, self.mjd_start, side="left")
+            self.scan_stop_idx_hk = np.searchsorted(self.hk_times, self.mjd_stop, side="right")
             self.tod_times = self.tod_times[self.scan_start_idx:self.scan_stop_idx]
             self.tod_times_seconds = (self.tod_times-self.tod_times[0])*24*60*60
             self.array_features = f["/hk/array/frame/features"][()]
@@ -98,20 +101,20 @@ class level2_file:
             f["feeds"] = self.feeds
             f["tod"] = self.tod
             f["tod_time"] = self.tod_times
+            f["mjd_start"] = self.tod_times[0]
             f["tod_mean"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
             # f["freq_bin_edges"] = self.freq_bin_edges
             # f["freq_bin_centers"] = self.freq_bin_centers
-            f["freqmask"] = self.freqmask
+            f["freqmask_full"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
             f["cal_method"] = 2
             f["feature"] = self.feature_bit
-            f["mjd_start"] = self.tod_times[0]
             f["scanid"] = self.scanid
             f["obsid"] = self.obsid
             f["sigma0"] = np.std(self.tod[:,:,:,1:] - self.tod[:,:,:,:-1], axis=-1)/np.sqrt(2)
-            f["n_nans"] = self.n_nans
+            f["n_nan"] = self.n_nans
             f["chi2"] = (np.sum(self.tod**2, axis=-1)/f["sigma0"][()]**2 - self.Ntod)/np.sqrt(2*self.Ntod)
             f["point_cel"] = np.zeros((self.Nfeeds, self.Ntod, 2))
             f["point_cel"][:,:,0] = self.ra
@@ -119,6 +122,7 @@ class level2_file:
             f["point_tel"] = np.zeros((self.Nfeeds, self.Ntod, 2))
             f["point_tel"][:,:,0] = self.az
             f["point_tel"][:,:,1] = self.el
+            f["decimation_time"] = 1
             # Custom data (usually from the filters):
             for key in self.tofile_dict:  
                 f[key] = self.tofile_dict[key]
@@ -129,14 +133,14 @@ class level2_file:
                     f[f"params/{key}"] = getattr(self.params, key)
             # Copy from l1 file:
             with h5py.File(self.l1_filename, "r") as l1file:
-                f["hk_airtemp"]     = l1file["hk/array/weather/airTemperature"][()]
-                f["hk_dewtemp"]     = l1file["hk/array/weather/dewPointTemp"][()]
-                f["hk_humidity"]    = l1file["hk/array/weather/relativeHumidity"][()]
-                f["hk_pressure"]    = l1file["hk/array/weather/pressure"][()]
-                f["hk_rain"]        = l1file["hk/array/weather/rainToday"][()]
-                f["hk_winddir"]     = l1file["hk/array/weather/windDirection"][()]
-                f["hk_windspeed"]   = l1file["hk/array/weather/windSpeed"][()]
-                f["hk_mjd"]         = l1file["hk/array/weather/utc"][()]
+                f["hk_airtemp"]     = l1file["hk/array/weather/airTemperature"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_dewtemp"]     = l1file["hk/array/weather/dewPointTemp"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_humidity"]    = l1file["hk/array/weather/relativeHumidity"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_pressure"]    = l1file["hk/array/weather/pressure"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_rain"]        = l1file["hk/array/weather/rainToday"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_winddir"]     = l1file["hk/array/weather/windDirection"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_windspeed"]   = l1file["hk/array/weather/windSpeed"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_mjd"]         = l1file["hk/array/weather/utc"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
             # pix2ind_python = np.zeros(20, dtype=int) + 999
             pix2ind_fortran = np.zeros(20, dtype=int)
             for ifeed in range(self.Nfeeds):
