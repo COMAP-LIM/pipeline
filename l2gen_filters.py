@@ -136,7 +136,7 @@ class Decimation(Filter):
         l2.Nfreqs = 64
         l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, 64))
         for freq in range(64):
-            l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*16:(freq+1)*16].any()
+            l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*16:(freq+1)*16].any(axis=-1)
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = l2.Nfreqs//l2.params.decimation_freqs
 
