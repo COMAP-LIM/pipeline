@@ -138,10 +138,10 @@ class Decimation(Filter):
         l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs))
         for freq in range(self.Nfreqs):
             l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*self.dnu:(freq+1)*self.dnu].any(axis=-1)
-        tsys_decimated = np.zeros((self.Nfreqs, l2.Nsb, self.Nfreqs))
+        tsys_decimated = np.zeros((self.Nfeeds, l2.Nsb, self.Nfreqs))
         for ifreq in range(self.Nfreqs):
             delta_nu = np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)], axis=-1)
-            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(1.0/l2.tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
+            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(1.0/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = self.Nfreqs//l2.params.decimation_freqs
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
