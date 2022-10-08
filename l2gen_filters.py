@@ -610,6 +610,7 @@ class Masking(Filter):
         if self.params.write_C_matrix:
             l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
             l2.tofile_dict["C_template"] = l2_local.corr_template
+        max_corr = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         for ifeed in range(l2.tod.shape[0]):
             for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
                 tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:]
@@ -635,6 +636,13 @@ class Masking(Filter):
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
+
+
+                # Fill the max-correlation array, used for masking further down.
+                for isb in range(2):
+                    for ifreq in range(l2.Nfreqs):
+                        max_corr[ifeed, ihalf*2+isb, ifreq] = np.nanmax(np.abs(C[isb*l2.Nfreqs+ifreq]), axis=-1)
+
 
                 chi2_matrix = np.zeros((2, 3, 2048, 2048))
                 for ibox in range(len(self.box_sizes)):
@@ -730,6 +738,29 @@ class Masking(Filter):
             for method in ["chi2", "prod"]:
                 l2.freqmask_reason_string.append(f"Stripe {stripe_size} {method}")
                 l2.freqmask_counter += 1
+
+        ### Radiometer cut ###
+        std_max = 1.15
+        samprate = 50.0  # Hz. TODO: !! FIX !!
+        dnu = np.abs(l2.freqs[0,1] - l2.freqs[0,0])*1e9  # GHz -> Hz
+        radiometer = 1.0/np.sqrt(dnu * (1.0/samprate))
+        var = np.nanvar(l2.tod, axis=-1)
+        l2.freqmask[var > (radiometer*std_max)**2] = False
+        l2.freqmask_reason[var > (radiometer*std_max)**2] += 2**l2.freqmask_counter
+        l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append(f"Radiometer std")
+        
+        
+        ### Maxmimum freq-freq correlation masking ###
+        max_corr_threshold = 0.1
+        l2.freqmask[max_corr > max_corr_threshold] = False
+        l2.freqmask_reason[max_corr > max_corr_threshold] += 2**l2.freqmask_counter
+        l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append(f"Max corr")
+        
+        
+
+
             
         l2.tod[~l2.freqmask] = np.nan
         l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
