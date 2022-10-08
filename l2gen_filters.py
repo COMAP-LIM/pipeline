@@ -7,62 +7,10 @@ from scipy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
 from scipy.optimize import curve_fit
 import h5py
 from tqdm import trange
-import matplotlib.pyplot as plt
 import time
 import logging
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-
-C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/normlib.so.1"
-
-def lowpass_filter_safe(signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=2):
-    """ Applies a lowpass filter to a signal, and returns the low-frequency result.
-        Uses mirrored padding of signal to deal with edge effects.
-        Assumes signal is of shape [freq, time].
-    """
-    N = signal.shape[-1]
-    signal_padded = np.zeros((1024, 2*N))
-    signal_padded[:,:N] = signal
-    signal_padded[:,N:] = signal[:,::-1]
-
-    freq_full = np.fft.fftfreq(2*N)*samprate
-    W = 1.0/(1 + (freq_full/fknee)**alpha)
-    return ifft(fft(signal_padded)*W).real[:,:N]
-
-
-def lowpass_filter(signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
-    tx = time.time()
-    Ntod = signal.shape[-1]
-    signal_padded = np.zeros((1024, fastlen))
-
-    signal_padded[:,:Ntod] = signal[:]
-    signal_padded[:,-Ntod:] = signal[:,::-1]
-    signal_padded[:,Ntod:fastlen//2] = signal[:,-(fastlen//2-Ntod):][::-1]
-    signal_padded[:,fastlen//2:fastlen-Ntod] = signal[:,-(fastlen//2-Ntod):]
-
-    # signal_padded[:,:Ntod] = signal[:,:]
-    # signal_padded[:,Ntod:Ntod*2] = signal[:,::-1]
-    # signal_padded[:,Ntod*2:] = np.nanmean(signal[:,:400], axis=-1)[:,None]
-
-    freq_full = np.fft.rfftfreq(fastlen)*samprate
-    W = 1.0/(1 + (freq_full/fknee)**alpha)
-    # return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
-    # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
-    return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
-
-
-def lowpass_filter_new(signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
-    Ntod = signal.shape[-1]
-    signal_padded = np.zeros((1024, fastlen))
-    x = np.linspace(0, 1, Ntod)
-    c0 = np.nanmean(signal[:,:1000], axis=-1)
-    c1 = np.nanmean(signal[:,-1000:], axis=-1) - c0
-    lin_fit = c1[:,None]*x[None,:] + c0[:,None]
-    signal_padded[:,:Ntod] = signal - lin_fit
-    freq_full = np.fft.rfftfreq(fastlen)*samprate
-    W = 1.0/(1 + (freq_full/fknee)**alpha)
-    # return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod] + lin_fit
-    return irfft(rfft(signal_padded)*W, n=Ntod).real[:,:Ntod] + lin_fit
 
 
 
@@ -83,21 +31,72 @@ class Normalize_Gain(Filter):
         self.fknee = params.gain_norm_fknee
         self.alpha = params.gain_norm_alpha
 
+    def lowpass_filter_safe(self, signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=2):
+        """ Applies a lowpass filter to a signal, and returns the low-frequency result.
+            Uses mirrored padding of signal to deal with edge effects.
+            Assumes signal is of shape [freq, time].
+        """
+        N = signal.shape[-1]
+        signal_padded = np.zeros((1024, 2*N))
+        signal_padded[:,:N] = signal
+        signal_padded[:,N:] = signal[:,::-1]
+
+        freq_full = np.fft.fftfreq(2*N)*samprate
+        W = 1.0/(1 + (freq_full/fknee)**alpha)
+        return ifft(fft(signal_padded)*W).real[:,:N]
+
+
+    def lowpass_filter(self, signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
+        Ntod = signal.shape[-1]
+        fastlen = next_fast_len(2*Ntod)
+        signal_padded = np.zeros((1024, fastlen))
+
+        # signal_padded[:,:Ntod] = signal[:]
+        # signal_padded[:,-Ntod:] = signal[:,::-1]
+        # signal_padded[:,Ntod:fastlen//2] = signal[:,-(fastlen//2-Ntod):][::-1]
+        # signal_padded[:,fastlen//2:fastlen-Ntod] = signal[:,-(fastlen//2-Ntod):]
+
+        signal_padded[:,:Ntod] = signal[:,:]
+        signal_padded[:,Ntod:Ntod*2] = signal[:,::-1]
+        signal_padded[:,Ntod*2:] = np.nanmean(signal[:,:400], axis=-1)[:,None]
+
+        freq_full = np.fft.rfftfreq(fastlen)*samprate
+        W = 1.0/(1 + (freq_full/fknee)**alpha)
+        # return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
+        # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
+        return irfft(rfft(signal_padded)*W, n=fastlen).real[:,:Ntod]
+
+
+    def lowpass_filter_new(self, signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
+        Ntod = signal.shape[-1]
+        signal_padded = np.zeros((1024, fastlen))
+        x = np.linspace(0, 1, Ntod)
+        c0 = np.nanmean(signal[:,:1000], axis=-1)
+        c1 = np.nanmean(signal[:,-1000:], axis=-1) - c0
+        lin_fit = c1[:,None]*x[None,:] + c0[:,None]
+        signal_padded[:,:Ntod] = signal - lin_fit
+        freq_full = np.fft.rfftfreq(fastlen)*samprate
+        W = 1.0/(1 + (freq_full/fknee)**alpha)
+        # return irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod] + lin_fit
+        return irfft(rfft(signal_padded)*W, n=Ntod).real[:,:Ntod] + lin_fit
+
+
     def run(self, l2):
         if not self.use_ctypes:
-            Ntod = l2.tod.shape[-1]
-            fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times_owl33_10runs.npy")
-            search_start = int(Ntod*1.05)
-            search_stop = int(Ntod*1.10)  # We add at most 10% to the TOD to find fastest length during FFT.
-            if search_stop < fft_times.shape[-1]:  # If search search is within the catalogue, use it. Otherwise, use scipy.
-                fastlen = np.argmin(fft_times[search_start:search_stop]) + search_start  # Find fastest FFT time within the search length.
-            else:
-                fastlen = next_fast_len(Ntod)
+            # Ntod = l2.tod.shape[-1]
+            # fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times_owl33_10runs.npy")
+            # search_start = int(Ntod*1.05)
+            # search_stop = int(Ntod*1.10)  # We add at most 10% to the TOD to find fastest length during FFT.
+            # if search_stop < fft_times.shape[-1]:  # If search search is within the catalogue, use it. Otherwise, use scipy.
+            #     fastlen = np.argmin(fft_times[search_start:search_stop]) + search_start  # Find fastest FFT time within the search length.
+            # else:
+            #     fastlen = next_fast_len(Ntod)
             # fastlen = next_fast_len(2*Ntod)
             # print(Ntod, fastlen)
             for feed in range(l2.Nfeeds):
                 for sb in range(l2.Nsb):
-                    tod_lowpass = lowpass_filter_new(l2.tod[feed, sb], fastlen, num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    # tod_lowpass = lowpass_filter_new(l2.tod[feed, sb], fastlen, num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    tod_lowpass = self.lowpass_filter(l2.tod[feed, sb], num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
