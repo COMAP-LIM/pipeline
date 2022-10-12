@@ -6,6 +6,16 @@ class LoadFromFile(argparse.Action):
             # parse arguments in the file and store them in the target namespace
             parser.parse_args(f.read().split(), namespace)
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 parser = argparse.ArgumentParser()
 
@@ -20,13 +30,13 @@ parser.add_argument("--obsid_start",        type=int,   default=0,          help
 parser.add_argument("--obsid_stop",         type=int,   default=9999999,    help="Last obsid to include.")
 
 ### Paths and files
-parser.add_argument("--level1_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level1/",    help="Path to level1 files.")
-parser.add_argument("--level2_dir",         type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/level2/Ka/", help="Location of level2 files (made by l2gen).")
-parser.add_argument("--log_dir",            type=str,   default="/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/logs/", help="Path to outputed logs.")
-# parser.add_argument("--map_dir",            type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/maps/",      help="(unused) Location of map files (made by tod2comap).")
-parser.add_argument("--cal_database_file",  type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", help="Location of calibration hdf5 database.")
+parser.add_argument("--level1_dir",         type=str,      default="/mn/stornext/d22/cmbco/comap/protodir/level1/",    help="Path to level1 files.")
+parser.add_argument("--level2_dir",         type=str,      default="/mn/stornext/d22/cmbco/comap/protodir/level2/Ka/", help="Location of level2 files (made by l2gen).")
+parser.add_argument("--log_dir",            type=str,      default="/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/logs/", help="Path to outputed logs.")
+parser.add_argument("--map_dir",            type=str,      default="/mn/stornext/d22/cmbco/comap/protodir/maps/",      help="(unused) Location of map files (made by tod2comap).")
+parser.add_argument("--cal_database_file",  type=str,      default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5", help="Location of calibration hdf5 database.")
 
-parser.add_argument("--write_inter_files",  type=bool,  default=False,  help="Write intermediate level2 files after each filter.")
+parser.add_argument("--write_inter_files",  type=str2bool, default=False,  help="Write intermediate level2 files after each filter.")
 
 
 ###### FILTER SETTINGS ######
@@ -47,15 +57,15 @@ parser.add_argument("--n_pca_comp",         type=int,   default=4,      help="(p
 # parser.add_argument("--n_feed_pca_comp",    type=int,   default=4,      help="[feedpca] Number of per-feed PCA components to be subtracted.")
 
 ### Masking
-parser.add_argument("--box_sizes",          type=int,   default=[32, 128, 512],     nargs="+",  help="(mask) Size of masking boxes.")
-parser.add_argument("--stripe_sizes",       type=int,   default=[32, 128, 1024],    nargs="+",  help="(mask) Size of masking stripes.")
-parser.add_argument("--n_sigma_chi2_box",   type=float, default=[6.0, 6.0, 6.0],    nargs="+",  help="(mask) Sigma tolerance of chi2 box cuts.")
-parser.add_argument("--n_sigma_chi2_stripe",type=float, default=[6.0, 6.0, 6.0],    nargs="+",  help="(mask) Sigma tolerance of chi2 stripe cuts.")
-parser.add_argument("--n_sigma_mean_box",   type=float, default=[6.0, 10.0, 14.0],  nargs="+",  help="(mask) Sigma tolerance of mean box cuts.")
-parser.add_argument("--n_sigma_prod_box",   type=float, default=[6.0, 5.0, 4.0],    nargs="+",  help="(mask) Sigma tolerance of product box cuts.")
-parser.add_argument("--n_sigma_prod_stripe",type=float, default=[6.0, 5.0, 4.0],    nargs="+",  help="(mask) Sigma tolerance of product stripe cuts.")
-parser.add_argument("--prod_offset",        type=int,   default=16,                             help="(mask) Offset length in box and stripe product test.")
-parser.add_argument("--write_C_matrix",     type=bool,  default=False,                          help="(mask) Whether to write corr-matrix (and template) to file. Warning: It's big, do not use for large runs.")
+parser.add_argument("--box_sizes",          type=int,      default=[32, 128, 512],     nargs="+",  help="(mask) Size of masking boxes.")
+parser.add_argument("--stripe_sizes",       type=int,      default=[32, 128, 1024],    nargs="+",  help="(mask) Size of masking stripes.")
+parser.add_argument("--n_sigma_chi2_box",   type=float,    default=[6.0, 6.0, 6.0],    nargs="+",  help="(mask) Sigma tolerance of chi2 box cuts.")
+parser.add_argument("--n_sigma_chi2_stripe",type=float,    default=[6.0, 6.0, 6.0],    nargs="+",  help="(mask) Sigma tolerance of chi2 stripe cuts.")
+parser.add_argument("--n_sigma_mean_box",   type=float,    default=[6.0, 10.0, 14.0],  nargs="+",  help="(mask) Sigma tolerance of mean box cuts.")
+parser.add_argument("--n_sigma_prod_box",   type=float,    default=[6.0, 5.0, 4.0],    nargs="+",  help="(mask) Sigma tolerance of product box cuts.")
+parser.add_argument("--n_sigma_prod_stripe",type=float,    default=[6.0, 5.0, 4.0],    nargs="+",  help="(mask) Sigma tolerance of product stripe cuts.")
+parser.add_argument("--prod_offset",        type=int,      default=16,                             help="(mask) Offset length in box and stripe product test.")
+parser.add_argument("--write_C_matrix",     type=str2bool, default=False,                          help="(mask) Whether to write corr-matrix (and template) to file. Warning: It's big, do not use for large runs.")
 
 ### Decimation
 parser.add_argument("--decimation_freqs",   type=int,   default=64,     help="(dec) Number of frequencies to decimate each sideband into, from the original 1024.")
