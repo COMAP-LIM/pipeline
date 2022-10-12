@@ -55,4 +55,4 @@ owl20:16
 - [ ] **Signal injection simulation filter**: Filter which reads a simulation cube, and insertes it into the TOD.
 - [ ] **PCA optimizations**: Currently using SKLearn PCA filter, which isn't parallelized. Want a Ctypes module which calculates and removes a single PCA component.
 - [ ] **Adaptive number of PCA modes**: Instead of a static number of PCA modes, calculate and remove modes until some criteria is reached (eigenvalue threshold, probably).
-- [ ] **Finish frequency filter**: The implemented frequency filter does not seem to be working optimally, and some debuging is required.
+- [ ] **Finish frequency filter**: The implemented frequency filter does not seem to be working optimally, and some debuging is required.
