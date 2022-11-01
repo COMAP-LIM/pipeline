@@ -268,9 +268,9 @@ class Polynomial_filter(Filter):
                 b = np.zeros((l2.Nfreqs, 2))
                 b[:,0] = np.ones(l2.Nfreqs)
                 b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
+                b[~l2.freqmask[ifeed,isb],:] = 0
                 b[:,0] /= np.linalg.norm(b[:,0])
                 b[:,1] /= np.linalg.norm(b[:,1])
-                b[~l2.freqmask[ifeed,isb],:] = 0
                 l2.corr_template[ifeed,l2.Nfreqs*isb:l2.Nfreqs*(isb+1),l2.Nfreqs*isb:l2.Nfreqs*(isb+1)] += -b.dot(b.T)
 
 
