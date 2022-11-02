@@ -283,6 +283,7 @@ class Frequency_filter(Filter):
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.prior_file = params.freqfilter_prior_file
+        self.use_prior = params.freqfilter_use_prior
 
 
     def PS_1f(self, freqs, sigma0, fknee, alpha, wn=True, Wiener=False, fknee_W=0.01, alpha_W=-4.0):
@@ -325,7 +326,7 @@ class Frequency_filter(Filter):
             Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
             sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
             sigma0_est = np.mean(sigma0_est[sigma0_est != 0])
-            Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
+            Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.pinv(P.T.dot(P))).dot(P.T)
             RHS = np.fft.rfft(F.T.dot(Z).dot(y))
             z = F.T.dot(Z).dot(F)
             a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
@@ -426,30 +427,38 @@ class Frequency_filter(Filter):
                 F[l2.freqmask[feed,sb] == 0, :] = 0
 
                 # Some cuts Håvard included:
-                # end_cut = 100
-                # y[:4] = 0
-                # y[-end_cut:] = 0
-                # P[:4] = 0
-                # P[-end_cut:] = 0
-                # F[:4] = 0
-                # F[-end_cut:] = 0
+                end_cut = 100
+                y[:4] = 0
+                y[-end_cut:] = 0
+                P[:4] = 0
+                P[-end_cut:] = 0
+                F[:4] = 0
+                F[-end_cut:] = 0
 
                 P[~np.isfinite(P)] = 0
                 F[~np.isfinite(F)] = 0
 
                 if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
-                    a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
-                    # a, m = self.gain_temp_sep(y, P, F)  # No prior
+                    if self.use_prior:
+                        a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                    else:
+                        a, m = self.gain_temp_sep(y, P, F)
                 else:
                     a = np.zeros((1, l2.Ntod))
                     m = np.zeros((2, l2.Ntod))
 
                 l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
 
-                b = P.copy()
+                # the b-vector which defines the correlation template contains the rows of F and P,
+                # unless there is a prior on F, in which case it contributes negligibly, and we omit it.
+                b = np.zeros((l2.Nfreqs, 3))
+                b[:,:2] = P[:]
+                if not self.use_prior:  # Set third column to F if there is no prior, otherwise it stays as 0 (not contributing to the final outer product).
+                    b[:,2] = F[:,0]
                 b[~np.isfinite(b)] = 0
-                b[:,0] /= np.linalg.norm(b[:,0])
-                b[:,1] /= np.linalg.norm(b[:,1])
+                for i in range(b.shape[-1]):
+                    b[:,i] /= np.linalg.norm(b[:,i])
+
                 l2.corr_template[feed, l2.Nfreqs*sb:l2.Nfreqs*(sb+1), l2.Nfreqs*sb:l2.Nfreqs*(sb+1)] += -b.dot(b.T)
 
                 l2.tofile_dict["freqfilter_P"][feed, sb] = P

@@ -48,6 +48,7 @@ parser.add_argument("--gain_norm_alpha",    type=float, default=4.0,    help="(n
 # parser.add_argument("--polyorder",          type=int,   default=1,      help="(unused)(poly) Order of the frequency polynomial to be subtracted.")
 
 ### Frequency filter
+parser.add_argument("--freqfilter_use_prior",  type=str2bool,   default=True, help="(freq) Whether to use a prior on the gain term in the frequency filter.")
 parser.add_argument("--freqfilter_prior_file", type=str,   default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Cf_prior.h5", help="(freq) Location of hdf5 file which contains sigma0, fknee and alpha for the freqfilter PS prior.")
 
 ### PCA filter
