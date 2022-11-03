@@ -35,6 +35,7 @@ class level2_file:
             self.scan_stop_idx_hk = np.searchsorted(self.hk_times, self.mjd_stop, side="right")
             self.tod_times = self.tod_times[self.scan_start_idx:self.scan_stop_idx]
             self.tod_times_seconds = (self.tod_times-self.tod_times[0])*24*60*60
+            self.samprate = 1.0/(self.tod_times_seconds[1] - self.tod_times_seconds[0])
             self.array_features = f["/hk/array/frame/features"][()]
             self.array_time     = f["/hk/array/frame/utc"][()]
             self.az             = f["/spectrometer/pixel_pointing/pixel_az"][:,self.scan_start_idx:self.scan_stop_idx]
@@ -102,6 +103,7 @@ class level2_file:
             f["tod"] = self.tod
             f["tod_time"] = self.tod_times
             f["mjd_start"] = self.tod_times[0]
+            f["samprate"] = self.samprate
             f["tod_mean"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
             # f["freq_bin_edges"] = self.freq_bin_edges
