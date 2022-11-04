@@ -337,7 +337,7 @@ class Frequency_filter(Filter):
             RHS = F.T.dot(Z).dot(y)
             z = F.T.dot(Z).dot(F)
             a_bestfit = RHS/z
-        m_bestfit = np.linalg.inv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
+        m_bestfit = np.linalg.pinv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
         
         return a_bestfit, m_bestfit
 
@@ -585,6 +585,7 @@ class Masking(Filter):
         rank = comm.Get_rank()
 
         l2_local = copy.deepcopy(l2)
+        premask_tofile_dict_keys = list(l2_local.tofile_dict.keys())  # Store what keys where in the "tofile_dict" prior to premask filters.
         
         for masking_filter in l2.filter_list:  # Look through filter list and see if any filter needs to be run prior to masking.
             if masking_filter.run_when_masking:
@@ -594,8 +595,12 @@ class Masking(Filter):
                 filter_local.run(l2_local)
                 del(filter_local)
                 if self.params.write_inter_files:
-                    l2_local.write_level2_data(name_extension=f"_mask_{masking_filter.name}")
+                    l2_local.write_level2_data(name_extension=f"_premask_{masking_filter.name}")
                 logging.debug(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+
+        for key in l2_local.tofile_dict.keys():
+            if not key in premask_tofile_dict_keys:  # If something new was added to the tofile_dict of l2_local during the premask filters, we need to explicitly move it to the main l2 file not to lose them.
+                l2.tofile_dict[f"premask_{key}"] = l2_local.tofile_dict[key]
 
         if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
             with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
