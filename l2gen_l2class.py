@@ -101,7 +101,7 @@ class level2_file:
             # Hardcoded level2 parameters:
             f["feeds"] = self.feeds
             f["tod"] = self.tod
-            f["tod_time"] = self.tod_times
+            f["time"] = self.tod_times
             f["mjd_start"] = self.tod_times[0]
             f["samprate"] = self.samprate
             f["tod_mean"] = self.tod_mean
