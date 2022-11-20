@@ -651,34 +651,75 @@ class PCA_filter(Filter):
     run_when_masking = True
     has_corr_template = False
 
-    def __init__(self, params, omp_num_threads=2):
+    def __init__(self, params, omp_num_threads=2, use_ctypes=True):
         self.omp_num_threads = omp_num_threads
         self.n_pca_comp = params.n_pca_comp
+        self.use_ctypes = use_ctypes
     
-    def run(self, l2):
-        pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
-        # pca_comp = np.zeros((self.N_pca_modes, l2.Ntod))
-        N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
-        M = l2.tod.reshape(N, l2.Ntod)
-        M = M[l2.freqmask.reshape(N), :]
-        M[~np.isfinite(M)] = 0
-        M = M[np.sum(M != 0, axis=-1) != 0]
-        if M.shape[0] > 4:
-            pca = PCA(n_components=4, random_state=49)
-            comps = pca.fit_transform(M.T)
-            del(pca)
+    def run(self, l2, masking_run=False):
+        if not self.use_ctypes:
+            pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            # pca_comp = np.zeros((self.N_pca_modes, l2.Ntod))
+            N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
+            M = l2.tod.reshape(N, l2.Ntod)
+            M = M[l2.freqmask.reshape(N), :]
+            M[~np.isfinite(M)] = 0
+            M = M[np.sum(M != 0, axis=-1) != 0]
+            if M.shape[0] > 4:
+                pca = PCA(n_components=4, random_state=49)
+                comps = pca.fit_transform(M.T)
+                del(pca)
+            else:
+                comps = np.zeros((l2.Ntod, self.n_pca_comp))
+            del(M)
+            for i in range(self.n_pca_comp):
+                comps[:,i] /= np.linalg.norm(comps[:,i])
+            for ifeed in range(l2.Nfeeds):
+                ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
+                pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
+            l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+            l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
         else:
-            comps = np.zeros((l2.Ntod, self.n_pca_comp))
-        del(M)
-        for i in range(self.n_pca_comp):
-            comps[:,i] /= np.linalg.norm(comps[:,i])
-        for ifeed in range(l2.Nfeeds):
-            ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
-            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
-            pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-        l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
-        l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
-
+            pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            pca_comp = np.zeros((self.n_pca_comp, l2.Ntod))
+            n = l2.Nfeeds*l2.Nsb*l2.Nfreqs
+            p = l2.Ntod
+            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
+            PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+            #float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
+            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            PCAlib.PCA.argtypes = [float32_array2, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+            max_iter = 100
+            err_tol = 1e-12
+            for i in range(4):
+                t0 = time.time()
+                M = l2.tod.reshape((n, p))
+                M = M[l2.freqmask.reshape(n), :]
+                M[~np.isfinite(M)] = 0
+                M = M[np.sum(M != 0, axis=-1) != 0]
+                if M.shape[0] > 4:
+                    n_actual = M.shape[0]
+                    r = np.ones(p)
+                    r /= np.linalg.norm(r)
+                    err = np.zeros(max_iter)
+                    print("1:", time.time() - t0)
+                    # print(M.shape)
+                    # print(n, n_actual, p)
+                    # print(np.sum(~np.isfinite(M)))
+                    t0 = time.time()
+                    PCAlib.PCA(M, r, err, n_actual, p, max_iter, err_tol)
+                    print("2:", time.time() - t0)
+                    t0 = time.time()
+                    pca_comp[i] = r
+                    for ifeed in range(l2.Nfeeds):
+                        ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
+                        l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+                        pca_ampl[i,ifeed] = ak
+                    print("3:", time.time() - t0)
+            l2.tofile_dict["pca_ampl"] = pca_ampl
+            l2.tofile_dict["pca_comp"] = pca_comp
 
 
 class PCA_feed_filter(Filter):
@@ -706,51 +747,108 @@ class PCA_feed_filter(Filter):
             #     b[:,i] /= np.linalg.norm(b[:,i])
             # l2.corr_template[ifeed] += -b.dot(b.T)
 
-    def __init__(self, params, omp_num_threads=2):
+    def __init__(self, params, omp_num_threads=2, use_ctypes=True):
         self.omp_num_threads = omp_num_threads
         self.n_pca_comp = params.n_pca_comp
         self.deci_factor = 16
+        self.params = params
+        self.use_ctypes = use_ctypes
     
-    def run(self, l2):
+    def run(self, l2, masking_run=False):
         self.N_deci_freqs = l2.Nfreqs//self.deci_factor
 
         pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         pca_comp = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Ntod))
 
         N = l2.Nsb*self.N_deci_freqs
+        
+        if masking_run and self.params.write_C_matrix:
+            l2.tofile_dict["C_template_pcaf"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs, 2*l2.Nfreqs))
 
         # weight = 1.0/np.nanvar(l2.tod, axis=-1)
-        weight = 1.0/l2.Tsys**2
-        weight[~l2.freqmask] = 0.0
-        for ifeed in range(l2.Nfeeds):
-            M = np.zeros((N, l2.Ntod))
-            total_weight = np.nansum(weight, axis=(1,2))
-            for isb in range(l2.Nsb):
-                for ifreq in range(self.N_deci_freqs):
-                    i = isb*self.N_deci_freqs + ifreq
-                    M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
-                    w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
-                    M[i,:] /= w
-                    M[i,:] *= np.sqrt(w)
-            M[~np.isfinite(M)] = 0
-            M = M[np.sum(M != 0, axis=-1) != 0]
-            if M.shape[0] < 4:
-                continue
-            pca = PCA(n_components=4, random_state=21)
-            comps = pca.fit_transform(M.T)
-            del(M, pca)
-            for i in range(self.n_pca_comp):
-                comps[:,i] /= np.linalg.norm(comps[:,i])
-            ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
-            l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
-            pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-            pca_comp[:,ifeed] = np.transpose(comps, (1,0))
+        if not self.use_ctypes:
+            weight = 1.0/l2.Tsys**2
+            weight[~l2.freqmask] = 0.0
+            for ifeed in range(l2.Nfeeds):
+                M = np.zeros((N, l2.Ntod))
+                for isb in range(l2.Nsb):
+                    for ifreq in range(self.N_deci_freqs):
+                        i = isb*self.N_deci_freqs + ifreq
+                        M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
+                        w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+                        M[i,:] /= w
+                        M[i,:] *= np.sqrt(w)
+                M[~np.isfinite(M)] = 0
+                M = M[np.sum(M != 0, axis=-1) != 0]
+                if M.shape[0] < 4:
+                    continue
+                pca = PCA(n_components=4, random_state=21)
+                comps = pca.fit_transform(M.T)
+                del(M, pca)
+                for i in range(self.n_pca_comp):
+                    comps[:,i] /= np.linalg.norm(comps[:,i])
+                ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
+                pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
+                pca_comp[:,ifeed] = np.transpose(comps, (1,0))
+        else:
+            n = l2.Nsb*l2.Nfreqs
+            p = l2.Ntod
+            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
+            PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+            #float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
+            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            PCAlib.PCA.argtypes = [float32_array2, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+            max_iter = 100
+            err_tol = 1e-12
+            weight = 1.0/l2.Tsys**2
+            weight[~l2.freqmask] = 0.0
+            for icomp in range(4):
+                for ifeed in range(l2.Nfeeds):
+                    M = np.zeros((N, l2.Ntod), dtype=np.float32)
+                    for isb in range(l2.Nsb):
+                        for ifreq in range(self.N_deci_freqs):
+                            i = isb*self.N_deci_freqs + ifreq
+                            M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
+                            w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+                            M[i,:] /= w
+                            M[i,:] *= np.sqrt(w)
+                    M[~np.isfinite(M)] = 0
+                    M = M[np.sum(M != 0, axis=-1) != 0]
+                    if M.shape[0] < 4:
+                        continue
+                    t0 = time.time()
+                    n_actual = M.shape[0]
+                    r = np.ones(p)
+                    r /= np.linalg.norm(r)
+                    err = np.zeros(max_iter)
+                    print("1:", time.time() - t0)
+                    t0 = time.time()
+                    PCAlib.PCA(M, r, err, n_actual, p, max_iter, err_tol)
+                    ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
+                    l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+                    pca_ampl[icomp,ifeed] = ak
+                    pca_comp[icomp,ifeed] = r
 
-            # b = pca_ampl[:,ifeed].reshape((self.n_pca_comp, l2.Nsb*l2.Nfreqs)).T
-            # b[~np.isfinite(b)] = 0
-            # for i in range(4):
-            #     b[:,i] /= np.linalg.norm(b[:,i])
-            # l2.corr_template[ifeed] += -b.dot(b.T)
+                
+
+            if masking_run:
+                b = pca_ampl[:,ifeed].reshape((self.n_pca_comp, l2.Nsb*l2.Nfreqs)).T
+                b[~np.isfinite(b)] = 0
+                b[~l2.freqmask[ifeed].flatten()] = 0.0
+                if (b != 0).any():
+                    template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+                    l2.corr_template[ifeed] += template
+                    mask = l2.freqmask[ifeed].flatten()
+                    template[~mask,:] = 0.0
+                    template[:,~mask] = 0.0
+                else:
+                    template = np.zeros((l2.Nfreqs*4, l2.Nfreqs*4))
+                if l2.params.write_C_matrix:
+                    l2.tofile_dict["C_template_pcaf"][ifeed,0] += template[l2.Nfreqs*0:l2.Nfreqs*2,l2.Nfreqs*0:l2.Nfreqs*2]
+                    l2.tofile_dict["C_template_pcaf"][ifeed,1] += template[l2.Nfreqs*2:l2.Nfreqs*4,l2.Nfreqs*2:l2.Nfreqs*4]
+
 
         l2.tofile_dict["pca_feed_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
         l2.tofile_dict["pca_feed_comp"] = pca_comp#[::-1]
