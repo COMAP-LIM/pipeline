@@ -29,7 +29,6 @@ inline void normalize_vector(double *vec, int size){
 
 inline double dot_product(double *x, double *y, int size){
     double dot = 0.0;
-    // #pragma omp parallel for reduction(+:dot)
     for(int i=0; i<size; i++){
         dot += x[i]*y[i];
     }
@@ -38,7 +37,6 @@ inline double dot_product(double *x, double *y, int size){
 
 inline double dot_product_float_double(float *x, double *y, int size){
     double dot = 0.0;
-    // #pragma omp parallel for reduction(+:dot)
     for(int i=0; i<size; i++){
         dot += x[i]*y[i];
     }
@@ -49,7 +47,6 @@ inline double dot_product_float_double(float *x, double *y, int size){
 extern "C"
 void PCA(float *X, double *r, double *err, int n, int p, int max_iter, double err_tol){
     double *s = new double[p];
-    // double *x = new double[p];
     double lambda = 0.0;
 
 
@@ -59,50 +56,11 @@ void PCA(float *X, double *r, double *err, int n, int p, int max_iter, double er
         }
         #pragma omp parallel for reduction(+:s[:p])
         for(int row=0; row<n; row++){
-
-            // double *x = new double[p];
-            // for(int col=0; col<p; col++){
-            //     x[col] = X[row*p + col];
-            // }
             double xr_dot = dot_product_float_double(&X[row*p], r, p);
-            // for(int col=0; col<p; col++){
-            //     x[col] *= xr_dot;
-            // }
             for(int col=0; col<p; col++){
-                // s[col] += x[col]*xr_dot;
                 s[col] += X[row*p + col]*xr_dot;
             }
         }
-        // const int nthreads = omp_get_num_threads();
-        // const int nthreads = 4;
-        // double *s_private = new double[p*nthreads];
-        // cout << nthreads << endl;
-
-        // #pragma omp parallel
-        // {
-        //     const int ithread = omp_get_thread_num();
-        //     double *x = new double[p];
-        //     #pragma omp for
-        //     for(int row=0; row<n; row++){
-        //         for(int col=0; col<p; col++){
-        //             x[col] = X[row*p + col];
-        //         }
-        //         double xr_dot = dot_product(x, r, p);
-        //         for(int col=0; col<p; col++){
-        //             x[col] *= xr_dot;
-        //         }
-        //         for(int col=0; col<p; col++){
-        //             s_private[p*ithread + col] += x[col];
-        //         }
-        //     }
-        //     #pragma omp for
-        //     for(int col=0; col<p; col++){
-        //         for(int i=0; i<nthreads; i++)
-        //         {
-        //             s[col] += s_private[i*p + col];
-        //         }
-        //     }
-        // }
 
         lambda = dot_product(r, s, p);
         for(int col=0; col<p; col++){
