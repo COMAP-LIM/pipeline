@@ -1,7 +1,5 @@
-import argparse
-from typing import Dict, Any
+from __future__ import annotations
 import h5py
-import numpy as np
 import numpy.typing as ntyping
 from dataclasses import dataclass, field
 import re
@@ -12,7 +10,7 @@ class L2file:
     """COMAP l2 data class"""
 
     path: str
-    _data: Dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+    _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
 
     def read_l2(self) -> None:
         """Function for reading l2 data from file and fill data dictionary of Map class"""

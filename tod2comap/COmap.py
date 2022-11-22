@@ -1,7 +1,5 @@
-import argparse
-from typing import Dict, Any
+from __future__ import annotations
 import h5py
-import numpy as np
 import numpy.typing as ntyping
 from dataclasses import dataclass, field
 import re
@@ -12,7 +10,7 @@ class COmap:
     """COMAP map data class"""
 
     path: str
-    _data: Dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+    _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
 
     def read_map(self) -> None:
         """Function for reading map data from file and fill data dictionary of Map class"""
@@ -23,7 +21,7 @@ class COmap:
         # Open and read file
         with h5py.File(self.path, "r") as infile:
             for key, value in infile.items():
-                if isinstance(value, h5py._hl.group.Group):
+                if isinstance(value, h5py.Group):
                     # If value is a group we want to copy the data in that group
                     if key == "multisplits":
                         try:

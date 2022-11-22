@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 import numpy.typing as ntyping
 from COmap import COmap
+from L2file import L2file
 
 import warnings
 
@@ -95,6 +96,14 @@ class Mapmaker:
                             <= self.params.obsid_stop
                         ):
                             scanid = int(lines[i + k + 1][0])
+
+                            l2_filename = f"{fieldname}_{scanid:09}.h5"
+                            l2_filename = os.path.join(
+                                self.params.level2_dir,
+                                fieldname,
+                                l2_filename,
+                            )
+
                             mjd_start = float(lines[i + k + 1][1])
                             mjd_stop = float(lines[i + k + 1][2])
                             runlist.append(
@@ -105,6 +114,7 @@ class Mapmaker:
                                     scantype,
                                     fieldname,
                                     l1_filename,
+                                    l2_filename,
                                 ]
                             )
                         else:
@@ -121,7 +131,16 @@ class Mapmaker:
         self.runlist = runlist
 
     def run(self):
-        return NotImplemented
+
+        for scan in self.runlist:
+            l2path = scan[-1]
+
+            l2data = L2file(path=l2path)
+            l2data.read_l2()
+            print("field" in l2data.keys)
+            print(l2data["field"])
+
+            break
 
     def get_pointing_matrix(
         self, ra: ntyping.ArrayLike, dec: ntyping.ArrayLike
@@ -208,6 +227,7 @@ def main():
     else:
         omp_num_threads = 1
     tod2comap = Mapmaker(omp_num_threads=omp_num_threads)
+    tod2comap.run()
 
 
 if __name__ == "__main__":
