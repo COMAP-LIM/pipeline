@@ -1,5 +1,5 @@
 // Compile as
-// gcc -shared mapbinner.c -o mapbinner.so.1 -fPIC -fopenmp
+// gcc  -shared mapbinner.c -o mapbinner.so.1 -fPIC -fopenmp -Ofast -std=c99 -g
 
 #include <stdio.h>
 #include <math.h>
