@@ -104,7 +104,7 @@ class level2_file:
             f["time"] = self.tod_times
             f["mjd_start"] = self.tod_times[0]
             f["samprate"] = self.samprate
-            f["tod_mean"] = self.tod_mean
+            f["mean_tp"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
             # f["freq_bin_edges"] = self.freq_bin_edges
             # f["freq_bin_centers"] = self.freq_bin_centers
