@@ -1,5 +1,6 @@
 from __future__ import annotations
 import h5py
+import numpy as np
 import numpy.typing as ntyping
 from dataclasses import dataclass, field
 import re
@@ -9,7 +10,7 @@ import re
 class COmap:
     """COMAP map data class"""
 
-    path: str
+    path: str = field(default_factory=str)
     _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
 
     def read_map(self) -> None:
@@ -47,6 +48,75 @@ class COmap:
                 self._data["is_pca_subtr"] = False
 
         self.keys = self._data.keys()
+
+    def init_emtpy_map(
+        self, field_info: tuple, decimation_freqs: int, make_nhit: bool = False
+    ) -> None:
+        """Methode used to set up empty maps and field grid for given field.
+        Both an empty numerator and denominator map are generated to acumulate
+        data during binning of TODs. Optionally an empty hit map is generated.
+
+
+        Args:
+            field_info (tuple): Tuple containing;
+                                * NSIDE: Number of pixels in RA and Dec.
+                                * PIX_RES: pixel resolution (in degrees) in RA and Dec as
+                                  an ArrayLike with size 2.
+                                * FIELD_CENTER: RA and Dec field center coordinates (in degrees)
+                                  as an ArrayLike with size 2.
+            decimation_freqs (float): Number of frequency channels after decimation in l2gen.
+            make_nhit (bool, optional): Boolean specifying whether to make an empty hit map.
+        """
+        GRID_SIZE, PIX_RES, FIELD_CENTER = field_info
+
+        # Number of feeds
+        NFEED = 20
+
+        # Number of sidebands
+        NSB = 4
+
+        if make_nhit:
+            # Empty hit map
+            self._data["nhit"] = np.zeros(
+                (NFEED, GRID_SIZE, GRID_SIZE, NSB * decimation_freqs), dtype=np.int32
+            )
+
+        # Empty denomitator map containing sum TOD / sigma^2
+        self._data["numerator_map"] = np.zeros(
+            (NFEED, GRID_SIZE, GRID_SIZE, NSB * decimation_freqs), dtype=np.float32
+        )
+
+        # Empty denomitator map containing sum 1 / sigma^2
+        self._data["denominator_map"] = np.zeros_like(self._data["numerator_map"])
+
+        # RA/Dec grid
+        RA = np.zeros(GRID_SIZE)
+        DEC = np.zeros(GRID_SIZE)
+        dRA = PIX_RES[0] / np.abs(np.cos(np.radians(FIELD_CENTER[1])))
+        dDEC = PIX_RES[1]
+
+        # Min values in RA/Dec. directions
+        if GRID_SIZE % 2 == 0:
+            RA_min = FIELD_CENTER[0] - dRA * GRID_SIZE / 2.0
+            DEC_min = FIELD_CENTER[1] - dDEC * GRID_SIZE / 2.0
+
+        else:
+            RA_min = FIELD_CENTER[0] - dRA * GRID_SIZE / 2.0 - dRA / 2.0
+            DEC_min = FIELD_CENTER[1] - dDEC * GRID_SIZE / 2.0 - dDEC / 2.0
+
+        # Defining piRAel centers
+        RA[0] = RA_min + dRA / 2
+        DEC[0] = DEC_min + dDEC / 2
+
+        for i in range(1, GRID_SIZE):
+            RA[i] = RA[i - 1] + dRA
+            DEC[i] = DEC[i - 1] + dDEC
+
+        # Save grid in private data dict
+        self._data["ra_centers"] = RA
+        self._data["dec_centers"] = DEC
+        self.ra_min = RA_min
+        self.dec_min = DEC_min
 
     def write_map(self, outpath: str) -> None:
         """Method for writing map data to file.

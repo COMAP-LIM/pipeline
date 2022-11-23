@@ -1,8 +1,8 @@
 from __future__ import annotations
 import h5py
+import numpy as np
 import numpy.typing as ntyping
 from dataclasses import dataclass, field
-import re
 
 
 @dataclass

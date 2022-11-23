@@ -1,8 +1,8 @@
-import argparse
-from typing import Dict, Any
-import h5py
 import numpy as np
 import numpy.typing as ntyping
+import ctypes
+import time
+
 from COmap import COmap
 from L2file import L2file
 
@@ -36,6 +36,13 @@ class Mapmaker:
         self.DRA, self.DDEC = self.params.grid_res
 
         self.FIELD_CENTER = self.params.field_center[self.fieldname]
+
+        if not self.params.map_name:
+            raise ValueError(
+                "A map file name must be specified in parameter file or terminal."
+            )
+
+        self.mapbinner = ctypes.cdll.LoadLibrary("mapbinner.so.1")
 
     def read_params(self):
         from l2gen_argparser import parser
@@ -131,94 +138,204 @@ class Mapmaker:
         self.runlist = runlist
 
     def run(self):
+        """Method running through the provided runlist and binning up maps."""
+
+        # File name of full coadded output map
+        full_map_name = f"{self.fieldname}_{self.params.map_name}.h5"
+        full_map_name = os.path.join(self.params.map_dir, full_map_name)
+
+        # Define and initialize empty map object to acumulate data
+        full_map = COmap(full_map_name)
+        full_map.init_emtpy_map(
+            (self.GRID_SIZE, (self.DRA, self.DDEC), self.FIELD_CENTER),
+            self.params.decimation_freqs,
+            self.params.make_nhit,
+        )
+        self.RA_min = full_map.ra_min
+        self.DEC_min = full_map.dec_min
 
         for scan in self.runlist:
+            print("-" * 20)
+            print(f"Processing scan {scan[0]}")
+
             l2path = scan[-1]
 
+            t0 = time.perf_counter()
+
             l2data = L2file(path=l2path)
+            print("Time to define L2file:", 1e3 * (time.perf_counter() - t0), "ms")
+            t0 = time.perf_counter()
+
             l2data.read_l2()
-            print("field" in l2data.keys)
-            print(l2data["field"])
+            print(
+                "Time to read L2 data from HDF5:",
+                1e3 * (time.perf_counter() - t0),
+                "ms",
+            )
+            t0 = time.perf_counter()
 
-            break
+            self.preprocess_l2data(l2data)
+            print("Time to pre-process:", 1e3 * (time.perf_counter() - t0), "ms")
+            t0 = time.perf_counter()
 
-    def get_pointing_matrix(
-        self, ra: ntyping.ArrayLike, dec: ntyping.ArrayLike
-    ) -> ntyping.ArrayLike:
-        # Read these from file in future
-        FIELDCENT = self.FIELD_CENTER
-        NSIDE = self.GRID_SIZE
-        NPIX = NSIDE**2
+            self.get_pointing_matrix(l2data)
+            print(
+                "Time to compute pointing idx:", 1e3 * (time.perf_counter() - t0), "ms"
+            )
+            t0 = time.perf_counter()
 
-        # RA/Dec grid
-        RA = np.zeros(NSIDE)
-        DEC = np.zeros(NSIDE)
-        dRA = self.DRA / np.abs(np.cos(np.radians(FIELDCENT[1])))
-        dDEC = self.DDEC
+            self.bin_map(full_map, l2data)
+            print("Time to bin map:", 1e3 * (time.perf_counter() - t0), "ms")
+            print("-" * 20)
 
-        # Min values in RA/Dec. directions
-        if NSIDE % 2 == 0:
-            RA_min = FIELDCENT[0] - dRA * NSIDE / 2.0
-            DEC_min = FIELDCENT[1] - dDEC * NSIDE / 2.0
+        self.postprocess_map(full_map)
 
-        else:
-            RA_min = FIELDCENT[0] - dRA * NSIDE / 2.0 - dRA / 2.0
-            DEC_min = FIELDCENT[1] - dDEC * NSIDE / 2.0 - dDEC / 2.0
-        print(FIELDCENT[0] - dRA * NSIDE / 2.0, FIELDCENT[1] - dDEC * NSIDE / 2.0)
+    def preprocess_l2data(
+        self,
+        l2data: L2file,
+    ):
+        """Method that brings the feed infomation in needed datasets
+        to correct correct order."""
 
-        print(
-            FIELDCENT[0] - dRA * NSIDE / 2.0 - dRA / 2.0,
-            FIELDCENT[1] - dDEC * NSIDE / 2.0 - dDEC / 2.0,
+        _, NSB, NFREQ, NSAMP = l2data["tod"].shape
+
+        # Defining empty buffers
+        tod = np.zeros((20, NSB, NFREQ, NSAMP), dtype=np.float32)
+        sigma0 = np.zeros((20, NSB, NFREQ), dtype=np.float32)
+        freqmask = np.zeros((20, NSB, NFREQ), dtype=np.int32)
+        pointing = np.zeros((20, NSAMP, 3), dtype=np.float32)
+
+        # Get index to pixel mapping
+        pixels = l2data["pixels"] - 1
+
+        # Sort pixels to correct buffer position
+        tod[pixels, ...] = l2data["tod"]
+        sigma0[pixels, ...] = l2data["sigma0"]
+        freqmask[pixels, ...] = l2data["freqmask"]
+        pointing[pixels, ...] = l2data["point_cel"]
+
+        # Flip sideband 0 and 2
+        tod[:, (0, 2), :, :] = tod[:, (0, 2), ::-1, :]
+        sigma0[:, (0, 2), :] = sigma0[:, (0, 2), ::-1]
+        freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
+
+        tod = tod.transpose(
+            0,
+            3,
+            1,
+            2,
         )
 
-        # Defining piRAel centers
-        RA[0] = RA_min + dRA / 2
-        DEC[0] = DEC_min + dDEC / 2
+        # Flatten frequency axis
+        tod = tod.reshape(20, NSAMP, NSB * NFREQ)
+        sigma0 = sigma0.reshape(20, NSB * NFREQ).T
+        freqmask = freqmask.reshape(20, NSB * NFREQ).T
 
-        for i in range(1, NSIDE):
-            RA[i] = RA[i - 1] + dRA
-            DEC[i] = DEC[i - 1] + dDEC
+        # Enfore transposition in memory
+        tod = np.ascontiguousarray(tod, dtype=np.float32)
+        sigma0 = np.ascontiguousarray(sigma0, dtype=np.float32)
+        freqmask = np.ascontiguousarray(freqmask, dtype=np.float32)
 
-        RA_min, DEC_min = RA[0], DEC[0]
+        # Pre-compute masking
+        inv_var = 1 / sigma0**2  # Define inverse variance
+        sigma0[freqmask == 0] = 0
 
-        idx = np.round((ra - RA_min) / dRA) * NSIDE + np.round((dec - DEC_min) / dDEC)
-        mask = ~np.logical_or(idx < 0, idx >= NPIX)
-        mask = np.where(mask)[0]
-        return idx.astype(np.int32), mask
+        # Overwrite old
+        l2data["tod"] = tod
+        l2data["sigma0"] = sigma0
+        l2data["inv_var"] = inv_var
+        l2data["freqmask"] = freqmask
+        l2data["point_cel"] = pointing
+
+    def postprocess_map(self, mapdata: COmap) -> None:
+        return NotImplemented
+
+    def get_pointing_matrix(
+        self,
+        l2data: L2file,
+    ) -> None:
+
+        pointing = l2data["point_cel"]
+        ra = pointing[:, :, 0]
+        dec = pointing[:, :, 1]
+
+        # Read these from file in future
+        NSIDE = self.GRID_SIZE
+        NPIX = NSIDE**2
+        NFEED = 20
+
+        idx_ra_allfeed = np.round((ra - self.RA_min) / self.DRA).astype(np.int32)
+        idx_dec_allfeed = np.round((dec - self.DEC_min) / self.DDEC).astype(np.int32)
+
+        idx_pix = idx_dec_allfeed * NSIDE + idx_ra_allfeed
+        pointing_mask = ~np.logical_or(idx_pix < 0, idx_pix >= NPIX)
+        pointing_mask = np.where(pointing_mask)
+
+        # Clip pixel index to 0 for pointing outside field grid.
+        # See further down for how corresponding TOD values are zeroed out.
+        idx_pix[pointing_mask] = 0
+
+        pointing_idx = NSIDE**2 * np.arange(NFEED)[:, None] + idx_pix
+
+        l2data["pointing_index"] = pointing_idx.astype(np.int32)
+
+        # Set TOD values outside field to zero
+        l2data["tod"][pointing_mask[0], pointing_mask[1], :] = 0.0
 
     def bin_map(
-        self, data: COmap, idx: ntyping.ArrayLike, mask: ntyping.ArrayLike
-    ) -> COmap:
-        tod = data["tod"][..., mask]
-        sigma = data["sigma"]
+        self,
+        mapdata: COmap,
+        l2data: L2file,
+    ):
 
-        inv_var = np.ones_like(tod) / sigma[..., None] ** 2
-        nanmask = ~np.isfinite(inv_var)
+        float32_array4 = np.ctypeslib.ndpointer(
+            dtype=ctypes.c_float, ndim=4, flags="contiguous"
+        )  # 4D array 32-bit float pointer object.
 
-        tod[nanmask] = 0.0
-        inv_var[nanmask] = 0.0
+        float32_array3 = np.ctypeslib.ndpointer(
+            dtype=ctypes.c_float, ndim=3, flags="contiguous"
+        )  # 4D array 32-bit float pointer object.
 
-        sidebands, channels, _samples = tod.shape
+        float32_array2 = np.ctypeslib.ndpointer(
+            dtype=ctypes.c_float, ndim=2, flags="contiguous"
+        )  # 4D array 32-bit float pointer object.
 
-        numinator = np.zeros((sidebands, channels, NSIDE * NSIDE))
-        denominator = np.zeros_like(numinator)
-        hits = np.ones(denominator.shape, dtype=np.int32)
+        if self.params.make_nhit:
+            int32_array4 = np.ctypeslib.ndpointer(
+                dtype=ctypes.c_int, ndim=4, flags="contiguous"
+            )  # 4D array 32-bit integer pointer object.
 
-        for sb in range(sidebands):
-            for freq in range(channels):
-                hits[sb, freq] = np.bincount(idx, minlength=NSIDE * NSIDE)
+        int32_array2 = np.ctypeslib.ndpointer(
+            dtype=ctypes.c_int, ndim=2, flags="contiguous"
+        )  # 4D array 32-bit integer pointer object.
 
-                numinator[sb, freq, :] = np.bincount(
-                    idx,
-                    minlength=NSIDE * NSIDE,
-                    weights=tod[sb, freq, ...] * inv_var[sb, freq, ...],
-                )
+        self.mapbinner.bin_map.argtypes = [
+            float32_array3,  # tod
+            float32_array2,  # sigma
+            int32_array2,  # idx_pix
+            float32_array4,  # numerator map
+            float32_array4,  # denominator map
+            ctypes.c_int,  # nfreq
+            ctypes.c_int,  # nsamp
+            ctypes.c_int,  # nside
+            ctypes.c_int,  # nfeed
+            ctypes.c_int,  # nthread
+        ]
 
-                denominator[sb, freq, :] = np.bincount(
-                    idx, minlength=NSIDE * NSIDE, weights=inv_var[sb, freq, ...]
-                )
+        NFEED, NSAMP, NFREQ = l2data["tod"].shape
 
-        return numinator, denominator, hits
+        self.mapbinner.bin_map(
+            l2data["tod"],
+            l2data["inv_var"],
+            l2data["pointing_index"],
+            mapdata["numerator_map"],
+            mapdata["denominator_map"],
+            NFREQ,
+            NFEED,
+            NSAMP,
+            self.GRID_SIZE,
+            self.OMP_NUM_THREADS,
+        )
 
 
 def main():
@@ -226,6 +343,7 @@ def main():
         omp_num_threads = int(os.environ["OMP_NUM_THREADS"])
     else:
         omp_num_threads = 1
+
     tod2comap = Mapmaker(omp_num_threads=omp_num_threads)
     tod2comap.run()
 
