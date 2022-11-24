@@ -47,6 +47,7 @@ class Mapmaker:
                 "A map file name must be specified in parameter file or terminal."
             )
 
+        # Define c-library used for binning maps
         self.mapbinner = ctypes.cdll.LoadLibrary("mapbinner.so.1")
 
     def read_params(self):
@@ -201,7 +202,11 @@ class Mapmaker:
         l2data: L2file,
     ):
         """Method that brings the feed infomation in needed datasets
-        to correct correct order."""
+        to correct correct order for binning to run optimally.
+
+        Args:
+            l2data (L2file): _description_
+        """
 
         _, NSB, NFREQ, NSAMP = l2data["tod"].shape
 
@@ -245,20 +250,34 @@ class Mapmaker:
         inv_var = 1 / sigma0**2  # inverse variance
         inv_var[freqmask == 0] = 0
 
-        # Overwrite old
+        # Overwrite old data
         l2data["tod"] = tod
         l2data["inv_var"] = inv_var
         l2data["freqmask"] = freqmask
         l2data["point_cel"] = pointing
 
+        # Found that transposing the pixels here makes the binning
+        # faster for some reason
+        l2data["point_cel"] = np.ascontiguousarray(
+            l2data["point_cel"].transpose(1, 0, 2)
+        )
+
     def postprocess_map(self, mapdata: COmap) -> None:
+        print("POST", mapdata.keys)
         return NotImplemented
 
     def get_pointing_matrix(
         self,
         l2data: L2file,
     ) -> None:
+        """Method which converts the {RA, DEC} pointing of the
+        level 2 file into a pixel-feed index for later binning the maps.
 
+        Args:
+            l2data (L2file): Input level 2 file object for which
+            to compute the pixel-feed index.
+        """
+        # Get pointing from level 2 object
         pointing = l2data["point_cel"]
         ra = pointing[:, :, 0]
         dec = pointing[:, :, 1]
@@ -268,10 +287,14 @@ class Mapmaker:
         NPIX = NSIDE**2
         NFEED = 20
 
+        # Define {RA, DEC} indecies
         idx_ra_allfeed = np.round((ra - self.RA_min) / self.DRA).astype(np.int32)
         idx_dec_allfeed = np.round((dec - self.DEC_min) / self.DDEC).astype(np.int32)
 
+        # Define flattened pixel index
         idx_pix = idx_dec_allfeed * NSIDE + idx_ra_allfeed
+
+        # Mask all pointings outside of pre-defined map grid
         pointing_mask = ~np.logical_and(idx_pix > 0, idx_pix < NPIX)
         pointing_mask = np.where(pointing_mask)
 
@@ -279,15 +302,12 @@ class Mapmaker:
         # See further down for how corresponding TOD values are zeroed out.
         idx_pix[pointing_mask] = 0
 
-        # pointing_idx = NSIDE**2 * np.arange(NFEED)[:, None] + idx_pix
-        pointing_idx = np.ascontiguousarray(
-            NSIDE**2 * np.arange(NFEED)[None, :] + idx_pix.T
-        )
-
+        # Defining pixel-feed index and append it to level 2 object
+        pointing_idx = NSIDE**2 * np.arange(NFEED)[None, :] + idx_pix
         l2data["pointing_index"] = pointing_idx.astype(np.int32)
 
         # Set TOD values outside field to zero
-        l2data["tod"][pointing_mask[0], pointing_mask[1], :] = 0.0
+        l2data["tod"][pointing_mask[1], pointing_mask[0], :] = 0.0
 
     def bin_map(
         self,
@@ -359,6 +379,7 @@ if __name__ == "__main__":
 
     # TODO:
 
+    # * Fix documentations
     # * Make map saver
     # * Implement MPI over scans
     # * Implement splits
