@@ -28,10 +28,11 @@ extern "C" void bin_map(
     int nfreq,
     int nfeed,
     int nsamp,
-    int nside,
+    int nside_ra,
+    int nside_dec,
     int nthread)
 {
-    int npix = nside * nside * nfeed;
+    int npix = nside_ra * nside_dec * nfeed;
 
     // Looping through data and binning up into maps
     omp_set_num_threads(nthread);
@@ -65,7 +66,7 @@ extern "C" void bin_map(
 extern "C" void bin_nhit_and_map(
     float *tod,
     float *sigma,
-    float *freqmask,
+    int *freqmask,
     int *idx_pix,
     int *nhit,
     float *numerator,
@@ -73,10 +74,11 @@ extern "C" void bin_nhit_and_map(
     int nfreq,
     int nfeed,
     int nsamp,
-    int nside,
+    int nside_ra,
+    int nside_dec,
     int nthread)
 {
-    int npix = nside * nside * nfeed;
+    int npix = nside_ra * nside_dec * nfeed;
 
     // Looping through data and binning up into maps
     omp_set_num_threads(nthread);
@@ -90,6 +92,7 @@ extern "C" void bin_nhit_and_map(
             int time_det_idx = nsamp * d + t;
             for (int f = 0; f < nfreq; f++)
             {
+                // int freq_feed_idx = nfeed * f + d;
                 int freq_feed_idx = nfreq * d + f;
 
                 float inv_var = sigma[freq_feed_idx];
@@ -98,10 +101,10 @@ extern "C" void bin_nhit_and_map(
 
                 int idx_tod = nfreq * time_det_idx + f;
 
-                nhit[idx_map]++;
-
                 numerator[idx_map] += tod[idx_tod] * inv_var;
                 denominator[idx_map] += inv_var;
+
+                nhit[idx_map] += freqmask[freq_feed_idx];
             }
         }
     }
@@ -119,10 +122,12 @@ extern "C" void add_tod2map(
     int nfreq,
     int nfeed,
     int nsamp,
-    int nside,
+    int nside_ra,
+    int nside_dec,
     int nthread)
 {
-    int npix = nside * nside * nfeed;
+    int npix = nside_ra * nside_dec * nfeed;
+    printf("%d %d", nside_ra, nside_dec);
 
     // Looping through data and binning up into maps
     omp_set_num_threads(nthread);
