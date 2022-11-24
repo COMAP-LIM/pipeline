@@ -33,9 +33,14 @@ class Mapmaker:
 
         # Define map grid parameters
         self.GRID_SIZE = self.params.grid_size
-        self.DRA, self.DDEC = self.params.grid_res
 
         self.FIELD_CENTER = self.params.field_center[self.fieldname]
+
+        # Converting Delta RA to physical degrees
+        self.DRA = self.params.grid_res[0] / np.abs(
+            np.cos(np.radians(self.FIELD_CENTER[1]))
+        )
+        self.DDEC = self.params.grid_res[0]
 
         if not self.params.map_name:
             raise ValueError(
@@ -157,7 +162,7 @@ class Mapmaker:
         for scan in self.runlist:
             print("-" * 20)
             print(f"Processing scan {scan[0]}")
-
+            ti = time.perf_counter()
             l2path = scan[-1]
 
             t0 = time.perf_counter()
@@ -186,6 +191,7 @@ class Mapmaker:
 
             self.bin_map(full_map, l2data)
             print("Time to bin map:", 1e3 * (time.perf_counter() - t0), "ms")
+            print("Total time for scan:", 1e3 * (time.perf_counter() - ti))
             print("-" * 20)
 
         self.postprocess_map(full_map)
@@ -228,21 +234,19 @@ class Mapmaker:
 
         # Flatten frequency axis
         tod = tod.reshape(20, NSAMP, NSB * NFREQ)
-        sigma0 = sigma0.reshape(20, NSB * NFREQ).T
-        freqmask = freqmask.reshape(20, NSB * NFREQ).T
+        sigma0 = sigma0.reshape(20, NSB * NFREQ)
+        freqmask = freqmask.reshape(20, NSB * NFREQ)
 
         # Enfore transposition in memory
         tod = np.ascontiguousarray(tod, dtype=np.float32)
-        sigma0 = np.ascontiguousarray(sigma0, dtype=np.float32)
-        freqmask = np.ascontiguousarray(freqmask, dtype=np.float32)
+        # sigma0 = np.ascontiguousarray(sigma0, dtype=np.float32)
 
         # Pre-compute masking
-        inv_var = 1 / sigma0**2  # Define inverse variance
-        sigma0[freqmask == 0] = 0
+        inv_var = 1 / sigma0**2  # inverse variance
+        inv_var[freqmask == 0] = 0
 
         # Overwrite old
         l2data["tod"] = tod
-        l2data["sigma0"] = sigma0
         l2data["inv_var"] = inv_var
         l2data["freqmask"] = freqmask
         l2data["point_cel"] = pointing
@@ -268,14 +272,17 @@ class Mapmaker:
         idx_dec_allfeed = np.round((dec - self.DEC_min) / self.DDEC).astype(np.int32)
 
         idx_pix = idx_dec_allfeed * NSIDE + idx_ra_allfeed
-        pointing_mask = ~np.logical_or(idx_pix < 0, idx_pix >= NPIX)
+        pointing_mask = ~np.logical_and(idx_pix > 0, idx_pix < NPIX)
         pointing_mask = np.where(pointing_mask)
 
         # Clip pixel index to 0 for pointing outside field grid.
         # See further down for how corresponding TOD values are zeroed out.
         idx_pix[pointing_mask] = 0
 
-        pointing_idx = NSIDE**2 * np.arange(NFEED)[:, None] + idx_pix
+        # pointing_idx = NSIDE**2 * np.arange(NFEED)[:, None] + idx_pix
+        pointing_idx = np.ascontiguousarray(
+            NSIDE**2 * np.arange(NFEED)[None, :] + idx_pix.T
+        )
 
         l2data["pointing_index"] = pointing_idx.astype(np.int32)
 
@@ -323,7 +330,6 @@ class Mapmaker:
         ]
 
         NFEED, NSAMP, NFREQ = l2data["tod"].shape
-
         self.mapbinner.bin_map(
             l2data["tod"],
             l2data["inv_var"],
@@ -350,3 +356,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # TODO:
+
+    # * Make map saver
+    # * Implement MPI over scans
+    # * Implement splits

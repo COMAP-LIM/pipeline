@@ -92,7 +92,7 @@ class COmap:
         # RA/Dec grid
         RA = np.zeros(GRID_SIZE)
         DEC = np.zeros(GRID_SIZE)
-        dRA = PIX_RES[0] / np.abs(np.cos(np.radians(FIELD_CENTER[1])))
+        dRA = PIX_RES[0]
         dDEC = PIX_RES[1]
 
         # Min values in RA/Dec. directions
@@ -115,8 +115,8 @@ class COmap:
         # Save grid in private data dict
         self._data["ra_centers"] = RA
         self._data["dec_centers"] = DEC
-        self.ra_min = RA_min
-        self.dec_min = DEC_min
+        self.ra_min = RA[0]
+        self.dec_min = DEC[0]
 
     def write_map(self, outpath: str) -> None:
         """Method for writing map data to file.

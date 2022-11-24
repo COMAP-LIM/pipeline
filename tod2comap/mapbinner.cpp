@@ -45,7 +45,8 @@ extern "C" void bin_map(
             int time_det_idx = nsamp * d + t;
             for (int f = 0; f < nfreq; f++)
             {
-                int freq_feed_idx = nfeed * f + d;
+                // int freq_feed_idx = nfeed * f + d;
+                int freq_feed_idx = nfreq * d + f;
 
                 float inv_var = sigma[freq_feed_idx];
 
@@ -53,9 +54,7 @@ extern "C" void bin_map(
 
                 int idx_tod = nfreq * time_det_idx + f;
 
-                // nhit[idx_map]++;
-
-                // numerator[idx_map] += tod[idx_tod] * inv_var;
+                numerator[idx_map] += tod[idx_tod] * inv_var;
                 denominator[idx_map] += inv_var;
             }
         }
@@ -91,7 +90,7 @@ extern "C" void bin_nhit_and_map(
             int time_det_idx = nsamp * d + t;
             for (int f = 0; f < nfreq; f++)
             {
-                int freq_feed_idx = nfeed * f + d;
+                int freq_feed_idx = nfreq * d + f;
 
                 float inv_var = sigma[freq_feed_idx];
 
@@ -133,7 +132,7 @@ extern "C" void add_tod2map(
     {
         for (int t = 0; t < nsamp; t++)
         {
-            int feed_px_idx = idx_pix[nfeed * t + d];
+            int feed_px_idx = idx_pix[nsamp * d + t];
             int time_det_idx = nsamp * d + t;
             for (int f = 0; f < nfreq; f++)
             {
