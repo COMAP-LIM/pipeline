@@ -165,6 +165,7 @@ class Mapmaker:
             print(f"Processing scan {scan[0]}")
             ti = time.perf_counter()
             l2path = scan[-1]
+            print(l2path)
 
             t0 = time.perf_counter()
 
@@ -195,7 +196,9 @@ class Mapmaker:
             print("Total time for scan:", 1e3 * (time.perf_counter() - ti))
             print("-" * 20)
 
-        self.postprocess_map(full_map)
+        self.postprocess_map(full_map, l2data)
+
+        full_map.write_map()
 
     def preprocess_l2data(
         self,
@@ -205,7 +208,7 @@ class Mapmaker:
         to correct correct order for binning to run optimally.
 
         Args:
-            l2data (L2file): _description_
+            l2data (L2file): Level 2 file object to perform preprocessing on.
         """
 
         _, NSB, NFREQ, NSAMP = l2data["tod"].shape
@@ -224,11 +227,13 @@ class Mapmaker:
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"]
+        freqs = l2data["nu"][0, ...]
 
         # Flip sideband 0 and 2
         tod[:, (0, 2), :, :] = tod[:, (0, 2), ::-1, :]
         sigma0[:, (0, 2), :] = sigma0[:, (0, 2), ::-1]
         freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
+        freqs[(0, 2), :] = freqs[(0, 2), ::-1]
 
         tod = tod.transpose(
             0,
@@ -254,17 +259,78 @@ class Mapmaker:
         l2data["tod"] = tod
         l2data["inv_var"] = inv_var
         l2data["freqmask"] = freqmask
-        l2data["point_cel"] = pointing
 
         # Found that transposing the pixels here makes the binning
         # faster for some reason
-        l2data["point_cel"] = np.ascontiguousarray(
-            l2data["point_cel"].transpose(1, 0, 2)
+        l2data["point_cel"] = np.ascontiguousarray(pointing.transpose(1, 0, 2))
+        l2data["nu"] = freqs
+
+    def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
+
+        feed_mask, freq_mask = np.where(l2data["freqmask"] == 0)
+
+        # map = sum(tod * inv_var) / sum(inv_var)
+        map = mapdata["numerator_map"] / mapdata["denominator_map"]
+
+        inv_var = mapdata["denominator_map"]
+
+        map[feed_mask, :, :, freq_mask] = 0
+        inv_var[feed_mask, :, :, freq_mask] = 0
+
+        sigma = 1 / np.sqrt(inv_var)
+
+        map[inv_var == 0] = 0
+
+        map_coadd = np.sum(map * inv_var, axis=0)
+        sigma_coadd = np.sum(inv_var, axis=0)
+
+        map_coadd /= sigma_coadd
+        sigma_coadd = 1 / np.sqrt(sigma_coadd)
+
+        if self.params.make_nhit:
+            nhit_coadd = np.sum(mapdata["nhit"], axis=0)
+
+            mapdata["nhit_coadd"] = nhit_coadd.reshape(
+                mapdata["n_ra"],
+                mapdata["n_dec"],
+                mapdata["n_sidebands"],
+                mapdata["n_channels"],
+            )
+
+        mapdata["map_coadd"] = map_coadd.reshape(
+            mapdata["n_ra"],
+            mapdata["n_dec"],
+            mapdata["n_sidebands"],
+            mapdata["n_channels"],
         )
 
-    def postprocess_map(self, mapdata: COmap) -> None:
-        print("POST", mapdata.keys)
-        return NotImplemented
+        mapdata["sigma_wn_coadd"] = sigma_coadd.reshape(
+            mapdata["n_ra"],
+            mapdata["n_dec"],
+            mapdata["n_sidebands"],
+            mapdata["n_channels"],
+        )
+
+        map[inv_var == 0] = np.nan
+        mapdata["map"] = map.reshape(
+            20,
+            mapdata["n_ra"],
+            mapdata["n_dec"],
+            mapdata["n_sidebands"],
+            mapdata["n_channels"],
+        )
+
+        sigma[inv_var == 0] = np.nan
+        mapdata["sigma_wn"] = sigma.reshape(
+            20,
+            mapdata["n_ra"],
+            mapdata["n_dec"],
+            mapdata["n_sidebands"],
+            mapdata["n_channels"],
+        )
+
+        del mapdata["numerator_map"]
+        del mapdata["denominator_map"]
 
     def get_pointing_matrix(
         self,
@@ -283,8 +349,9 @@ class Mapmaker:
         dec = pointing[:, :, 1]
 
         # Read these from file in future
-        NSIDE = self.GRID_SIZE
-        NPIX = NSIDE**2
+        NSIDE_RA = self.GRID_SIZE[0]
+        NSIDE_DEC = self.GRID_SIZE[1]
+        NPIX = NSIDE_RA * NSIDE_DEC
         NFEED = 20
 
         # Define {RA, DEC} indecies
@@ -292,7 +359,7 @@ class Mapmaker:
         idx_dec_allfeed = np.round((dec - self.DEC_min) / self.DDEC).astype(np.int32)
 
         # Define flattened pixel index
-        idx_pix = idx_dec_allfeed * NSIDE + idx_ra_allfeed
+        idx_pix = idx_dec_allfeed * NSIDE_RA + idx_ra_allfeed
 
         # Mask all pointings outside of pre-defined map grid
         pointing_mask = ~np.logical_and(idx_pix > 0, idx_pix < NPIX)
@@ -303,7 +370,7 @@ class Mapmaker:
         idx_pix[pointing_mask] = 0
 
         # Defining pixel-feed index and append it to level 2 object
-        pointing_idx = NSIDE**2 * np.arange(NFEED)[None, :] + idx_pix
+        pointing_idx = NPIX * np.arange(NFEED)[None, :] + idx_pix
         l2data["pointing_index"] = pointing_idx.astype(np.int32)
 
         # Set TOD values outside field to zero
@@ -327,41 +394,79 @@ class Mapmaker:
             dtype=ctypes.c_float, ndim=2, flags="contiguous"
         )  # 4D array 32-bit float pointer object.
 
-        if self.params.make_nhit:
-            int32_array4 = np.ctypeslib.ndpointer(
-                dtype=ctypes.c_int, ndim=4, flags="contiguous"
-            )  # 4D array 32-bit integer pointer object.
-
         int32_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_int, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
 
-        self.mapbinner.bin_map.argtypes = [
-            float32_array3,  # tod
-            float32_array2,  # sigma
-            int32_array2,  # idx_pix
-            float32_array4,  # numerator map
-            float32_array4,  # denominator map
-            ctypes.c_int,  # nfreq
-            ctypes.c_int,  # nsamp
-            ctypes.c_int,  # nside
-            ctypes.c_int,  # nfeed
-            ctypes.c_int,  # nthread
-        ]
+        if self.params.make_nhit:
+            int32_array4 = np.ctypeslib.ndpointer(
+                dtype=ctypes.c_int, ndim=4, flags="contiguous"
+            )  # 4D array 32-bit integer pointer object.
+            # self.mapbinner.bin_map.argtypes = [
+            self.mapbinner.bin_nhit_and_map.argtypes = [
+                float32_array3,  # tod
+                float32_array2,  # sigma
+                int32_array2,  # freqmask
+                int32_array2,  # idx_pix
+                int32_array4,  # hit map
+                float32_array4,  # numerator map
+                float32_array4,  # denominator map
+                ctypes.c_int,  # nfreq
+                ctypes.c_int,  # nsamp
+                ctypes.c_int,  # nside_ra
+                ctypes.c_int,  # nside_dec
+                ctypes.c_int,  # nfeed
+                ctypes.c_int,  # nthread
+            ]
 
-        NFEED, NSAMP, NFREQ = l2data["tod"].shape
-        self.mapbinner.bin_map(
-            l2data["tod"],
-            l2data["inv_var"],
-            l2data["pointing_index"],
-            mapdata["numerator_map"],
-            mapdata["denominator_map"],
-            NFREQ,
-            NFEED,
-            NSAMP,
-            self.GRID_SIZE,
-            self.OMP_NUM_THREADS,
-        )
+            NFEED, NSAMP, NFREQ = l2data["tod"].shape
+
+            # self.mapbinner.bin_map(
+            self.mapbinner.bin_nhit_and_map(
+                l2data["tod"],
+                l2data["inv_var"],
+                l2data["freqmask"],
+                l2data["pointing_index"],
+                mapdata["nhit"],
+                mapdata["numerator_map"],
+                mapdata["denominator_map"],
+                NFREQ,
+                NFEED,
+                NSAMP,
+                self.GRID_SIZE[0],
+                self.GRID_SIZE[1],
+                self.OMP_NUM_THREADS,
+            )
+        else:
+            self.mapbinner.bin_map.argtypes = [
+                float32_array3,  # tod
+                float32_array2,  # sigma
+                int32_array2,  # idx_pix
+                float32_array4,  # numerator map
+                float32_array4,  # denominator map
+                ctypes.c_int,  # nfreq
+                ctypes.c_int,  # nsamp
+                ctypes.c_int,  # nside_ra
+                ctypes.c_int,  # nside_dec
+                ctypes.c_int,  # nfeed
+                ctypes.c_int,  # nthread
+            ]
+
+            NFEED, NSAMP, NFREQ = l2data["tod"].shape
+
+            self.mapbinner.bin_map(
+                l2data["tod"],
+                l2data["inv_var"],
+                l2data["pointing_index"],
+                mapdata["numerator_map"],
+                mapdata["denominator_map"],
+                NFREQ,
+                NFEED,
+                NSAMP,
+                self.GRID_SIZE[0],
+                self.GRID_SIZE[1],
+                self.OMP_NUM_THREADS,
+            )
 
 
 def main():
@@ -378,8 +483,11 @@ if __name__ == "__main__":
     main()
 
     # TODO:
-
     # * Fix documentations
     # * Make map saver
     # * Implement MPI over scans
     # * Implement splits
+    # * Save frequency edges and
+    #   centers when Jonas
+    #   fixes this in l2gen
+    # * HP filter?
