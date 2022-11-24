@@ -160,41 +160,66 @@ class Mapmaker:
         self.RA_min = full_map.ra_min
         self.DEC_min = full_map.dec_min
 
-        for scan in self.runlist:
-            print("-" * 20)
-            print(f"Processing scan {scan[0]}")
-            ti = time.perf_counter()
-            l2path = scan[-1]
-            print(l2path)
+        time_dict = {
+            "l2setup": 0,
+            "read": 0,
+            "preproc": 0,
+            "pxidx": 0,
+            "bin": 0,
+            "total": 0,
+        }
 
-            t0 = time.perf_counter()
+        for scan in self.runlist:
+            print("-" * 30)
+            print(f"Processing scan {scan[0]}")
+            l2path = scan[-1]
+
+            ti = time.perf_counter()
 
             l2data = L2file(path=l2path)
-            print("Time to define L2file:", 1e3 * (time.perf_counter() - t0), "ms")
+            time_dict["l2setup"] += time.perf_counter() - ti
+
             t0 = time.perf_counter()
 
             l2data.read_l2()
-            print(
-                "Time to read L2 data from HDF5:",
-                1e3 * (time.perf_counter() - t0),
-                "ms",
-            )
+            time_dict["read"] += time.perf_counter() - t0
+
             t0 = time.perf_counter()
 
             self.preprocess_l2data(l2data)
-            print("Time to pre-process:", 1e3 * (time.perf_counter() - t0), "ms")
+            time_dict["preproc"] += time.perf_counter() - t0
+
             t0 = time.perf_counter()
 
             self.get_pointing_matrix(l2data)
-            print(
-                "Time to compute pointing idx:", 1e3 * (time.perf_counter() - t0), "ms"
-            )
+            time_dict["pxidx"] += time.perf_counter() - t0
+
             t0 = time.perf_counter()
 
             self.bin_map(full_map, l2data)
-            print("Time to bin map:", 1e3 * (time.perf_counter() - t0), "ms")
-            print("Total time for scan:", 1e3 * (time.perf_counter() - ti))
-            print("-" * 20)
+            time_dict["bin"] += time.perf_counter() - t0
+
+            time_dict["total"] += time.perf_counter() - ti
+            print("-" * 30)
+
+        for key in time_dict.keys():
+            time_dict[key] /= len(self.runlist)
+
+        print("=" * 80)
+        print(f"Average timing over {len(self.runlist)} scans:")
+        print("=" * 80)
+        print("Time to define L2file:", 1e3 * time_dict["l2setup"], "ms")
+        print(
+            "Time to read L2 data from HDF5:",
+            1e3 * time_dict["read"],
+            "ms",
+        )
+        print("Time to pre-process:", 1e3 * time_dict["preproc"], "ms")
+        print("Time to compute pointing idx:", 1e3 * time_dict["pxidx"], "ms")
+        print("Time to bin map:", 1e3 * time_dict["bin"], "ms")
+        print("Total time for scan:", 1e3 * time_dict["total"], "ms")
+
+        print("=" * 80)
 
         self.postprocess_map(full_map, l2data)
 
