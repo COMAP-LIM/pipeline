@@ -2,6 +2,7 @@ import numpy as np
 import numpy.typing as ntyping
 import ctypes
 import time
+from mpi4py import MPI
 
 from COmap import COmap
 from L2file import L2file
@@ -27,6 +28,11 @@ class Mapmaker:
         # Number of openMP threads
         self.OMP_NUM_THREADS = omp_num_threads
 
+        # Define MPI parameters as class attribites
+        self.comm = MPI.COMM_WORLD
+        self.Nranks = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()
+
         # Read parameter file and runlist
         self.read_params()
         self.read_runlist()
@@ -48,7 +54,11 @@ class Mapmaker:
             )
 
         # Define c-library used for binning maps
-        self.mapbinner = ctypes.cdll.LoadLibrary("mapbinner.so.1")
+        mapbinner_path = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "../C_libs/tod2comap/mapbinner.so.1",
+        )
+        self.mapbinner = ctypes.cdll.LoadLibrary(mapbinner_path)
 
     def read_params(self):
         from l2gen_argparser import parser
@@ -61,10 +71,12 @@ class Mapmaker:
         self.params = params
 
     def read_runlist(self):
-        print(
-            f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]"
-        )
-        print(f"Runlist file: {self.params.runlist}")
+        self.comm.Barrier()
+        if self.rank == 0:
+            print(
+                f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]"
+            )
+            print(f"Runlist file: {self.params.runlist}")
 
         # Create list of already processed scanids.
         existing_scans = []
@@ -134,11 +146,12 @@ class Mapmaker:
                             n_scans_outside_range += 1
                 i = i + n_scans + 1
 
-        print(f"Field name:                 {fieldname}")
-        print(f"Obsids in runlist file:     {n_obsids}")
-        print(f"Scans in runlist file:      {n_scans_tot}")
-        print(f"Scans included in run:      {len(runlist)}")
-        print(f"Scans outside obsid range:  {n_scans_outside_range}")
+        if self.rank == 0:
+            print(f"Field name:                 {fieldname}")
+            print(f"Obsids in runlist file:     {n_obsids}")
+            print(f"Scans in runlist file:      {n_scans_tot}")
+            print(f"Scans included in run:      {len(runlist)}")
+            print(f"Scans outside obsid range:  {n_scans_outside_range}")
 
         self.fieldname = fieldname
         self.runlist = runlist
@@ -168,62 +181,107 @@ class Mapmaker:
             "bin": 0,
             "total": 0,
         }
+        time_array = np.zeros(6)
+        if self.rank == 0:
+            time_buffer = time_array.copy()
+        else:
+            time_buffer = None
 
-        for scan in self.runlist:
-            print("-" * 30)
-            print(f"Processing scan {scan[0]}")
-            l2path = scan[-1]
+        for i, scan in enumerate(self.runlist):
+            if i % self.Nranks == self.rank:
+                print(f"Processing scan {scan[0]} @ rank {self.rank}")
+                l2path = scan[-1]
 
-            ti = time.perf_counter()
+                ti = time.perf_counter()
 
-            l2data = L2file(path=l2path)
-            time_dict["l2setup"] += time.perf_counter() - ti
+                l2data = L2file(path=l2path)
+                time_array[0] += time.perf_counter() - ti
 
-            t0 = time.perf_counter()
+                t0 = time.perf_counter()
 
-            l2data.read_l2()
-            time_dict["read"] += time.perf_counter() - t0
+                l2data.read_l2()
+                time_array[1] += time.perf_counter() - t0
 
-            t0 = time.perf_counter()
+                t0 = time.perf_counter()
 
-            self.preprocess_l2data(l2data)
-            time_dict["preproc"] += time.perf_counter() - t0
+                self.preprocess_l2data(l2data)
+                time_array[2] += time.perf_counter() - t0
 
-            t0 = time.perf_counter()
+                t0 = time.perf_counter()
 
-            self.get_pointing_matrix(l2data)
-            time_dict["pxidx"] += time.perf_counter() - t0
+                self.get_pointing_matrix(l2data)
+                time_array[3] += time.perf_counter() - t0
 
-            t0 = time.perf_counter()
+                t0 = time.perf_counter()
 
-            self.bin_map(full_map, l2data)
-            time_dict["bin"] += time.perf_counter() - t0
+                self.bin_map(full_map, l2data)
+                time_array[4] += time.perf_counter() - t0
 
-            time_dict["total"] += time.perf_counter() - ti
-            print("-" * 30)
+                time_array[5] += time.perf_counter() - ti
 
-        for key in time_dict.keys():
-            time_dict[key] /= len(self.runlist)
-
-        print("=" * 80)
-        print(f"Average timing over {len(self.runlist)} scans:")
-        print("=" * 80)
-        print("Time to define L2file:", 1e3 * time_dict["l2setup"], "ms")
-        print(
-            "Time to read L2 data from HDF5:",
-            1e3 * time_dict["read"],
-            "ms",
+        self.comm.Reduce(
+            [time_array, MPI.DOUBLE], [time_buffer, MPI.DOUBLE], op=MPI.SUM, root=0
         )
-        print("Time to pre-process:", 1e3 * time_dict["preproc"], "ms")
-        print("Time to compute pointing idx:", 1e3 * time_dict["pxidx"], "ms")
-        print("Time to bin map:", 1e3 * time_dict["bin"], "ms")
-        print("Total time for scan:", 1e3 * time_dict["total"], "ms")
 
-        print("=" * 80)
+        if self.rank == 0:
+            time_buffer /= len(self.runlist)
 
-        self.postprocess_map(full_map, l2data)
+            print("=" * 80)
+            print(f"Average timing over {len(self.runlist)} scans:")
+            print("=" * 80)
+            print("Time to define L2file:", 1e3 * time_buffer[0], "ms")
+            print(
+                "Time to read L2 data from HDF5:",
+                1e3 * time_buffer[1],
+                "ms",
+            )
+            print("Time to pre-process:", 1e3 * time_buffer[2], "ms")
+            print("Time to compute pointing idx:", 1e3 * time_buffer[3], "ms")
+            print("Time to bin map:", 1e3 * time_buffer[4], "ms")
+            print("Total time for scan:", 1e3 * time_buffer[5], "ms")
 
-        full_map.write_map()
+            print("=" * 80)
+
+        self.reduce_maps(full_map)
+
+        if self.rank == 0:
+            self.postprocess_map(full_map, l2data)
+            full_map.write_map()
+
+    def reduce_maps(self, mapdata: COmap) -> None:
+
+        if self.rank == 0:
+            numerator_buffer = np.zeros_like(mapdata["numerator_map"])
+            denominator_buffer = np.zeros_like(mapdata["denominator_map"])
+            if self.params.make_nhit:
+                nhit_buffer = np.zeros_like(mapdata["nhit"])
+        else:
+            numerator_buffer = None
+            denominator_buffer = None
+            if self.params.make_nhit:
+                nhit_buffer = None
+
+        self.comm.Reduce(
+            [mapdata["numerator_map"], MPI.DOUBLE],
+            [numerator_buffer, MPI.DOUBLE],
+            op=MPI.SUM,
+            root=0,
+        )
+
+        self.comm.Reduce(
+            [mapdata["denominator_map"], MPI.DOUBLE],
+            [denominator_buffer, MPI.DOUBLE],
+            op=MPI.SUM,
+            root=0,
+        )
+
+        if self.params.make_nhit:
+            self.comm.Reduce(
+                [mapdata["nhit"], MPI.DOUBLE],
+                [nhit_buffer, MPI.DOUBLE],
+                op=MPI.SUM,
+                root=0,
+            )
 
     def preprocess_l2data(
         self,
@@ -291,21 +349,30 @@ class Mapmaker:
         l2data["nu"] = freqs
 
     def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
+        """Method that performes a post-processing of map object.
+        In the post processing the map and noise maps are computed
+        from the numerator and denominator maps, and feed-coadded maps
+        are made. Optionally hit maps are also made. Lastly all map
+        datasets are reshaped to the correct dimensionallity.
 
-        feed_mask, freq_mask = np.where(l2data["freqmask"] == 0)
-
-        # map = sum(tod * inv_var) / sum(inv_var)
-        map = mapdata["numerator_map"] / mapdata["denominator_map"]
+        Args:
+            mapdata (COmap): Map object to perform the post-processing on.
+            l2data (L2file): L2 file object from which to get frequency grid
+            to be saved to map object.
+        """
 
         inv_var = mapdata["denominator_map"]
 
-        map[feed_mask, :, :, freq_mask] = 0
-        inv_var[feed_mask, :, :, freq_mask] = 0
+        # Full map is made by computing map = sum(TOD * inv_var) / sum(inv_var)
+        map = mapdata["numerator_map"] / inv_var
 
+        # White noise level map
         sigma = 1 / np.sqrt(inv_var)
 
+        # Mask all non-hit regions for feed-coaddition
         map[inv_var == 0] = 0
 
+        # Computing feed-coadded map and white noise map
         map_coadd = np.sum(map * inv_var, axis=0)
         sigma_coadd = np.sum(inv_var, axis=0)
 
@@ -313,6 +380,7 @@ class Mapmaker:
         sigma_coadd = 1 / np.sqrt(sigma_coadd)
 
         if self.params.make_nhit:
+            # Computing coadded hit map
             nhit_coadd = np.sum(mapdata["nhit"], axis=0)
 
             mapdata["nhit_coadd"] = nhit_coadd.reshape(
@@ -322,6 +390,7 @@ class Mapmaker:
                 mapdata["n_channels"],
             )
 
+        # Saving coadded and reshaped data to map object
         mapdata["map_coadd"] = map_coadd.reshape(
             mapdata["n_ra"],
             mapdata["n_dec"],
@@ -336,7 +405,11 @@ class Mapmaker:
             mapdata["n_channels"],
         )
 
+        # Masking non-hit regions with NaNs again
         map[inv_var == 0] = np.nan
+        sigma[inv_var == 0] = np.nan
+
+        # Saving and reshaping map data to map object
         mapdata["map"] = map.reshape(
             20,
             mapdata["n_ra"],
@@ -345,7 +418,6 @@ class Mapmaker:
             mapdata["n_channels"],
         )
 
-        sigma[inv_var == 0] = np.nan
         mapdata["sigma_wn"] = sigma.reshape(
             20,
             mapdata["n_ra"],
@@ -354,6 +426,7 @@ class Mapmaker:
             mapdata["n_channels"],
         )
 
+        # Deleting numerator and denominator from map object
         del mapdata["numerator_map"]
         del mapdata["denominator_map"]
 
