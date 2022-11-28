@@ -71,7 +71,6 @@ class Mapmaker:
         self.params = params
 
     def read_runlist(self):
-        self.comm.Barrier()
         if self.rank == 0:
             print(
                 f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]"
@@ -158,7 +157,9 @@ class Mapmaker:
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
-
+        self.comm.barrier()
+        if self.rank == 0:
+            start_time = time.perf_counter()
         # File name of full coadded output map
         full_map_name = f"{self.fieldname}_{self.params.map_name}.h5"
         full_map_name = os.path.join(self.params.map_dir, full_map_name)
@@ -173,14 +174,6 @@ class Mapmaker:
         self.RA_min = full_map.ra_min
         self.DEC_min = full_map.dec_min
 
-        time_dict = {
-            "l2setup": 0,
-            "read": 0,
-            "preproc": 0,
-            "pxidx": 0,
-            "bin": 0,
-            "total": 0,
-        }
         time_array = np.zeros(6)
         if self.rank == 0:
             time_buffer = time_array.copy()
@@ -242,14 +235,29 @@ class Mapmaker:
 
             print("=" * 80)
 
+        # Perform MPI reduce on map datasets
         self.reduce_maps(full_map)
 
         if self.rank == 0:
             self.postprocess_map(full_map, l2data)
             full_map.write_map()
+            finish_time = time.perf_counter()
+
+            print("=" * 80)
+            print("=" * 80)
+            print("Run time: ", finish_time - start_time, "s")
+            print("=" * 80)
+            print("=" * 80)
 
     def reduce_maps(self, mapdata: COmap) -> None:
+        """Method that performes the MPI reduce on map datasets
 
+        Args:
+            mapdata (COmap): Map object with which to perform
+            MPI reduce on. All data will be MPI reduced with MPI.SUM
+            operation to rank 0 buffer.
+        """
+        # Define buffer arrays
         if self.rank == 0:
             numerator_buffer = np.zeros_like(mapdata["numerator_map"])
             denominator_buffer = np.zeros_like(mapdata["denominator_map"])
@@ -261,27 +269,36 @@ class Mapmaker:
             if self.params.make_nhit:
                 nhit_buffer = None
 
+        # Perform MPI reduction
         self.comm.Reduce(
-            [mapdata["numerator_map"], MPI.DOUBLE],
-            [numerator_buffer, MPI.DOUBLE],
+            [mapdata["numerator_map"], MPI.FLOAT],
+            [numerator_buffer, MPI.FLOAT],
             op=MPI.SUM,
             root=0,
         )
 
         self.comm.Reduce(
-            [mapdata["denominator_map"], MPI.DOUBLE],
-            [denominator_buffer, MPI.DOUBLE],
+            [mapdata["denominator_map"], MPI.FLOAT],
+            [denominator_buffer, MPI.FLOAT],
             op=MPI.SUM,
             root=0,
         )
+
+        if self.rank == 0:
+            # Overwrite rank 0 datasets
+            mapdata["numerator_map"] = numerator_buffer
+            mapdata["denominator_map"] = denominator_buffer
 
         if self.params.make_nhit:
             self.comm.Reduce(
-                [mapdata["nhit"], MPI.DOUBLE],
-                [nhit_buffer, MPI.DOUBLE],
+                [mapdata["nhit"], MPI.INT],
+                [nhit_buffer, MPI.INT],
                 op=MPI.SUM,
                 root=0,
             )
+
+            if self.rank == 0:
+                mapdata["nhit"] = nhit_buffer
 
     def preprocess_l2data(
         self,
