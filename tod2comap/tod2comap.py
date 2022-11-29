@@ -2,6 +2,7 @@ import numpy as np
 import numpy.typing as ntyping
 import ctypes
 import time
+import h5py
 from mpi4py import MPI
 
 from COmap import COmap
@@ -46,7 +47,7 @@ class Mapmaker:
         self.DRA = self.params.grid_res[0] / np.abs(
             np.cos(np.radians(self.FIELD_CENTER[1]))
         )
-        self.DDEC = self.params.grid_res[0]
+        self.DDEC = self.params.grid_res[1]
 
         if not self.params.map_name:
             raise ValueError(
@@ -75,7 +76,7 @@ class Mapmaker:
             print(
                 f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]"
             )
-            print(f"Runlist file: {self.params.runlist}")
+            print(f"Runlist file: {self.params.runlist}\n")
 
         # Create list of already processed scanids.
         existing_scans = []
@@ -113,6 +114,16 @@ class Mapmaker:
                 for k in range(n_scans):
                     scantype = int(float(lines[i + k + 1][3]))
                     if scantype != 8192:
+                        if scantype != 32 and self.rank == 0:
+                            scan_warning = (
+                                "\n"
+                                + "=" * 50
+                                + "\nYou are running a runlist with scanning strategies different than CES!"
+                                + " \nLissajous and circular scans are deprecated!\n"
+                                + "=" * 50
+                            )
+                            warnings.warn(scan_warning, category=FutureWarning)
+
                         n_scans_tot += 1
                         if (
                             self.params.obsid_start
@@ -155,6 +166,69 @@ class Mapmaker:
         self.fieldname = fieldname
         self.runlist = runlist
 
+    def parse_accept_data(self):
+        split_data_path = self.params.split_data
+        scan_data_path = self.params.scan_data
+        accept_dir = self.params.accept_dir
+
+        if not split_data_path:
+            message = "Please specify a split_data file name."
+            raise ValueError(message)
+        elif not scan_data_path:
+            message = "Please specify a scan_data file name."
+            raise ValueError(message)
+
+        scan_data_path = os.path.join(accept_dir, scan_data_path)
+        with h5py.File(scan_data_path, "r") as scanfile:
+            self.scandata = {}
+            for key, value in scanfile.items():
+                self.scandata[key] = value[()]
+
+        split_data_path = os.path.join(accept_dir, split_data_path)
+        with h5py.File(split_data_path, "r") as splitfile:
+            self.splitdata = {}
+            for key, value in splitfile.items():
+                self.splitdata[key] = value[()]
+
+        self.perform_splits = self.params.split
+        if self.perform_splits:
+
+            split_names = self.splitdata["split_list"].astype(str)
+            Nsplits = len(split_names)
+            split_list = self.splitdata["jk_list"]
+            _split_list = split_list.copy()
+
+            # split_bits = np.zeros((Nsplits + 1,) + split_list.shape)
+
+            # for i in range(Nsplits + 1):
+            #    split_bits[i, ...] = _split_list >= 2**i
+            #    _split_list -= 2**i
+
+            unique_numbers = np.unique(split_list)
+            unique_numbers = unique_numbers[unique_numbers != 0]
+            bits = np.zeros((len(unique_numbers), Nsplits + 1))
+
+            split_key_mapping = {}
+
+            for i, number in enumerate(unique_numbers):
+                # Convert number to bits
+                bit_num = f"{number:0{Nsplits+1}b}"
+
+                key = ""
+
+                # Loop through all but last bit (accept/recect)
+                for j in range(Nsplits):
+                    bits[i, j] = int(bit_num[j])
+                    key += str(split_names[j]) + bit_num[j] + "_"
+
+                split_key_mapping[key] = number
+
+        #         print(number, bits[i, :], bit_num, key)
+        # print(split_key_mapping)
+
+        ## Need to parse split_def file to get keys right. In particular "parent" split must be first
+        # sys.exit()
+
     def run(self):
         """Method running through the provided runlist and binning up maps."""
         self.comm.barrier()
@@ -187,7 +261,7 @@ class Mapmaker:
 
                 ti = time.perf_counter()
 
-                l2data = L2file(path=l2path)
+                l2data = L2file(path=l2path, id=scan[0])
                 time_array[0] += time.perf_counter() - ti
 
                 t0 = time.perf_counter()
@@ -335,6 +409,14 @@ class Mapmaker:
         freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
         freqs[(0, 2), :] = freqs[(0, 2), ::-1]
 
+        # Masking accept mod rejected feeds and sidebands
+        scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
+        rejected_feed, rejected_sideband = np.where(
+            ~self.splitdata["accept_list"][scan_idx]
+        )
+        freqmask[rejected_feed, rejected_sideband, :] = 0
+
+        # Ordering TOD axis so that fast freuquency axis is last
         tod = tod.transpose(
             0,
             3,
@@ -477,9 +559,17 @@ class Mapmaker:
         idx_pix = idx_dec_allfeed * NSIDE_RA + idx_ra_allfeed
 
         # Mask all pointings outside of pre-defined map grid
-        pointing_mask = ~np.logical_and(idx_pix > 0, idx_pix < NPIX)
-        pointing_mask = np.where(pointing_mask)
+        pointing_ra_mask = ~np.logical_and(
+            idx_ra_allfeed >= 0, idx_ra_allfeed < NSIDE_RA
+        )
+        pointing_dec_mask = ~np.logical_and(
+            idx_dec_allfeed >= 0, idx_dec_allfeed < NSIDE_DEC
+        )
+        pointing_mask = np.logical_or(pointing_ra_mask, pointing_dec_mask)
 
+        # pointing_mask = ~np.logical_and(idx_pix > 0, idx_pix < NPIX)
+
+        pointing_mask = np.where(pointing_mask)
         # Clip pixel index to 0 for pointing outside field grid.
         # See further down for how corresponding TOD values are zeroed out.
         idx_pix[pointing_mask] = 0
@@ -591,6 +681,7 @@ def main():
         omp_num_threads = 1
 
     tod2comap = Mapmaker(omp_num_threads=omp_num_threads)
+    tod2comap.parse_accept_data()
     tod2comap.run()
 
 
@@ -598,6 +689,7 @@ if __name__ == "__main__":
     main()
 
     # TODO:
+    # * Cycle when all of scan is masked/rejected
     # * Fix documentations
     # * Make map saver
     # * Implement MPI over scans
@@ -606,3 +698,4 @@ if __name__ == "__main__":
     #   centers when Jonas
     #   fixes this in l2gen
     # * HP filter?
+    #
