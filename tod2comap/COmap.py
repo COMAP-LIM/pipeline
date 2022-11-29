@@ -105,7 +105,6 @@ class COmap:
         # Min values in RA/Dec. directions (i.e. bin edges)
         if NSIDE_RA % 2 == 0:
             RA_min = FIELD_CENTER[0] - dRA * NSIDE_RA / 2.0
-
         else:
             RA_min = FIELD_CENTER[0] - dRA * NSIDE_RA / 2.0 - dRA / 2.0
 

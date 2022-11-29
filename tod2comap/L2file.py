@@ -10,6 +10,7 @@ class L2file:
     """COMAP l2 data class"""
 
     path: str
+    id: int
     _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
 
     def read_l2(self) -> None:
