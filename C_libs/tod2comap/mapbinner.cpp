@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <omp.h>
+#include <iostream>
 
 // ##########################################################################
 // Functions (OMP threads):   Runtimes:
@@ -22,7 +23,8 @@
 extern "C" void bin_map(
     float *tod,
     float *sigma,
-    int *idx_pix,
+    int *idx_ra_pix,
+    int *idx_dec_pix,
     float *numerator,
     float *denominator,
     int nfreq,
@@ -32,7 +34,7 @@ extern "C" void bin_map(
     int nside_dec,
     int nthread)
 {
-    int npix = nside_ra * nside_dec * nfeed;
+    int npix = nside_ra * nside_dec;
 
     // Looping through data and binning up into maps
     omp_set_num_threads(nthread);
@@ -41,11 +43,22 @@ extern "C" void bin_map(
     {
         for (int t = 0; t < nsamp; t++)
         {
-            int feed_px_idx = idx_pix[nfeed * t + d];
+            int ra = idx_ra_pix[nfeed * t + d];
+            int dec = idx_dec_pix[nfeed * t + d];
+            if (ra < 0 || ra > nside_ra)
+            {
+                continue;
+            }
+            else if (dec < 0 || dec > nside_dec)
+            {
+                continue;
+            }
+
+            int pixel_index = idx_dec_pix[nfeed * t + d] * nside_ra + idx_ra_pix[nfeed * t + d];
+            int feed_px_idx = npix * d + pixel_index;
             int time_det_idx = nsamp * d + t;
             for (int f = 0; f < nfreq; f++)
             {
-                // int freq_feed_idx = nfeed * f + d;
                 int freq_feed_idx = nfreq * d + f;
 
                 float inv_var = sigma[freq_feed_idx];
@@ -66,7 +79,8 @@ extern "C" void bin_nhit_and_map(
     float *tod,
     float *sigma,
     int *freqmask,
-    int *idx_pix,
+    int *idx_ra_pix,
+    int *idx_dec_pix,
     int *nhit,
     float *numerator,
     float *denominator,
@@ -77,7 +91,7 @@ extern "C" void bin_nhit_and_map(
     int nside_dec,
     int nthread)
 {
-    int npix = nside_ra * nside_dec * nfeed;
+    int npix = nside_ra * nside_dec;
 
     // Looping through data and binning up into maps
     omp_set_num_threads(nthread);
@@ -87,11 +101,21 @@ extern "C" void bin_nhit_and_map(
     {
         for (int t = 0; t < nsamp; t++)
         {
-            int feed_px_idx = idx_pix[nfeed * t + d];
+            int ra = idx_ra_pix[nfeed * t + d];
+            int dec = idx_dec_pix[nfeed * t + d];
+            if (ra < 0 || ra > nside_ra)
+            {
+                continue;
+            }
+            else if (dec < 0 || dec > nside_dec)
+            {
+                continue;
+            }
+            int pixel_index = idx_dec_pix[nfeed * t + d] * nside_ra + idx_ra_pix[nfeed * t + d];
+            int feed_px_idx = npix * d + pixel_index;
             int time_det_idx = nsamp * d + t;
             for (int f = 0; f < nfreq; f++)
             {
-                // int freq_feed_idx = nfeed * f + d;
                 int freq_feed_idx = nfreq * d + f;
 
                 float inv_var = sigma[freq_feed_idx];

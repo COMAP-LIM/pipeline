@@ -555,31 +555,8 @@ class Mapmaker:
         idx_ra_allfeed = np.round((ra - self.RA_min) / self.DRA).astype(np.int32)
         idx_dec_allfeed = np.round((dec - self.DEC_min) / self.DDEC).astype(np.int32)
 
-        # Define flattened pixel index
-        idx_pix = idx_dec_allfeed * NSIDE_RA + idx_ra_allfeed
-
-        # Mask all pointings outside of pre-defined map grid
-        pointing_ra_mask = ~np.logical_and(
-            idx_ra_allfeed >= 0, idx_ra_allfeed < NSIDE_RA
-        )
-        pointing_dec_mask = ~np.logical_and(
-            idx_dec_allfeed >= 0, idx_dec_allfeed < NSIDE_DEC
-        )
-        pointing_mask = np.logical_or(pointing_ra_mask, pointing_dec_mask)
-
-        # pointing_mask = ~np.logical_and(idx_pix > 0, idx_pix < NPIX)
-
-        pointing_mask = np.where(pointing_mask)
-        # Clip pixel index to 0 for pointing outside field grid.
-        # See further down for how corresponding TOD values are zeroed out.
-        idx_pix[pointing_mask] = 0
-
-        # Defining pixel-feed index and append it to level 2 object
-        pointing_idx = NPIX * np.arange(NFEED)[None, :] + idx_pix
-        l2data["pointing_index"] = pointing_idx.astype(np.int32)
-
-        # Set TOD values outside field to zero
-        l2data["tod"][pointing_mask[1], pointing_mask[0], :] = 0.0
+        l2data["pointing_ra_index"] = idx_ra_allfeed
+        l2data["pointing_dec_index"] = idx_dec_allfeed
 
     def bin_map(
         self,
@@ -612,7 +589,8 @@ class Mapmaker:
                 float32_array3,  # tod
                 float32_array2,  # sigma
                 int32_array2,  # freqmask
-                int32_array2,  # idx_pix
+                int32_array2,  # idx_ra_pix
+                int32_array2,  # idx_dec_pix
                 int32_array4,  # hit map
                 float32_array4,  # numerator map
                 float32_array4,  # denominator map
@@ -631,7 +609,8 @@ class Mapmaker:
                 l2data["tod"],
                 l2data["inv_var"],
                 l2data["freqmask"],
-                l2data["pointing_index"],
+                l2data["pointing_ra_index"],
+                l2data["pointing_dec_index"],
                 mapdata["nhit"],
                 mapdata["numerator_map"],
                 mapdata["denominator_map"],
@@ -646,7 +625,8 @@ class Mapmaker:
             self.mapbinner.bin_map.argtypes = [
                 float32_array3,  # tod
                 float32_array2,  # sigma
-                int32_array2,  # idx_pix
+                int32_array2,  # idx_ra_pix
+                int32_array2,  # idx_dec_pix
                 float32_array4,  # numerator map
                 float32_array4,  # denominator map
                 ctypes.c_int,  # nfreq
@@ -662,7 +642,8 @@ class Mapmaker:
             self.mapbinner.bin_map(
                 l2data["tod"],
                 l2data["inv_var"],
-                l2data["pointing_index"],
+                l2data["pointing_ra_index"],
+                l2data["pointing_dec_index"],
                 mapdata["numerator_map"],
                 mapdata["denominator_map"],
                 NFREQ,
