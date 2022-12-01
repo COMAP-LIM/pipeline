@@ -249,19 +249,32 @@ class Mapmaker:
         self.DEC_min = full_map.dec_min
 
         time_array = np.zeros(6)
+        rejection_number = np.zeros(1, dtype=np.int32)
         if self.rank == 0:
             time_buffer = time_array.copy()
+            rejection_number_buffer = rejection_number.copy()
         else:
             time_buffer = None
+            rejection_number_buffer = None
 
         for i, scan in enumerate(self.runlist):
+
+            scanid = scan[0]
+
             if i % self.Nranks == self.rank:
+                # Cycle to next scan
+                scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0][0]
+                if np.all(~self.splitdata["accept_list"][scan_idx]):
+                    print(f"Rejected scan {scanid} @ rank {self.rank}")
+                    rejection_number += 1
+                    continue
+
                 print(f"Processing scan {scan[0]} @ rank {self.rank}")
                 l2path = scan[-1]
 
                 ti = time.perf_counter()
 
-                l2data = L2file(path=l2path, id=scan[0])
+                l2data = L2file(path=l2path, id=scanid)
                 time_array[0] += time.perf_counter() - ti
 
                 t0 = time.perf_counter()
@@ -289,12 +302,21 @@ class Mapmaker:
         self.comm.Reduce(
             [time_array, MPI.DOUBLE], [time_buffer, MPI.DOUBLE], op=MPI.SUM, root=0
         )
+        self.comm.Reduce(
+            [rejection_number, MPI.INTEGER],
+            [rejection_number_buffer, MPI.INTEGER],
+            op=MPI.SUM,
+            root=0,
+        )
 
         if self.rank == 0:
             time_buffer /= len(self.runlist)
 
             print("=" * 80)
             print(f"Average timing over {len(self.runlist)} scans:")
+            print(
+                f"Number of rejected scans {rejection_number_buffer[0]} of {len(self.runlist)}"
+            )
             print("=" * 80)
             print("Time to define L2file:", 1e3 * time_buffer[0], "ms")
             print(
@@ -434,7 +456,6 @@ class Mapmaker:
 
         # Enfore transposition in memory
         tod = np.ascontiguousarray(tod, dtype=np.float32)
-        # sigma0 = np.ascontiguousarray(sigma0, dtype=np.float32)
 
         # Pre-compute masking
         inv_var = 1 / sigma0**2  # inverse variance
