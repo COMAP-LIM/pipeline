@@ -391,16 +391,19 @@ class Mapmaker:
         tod = np.zeros((20, NSB, NFREQ, NSAMP), dtype=np.float32)
         sigma0 = np.zeros((20, NSB, NFREQ), dtype=np.float32)
         freqmask = np.zeros((20, NSB, NFREQ), dtype=np.int32)
-        pointing = np.zeros((20, NSAMP, 3), dtype=np.float32)
+        pointing = np.zeros((20, NSAMP, 2), dtype=np.float32)
 
         # Get index to pixel mapping
-        pixels = l2data["pixels"] - 1
+        try:
+            pixels = l2data["pixels"] - 1
+        except KeyError:
+            pixels = l2data["feeds"] - 1
 
         # Sort pixels to correct buffer position
         tod[pixels, ...] = l2data["tod"]
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
-        pointing[pixels, ...] = l2data["point_cel"]
+        pointing[pixels, ...] = l2data["point_cel"][..., :-1]
         freqs = l2data["nu"][0, ...]
 
         # Flip sideband 0 and 2
@@ -600,6 +603,7 @@ class Mapmaker:
                 ctypes.c_int,  # nside_dec
                 ctypes.c_int,  # nfeed
                 ctypes.c_int,  # nthread
+                ctypes.c_int,  # scanid
             ]
 
             NFEED, NSAMP, NFREQ = l2data["tod"].shape
@@ -620,6 +624,7 @@ class Mapmaker:
                 self.GRID_SIZE[0],
                 self.GRID_SIZE[1],
                 self.OMP_NUM_THREADS,
+                l2data.id,
             )
         else:
             self.mapbinner.bin_map.argtypes = [

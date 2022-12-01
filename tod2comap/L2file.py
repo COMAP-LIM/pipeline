@@ -22,6 +22,12 @@ class L2file:
         # Open and read file
         with h5py.File(self.path, "r") as infile:
             for key, value in infile.items():
+                if isinstance(value, h5py.Group):
+                    # If goup found in HDF5 copy
+                    for group_key, group_value in infile[key].items():
+                        self._data[key + "/" + group_key] = group_value[()]
+                    continue
+
                 # Copy dataset data to data dictionary
                 self._data[key] = value[()]
 
