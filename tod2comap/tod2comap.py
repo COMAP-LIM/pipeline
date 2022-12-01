@@ -458,8 +458,10 @@ class Mapmaker:
         tod = np.ascontiguousarray(tod, dtype=np.float32)
 
         # Pre-compute masking
+        masked_feeds, masked_freqs = np.where(freqmask == 0)
         inv_var = 1 / sigma0**2  # inverse variance
-        inv_var[freqmask == 0] = 0
+        inv_var[masked_feeds, masked_freqs] = 0
+        tod[masked_feeds, :, masked_freqs] = 0
 
         # Overwrite old data
         l2data["tod"] = tod
@@ -505,6 +507,14 @@ class Mapmaker:
         if self.params.make_nhit:
             # Computing coadded hit map
             nhit_coadd = np.sum(mapdata["nhit"], axis=0)
+
+            mapdata["nhit"] = nhit_coadd.reshape(
+                20,
+                mapdata["n_ra"],
+                mapdata["n_dec"],
+                mapdata["n_sidebands"],
+                mapdata["n_channels"],
+            )
 
             mapdata["nhit_coadd"] = nhit_coadd.reshape(
                 mapdata["n_ra"],
