@@ -45,11 +45,11 @@ extern "C" void bin_map(
         {
             int ra = idx_ra_pix[nfeed * t + d];
             int dec = idx_dec_pix[nfeed * t + d];
-            if (ra < 0 || ra > nside_ra)
+            if (ra < 0 || ra >= nside_ra)
             {
                 continue;
             }
-            else if (dec < 0 || dec > nside_dec)
+            else if (dec < 0 || dec >= nside_dec)
             {
                 continue;
             }
@@ -89,7 +89,8 @@ extern "C" void bin_nhit_and_map(
     int nsamp,
     int nside_ra,
     int nside_dec,
-    int nthread)
+    int nthread,
+    int scanid)
 {
     int npix = nside_ra * nside_dec;
 
@@ -99,21 +100,23 @@ extern "C" void bin_nhit_and_map(
 #pragma omp parallel for
     for (int d = 0; d < nfeed; d++)
     {
+
         for (int t = 0; t < nsamp; t++)
         {
             int ra = idx_ra_pix[nfeed * t + d];
             int dec = idx_dec_pix[nfeed * t + d];
-            if (ra < 0 || ra > nside_ra)
+            if (ra < 0 || ra >= nside_ra)
             {
                 continue;
             }
-            else if (dec < 0 || dec > nside_dec)
+            else if (dec < 0 || dec >= nside_dec)
             {
                 continue;
             }
             int pixel_index = idx_dec_pix[nfeed * t + d] * nside_ra + idx_ra_pix[nfeed * t + d];
             int feed_px_idx = npix * d + pixel_index;
             int time_det_idx = nsamp * d + t;
+
             for (int f = 0; f < nfreq; f++)
             {
                 int freq_feed_idx = nfreq * d + f;
