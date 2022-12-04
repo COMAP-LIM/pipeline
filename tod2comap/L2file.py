@@ -1,10 +1,8 @@
-import argparse
-from typing import Dict, Any
+from __future__ import annotations
 import h5py
 import numpy as np
 import numpy.typing as ntyping
 from dataclasses import dataclass, field
-import re
 
 
 @dataclass
@@ -12,7 +10,8 @@ class L2file:
     """COMAP l2 data class"""
 
     path: str
-    _data: Dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+    id: int
+    _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
 
     def read_l2(self) -> None:
         """Function for reading l2 data from file and fill data dictionary of Map class"""
@@ -23,6 +22,12 @@ class L2file:
         # Open and read file
         with h5py.File(self.path, "r") as infile:
             for key, value in infile.items():
+                if isinstance(value, h5py.Group):
+                    # If goup found in HDF5 copy
+                    for group_key, group_value in infile[key].items():
+                        self._data[key + "/" + group_key] = group_value[()]
+                    continue
+
                 # Copy dataset data to data dictionary
                 self._data[key] = value[()]
 
