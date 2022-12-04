@@ -96,6 +96,13 @@ parser.add_argument(
     help="Write intermediate level2 files after each filter.",
 )
 
+parser.add_argument(
+    "--distributed_starting",
+    type=str2bool,
+    default=False,
+    help="Include a 30 seconds delay in between starting mpi processes, for better initial workload distribution.",
+)
+
 
 ###### FILTER SETTINGS ######
 ### Gain normalization filter
@@ -128,6 +135,14 @@ parser.add_argument(
     default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Cf_prior.h5",
     help="(freq) Location of hdf5 file which contains sigma0, fknee and alpha for the freqfilter PS prior.",
 )
+
+parser.add_argument(
+    "--freqfilter_exclude_ends",
+    type=str2bool,
+    default=True,
+    help="(freq) Exclude the first 4 and the last 100 frequency channels from freqfilter fits.",
+)
+
 
 ### PCA filter
 parser.add_argument(
@@ -223,8 +238,8 @@ parser.add_argument(
 ### Field information and grid resolutions
 parser.add_argument("--grid_size", type=int, default=120)
 parser.add_argument("--grid_res", type=float, default=[2 / 60, 2 / 60])  # in deg
-parser.add_argument(
-    "--field_center",
-    type=float,
-    default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
-)  # in deg
+# parser.add_argument(
+#     "--field_center",
+#     type=float,
+#     default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
+# )  # in deg

@@ -45,6 +45,9 @@ class l2gen_runner:
 
     def run(self):
         self.comm.Barrier()
+        if self.params.distributed_starting:
+            time.sleep((self.rank%16)*60.0)
+        time.sleep(self.rank*0.01)
         print(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks}.")
         logging.info(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks}.")
 
@@ -70,7 +73,7 @@ class l2gen_runner:
             raise ValueError("A runlist must be specified in parameter file or terminal.")
         self.params = params
         if self.rank == 0:
-            print(f"Parameter file: {params.param}")
+            print(f"Filters included: {params.filters}")
 
 
     def configure_logging(self):
