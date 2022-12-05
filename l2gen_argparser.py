@@ -80,8 +80,16 @@ parser.add_argument(
     "--map_dir",
     type=str,
     default="/mn/stornext/d22/cmbco/comap/protodir/maps/",
-    help="(unused) Location of map files (made by tod2comap).",
+    help="Location of map files (made by tod2comap).",
 )
+
+parser.add_argument(
+    "--map_name",
+    type=str,
+    default=None,
+    help="Specific name of map file made by tod2comap. Full name will be '[FIELDNAME]_[map_name].h5'",
+)
+
 parser.add_argument(
     "--cal_database_file",
     type=str,
@@ -263,10 +271,48 @@ parser.add_argument("--accept_data_folder", type=str, default="/mn/stornext/d22/
 
 ###### MAPMAKER ######
 ### Field information and grid resolutions
-parser.add_argument("--grid_size", type=int, default=120)
+parser.add_argument("--grid_size", type=int, default=(120, 120))
 parser.add_argument("--grid_res", type=float, default=[2 / 60, 2 / 60])  # in deg
-# parser.add_argument(
-#     "--field_center",
-#     type=float,
-#     default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
-# )  # in deg
+parser.add_argument(
+    "--field_center",
+    type=float,
+    default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
+)  # in deg
+
+parser.add_argument(
+    "--make_nhit",
+    action="store_true",
+    help="If flag is provided hit maps are made. By default no hit maps are made.",
+)
+
+parser.add_argument(
+    "--split",
+    action="store_true",
+    help="If flag is provided split maps are computed.",
+)
+
+parser.add_argument(
+    "--split_def",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt",
+    help="Split definition file in which split bit order and names are defined.",
+)
+
+parser.add_argument(
+    "--accept_dir",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
+    help="Direcotry to which accept mod data file are saved",
+)
+
+parser.add_argument(
+    "--scan_data",
+    type=str,
+    help="Name of accept mod generated scan_data file.",
+)
+
+parser.add_argument(
+    "--split_data",
+    type=str,
+    help="Name of accept mod generated jk_data file.",
+)
