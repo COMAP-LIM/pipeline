@@ -9,6 +9,8 @@ import h5py
 from tqdm import trange
 import time
 import logging
+import matplotlib.pyplot as plt
+import os
 from mpi4py import MPI
 from sklearn.decomposition import PCA
 
@@ -19,8 +21,8 @@ class Filter:
     name_long = ""  # Verbose, more explanatory name of filter.
     run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
     has_corr_template = False # Set to True if the template impacts the correlation matrix and must be corrected (through the "get_corr_template" function).
-    def get_corr_template(l2, C, feed, sb):
-        return np.zeros_like(C)
+    # def get_corr_template(l2, C, feed, sb):
+        # return np.zeros_like(C)
     def run(self, l2):
         pass
 
@@ -67,7 +69,7 @@ class Normalize_Gain(Filter):
         freq_full = np.fft.rfftfreq(fastlen)*samprate
         W = 1.0/(1 + (freq_full/fknee)**alpha)
         # return ifft(fft(signal_padded)*W).real[:,:Ntod]  # Now crashes with more workers, for some reason ("Resource temporarily unavailable").
-        # return ifft(fft(signal_padded, workers=num_threads)*W, workers=num_threads).real[:,:Ntod]
+        # return irfft(rfft(signal_padded, workers=num_threads)*W, n=fastlen, workers=num_threads).real[:,:Ntod]
         return irfft(rfft(signal_padded)*W, n=fastlen).real[:,:Ntod]
 
 
@@ -133,7 +135,7 @@ class Decimation(Filter):
         l2.Nfreqs = self.Nfreqs
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
         weight[~l2.freqmask] = 0
-        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]))
+        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]), dtype=np.float32)
         for freq in range(self.Nfreqs):
             tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*self.dnu:(freq+1)*self.dnu,:]*weight[:,:,freq*self.dnu:(freq+1)*self.dnu,None], axis=2)
             tod_decimated[:,:,freq,:] /= np.nansum(weight[:,:,freq*self.dnu:(freq+1)*self.dnu], axis=2)[:,:,None]
@@ -141,6 +143,7 @@ class Decimation(Filter):
         l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs), dtype=bool)
         for freq in range(self.Nfreqs):
             l2.freqmask_decimated[:,:,freq] = l2.freqmask[:,:,freq*self.dnu:(freq+1)*self.dnu].any(axis=-1)
+        l2.freqmask_decimated[~(np.isfinite(l2.tod).all(axis=-1))] = False
         tsys_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs))
         for ifreq in range(self.Nfreqs):
             delta_nu = np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)], axis=-1)
@@ -227,47 +230,50 @@ class Polynomial_filter(Filter):
     run_when_masking = True
     has_corr_template = True
 
-    def get_corr_template(l2, C, feed, ihalf):
-        C_template = np.zeros_like(C)
-        for k in range(2):
-            isb = ihalf*2 + k
-            b = np.zeros((l2.Nfreqs, 2))
-            b[:,0] = np.ones(l2.Nfreqs)
-            b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
-            b[~l2.freqmask[feed,isb],:] = 0
-            # b[:,0] /= np.linalg.norm(b[:,0])
-            # b[:,1] /= np.linalg.norm(b[:,1])
-            if (b != 0).any():
-                _C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
-                _C_template[:,~l2.freqmask[feed,isb]] = 0.0
-                _C_template[~l2.freqmask[feed,isb],:] = 0.0
-                for i in range(l2.Nfreqs):
-                    _C_template[i,i] = 0
-                    if i+1 < l2.Nfreqs:
-                        _C_template[i+1,i] = 0
-                        _C_template[i,i+1] = 0
-                C_template[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs] = _C_template
-        return C_template
+    # def get_corr_template(l2, C, feed, ihalf):
+    #     C_template = np.zeros_like(C)
+    #     for k in range(2):
+    #         isb = ihalf*2 + k
+    #         b = np.zeros((l2.Nfreqs, 2))
+    #         b[:,0] = np.ones(l2.Nfreqs)
+    #         b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
+    #         b[~l2.freqmask[feed,isb],:] = 0
+    #         # b[:,0] /= np.linalg.norm(b[:,0])
+    #         # b[:,1] /= np.linalg.norm(b[:,1])
+    #         if (b != 0).any():
+    #             _C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+    #             _C_template[:,~l2.freqmask[feed,isb]] = 0.0
+    #             _C_template[~l2.freqmask[feed,isb],:] = 0.0
+    #             for i in range(l2.Nfreqs):
+    #                 _C_template[i,i] = 0
+    #                 if i+1 < l2.Nfreqs:
+    #                     _C_template[i+1,i] = 0
+    #                     _C_template[i,i+1] = 0
+    #             C_template[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs] = _C_template
+    #     return C_template
 
 
     def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
+        self.params = params
 
-    def run(self, l2):
+    def run(self, l2, masking_run=False):
+        if masking_run and l2.params.write_C_matrix:
+            l2.tofile_dict["C_template_polyfilter"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs, 2*l2.Nfreqs))
         c0 = np.zeros((l2.Nfeeds, l2.Nsb, l2.Ntod)) + np.nan
         c1 = np.zeros((l2.Nfeeds, l2.Nsb, l2.Ntod)) + np.nan
         if not self.use_ctypes:
             sb_freqs = np.linspace(-1, 1, 1024)
-            for feed in range(l2.Nfeeds):
+            for ifeed in range(l2.Nfeeds):
                 for sb in range(4):
                     for idx in range(l2.Ntod):
                         # if np.isfinite(l2.tod[feed,sb,:,idx]).all():
-                        tod_local = l2.tod[feed,sb,:,idx].copy()
+                        tod_local = l2.tod[ifeed,sb,:,idx].copy()
                         tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
                         try:
-                            c1[feed,sb,idx], c0[feed,sb,idx] = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[feed,sb])
-                            l2.tod[feed, sb, :, idx] = l2.tod[feed, sb, :, idx] - c1[feed,sb,idx]*sb_freqs - c0[feed,sb,idx]
+                            c1[ifeed,sb,idx], c0[ifeed,sb,idx] = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[ifeed,sb])
+                            l2.tod[ifeed, sb, :, idx] = l2.tod[ifeed, sb, :, idx] - c1[ifeed,sb,idx]*sb_freqs - c0[ifeed,sb,idx]
                         except:
                             pass
 
@@ -280,27 +286,37 @@ class Polynomial_filter(Filter):
             polylib.polyfit.argtypes = [float32_array1, float32_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
 
             sb_freqs = np.linspace(-1, 1, 1024, dtype=np.float32)
-            for feed in range(l2.Nfeeds):
+            for ifeed in range(l2.Nfeeds):
                 for sb in range(4):
-                    tod_local = l2.tod[feed, sb].copy()
+                    tod_local = l2.tod[ifeed, sb].copy()
                     tod_local[~np.isfinite(tod_local)] = 0
-                    weights = np.array(l2.freqmask[feed, sb], dtype=float)
-                    polylib.polyfit(sb_freqs, l2.tod[feed, sb], weights, l2.Nfreqs, l2.Ntod, c0[feed,sb], c1[feed,sb])
-                    l2.tod[feed, sb, :, :] = l2.tod[feed, sb, :, :] - c1[feed,sb,None,:]*sb_freqs[:,None] - c0[feed,sb,None,:]  # Future improvement: Move into C.
+                    weights = np.array(l2.freqmask[ifeed, sb], dtype=float)
+                    polylib.polyfit(sb_freqs, l2.tod[ifeed, sb], weights, l2.Nfreqs, l2.Ntod, c0[ifeed,sb], c1[ifeed,sb])
+                    l2.tod[ifeed, sb, :, :] = l2.tod[ifeed, sb, :, :] - c1[ifeed,sb,None,:]*sb_freqs[:,None] - c0[ifeed,sb,None,:]  # Future improvement: Move into C.
         l2.tofile_dict["poly_coeff"] = np.zeros((2, l2.Nfeeds, l2.Nsb, l2.Ntod))
         l2.tofile_dict["poly_coeff"][:] = c0, c1
 
         # Adjust correlation template.
-        # for ifeed in range(l2.Nfeeds):
-        #     for isb in range(l2.Nsb):
-        #         b = np.zeros((l2.Nfreqs, 2))
-        #         b[:,0] = np.ones(l2.Nfreqs)
-        #         b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
-        #         b[~l2.freqmask[ifeed,isb],:] = 0
-        #         b[:,0] /= np.linalg.norm(b[:,0])
-        #         b[:,1] /= np.linalg.norm(b[:,1])
-        #         l2.corr_template[ifeed,l2.Nfreqs*isb:l2.Nfreqs*(isb+1),l2.Nfreqs*isb:l2.Nfreqs*(isb+1)] += -b.dot(b.T)
-
+        if masking_run:
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    b = np.zeros((l2.Nfreqs, 2))
+                    b[:,0] = np.ones(l2.Nfreqs)
+                    b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
+                    b[~l2.freqmask[ifeed,isb],:] = 0
+                    if (b != 0).any():
+                        template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+                        template[:,~l2.freqmask[ifeed,isb]] = 0.0
+                        template[~l2.freqmask[ifeed,isb],:] = 0.0
+                        for i in range(l2.Nfreqs):
+                            template[i,i] = 0
+                            if i+1 < l2.Nfreqs:
+                                template[i+1,i] = 0
+                                template[i,i+1] = 0
+                        l2.corr_template[ifeed,l2.Nfreqs*isb:l2.Nfreqs*(isb+1),l2.Nfreqs*isb:l2.Nfreqs*(isb+1)] += template
+                        if self.params.write_C_matrix:
+                            l2.tofile_dict["C_template_polyfilter"][ifeed,isb//2, isb%2*l2.Nfreqs:(isb%2+1)*l2.Nfreqs,isb%2*l2.Nfreqs:(isb%2+1)*l2.Nfreqs] = template
+            # print(np.sum(np.abs(l2.corr_template)))
 
 
 class Frequency_filter(Filter):
@@ -309,87 +325,88 @@ class Frequency_filter(Filter):
     run_when_masking = True
     has_corr_template = True
 
-    def get_corr_template(l2, C, feed, ihalf):
-        C_template = np.zeros_like(C)
-        for k in range(2):
-            isb = ihalf*2 + k
-            P = l2.tofile_dict["freqfilter_P_reduced"][feed,isb]
-            F = l2.tofile_dict["freqfilter_F_reduced"][feed,isb]
-            if not l2.params.freqfilter_use_prior:
-                b = np.zeros((l2.Nfreqs, 3))
-                b[:,:2] = P[:]
-                b[:,2] = F[:,0]
-                b[~np.isfinite(b)] = 0
-                if (b != 0).any():
-                    _C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
-                    _C_template[:,~l2.freqmask[feed,isb]] = 0.0
-                    _C_template[~l2.freqmask[feed,isb],:] = 0.0
-                else:
-                    _C_template = np.zeros((l2.Nfreqs, l2.Nfreqs))
-            else:
-                b = np.zeros((l2.Nfreqs, 3))
-                b[:,:2] = P[:]
-                b[:,2] = F[:,0]
-                b[~np.isfinite(b)] = 0
-                if (b != 0).any():
-                    Lfull = -b.dot(np.linalg.inv(b.T.dot(b))).dot(b.T)
-                else:
-                    return 0
-                b = P.copy()
-                b[~np.isfinite(b)] = 0
-                if (b != 0).any():
-                    Lreduced = -b.dot(np.linalg.inv(b.T.dot(b))).dot(b.T)
-                else:
-                    return 0
-                for ifreq in range(l2.Nfreqs):
-                    Lfull[ifreq,ifreq] = 0
-                    Lreduced[ifreq,ifreq] = 0
-                    if ifreq < l2.Nfreqs-1:
-                        Lfull[ifreq+1,ifreq] = 0
-                        Lreduced[ifreq+1,ifreq] = 0
-                        Lfull[ifreq,ifreq+1] = 0
-                        Lreduced[ifreq,ifreq+1] = 0
-                c = C[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs].copy()
-                c[~np.isfinite(c)] = 0.0
-                c = c.flatten()
-                lx = Lfull.flatten()
-                ly = Lreduced.flatten()
-                alpha = (c.T.dot(lx) - c.T.dot(ly) - lx.T.dot(ly) + ly.T.dot(ly))/(lx.T.dot(lx) - 2*lx.T.dot(ly) + ly.T.dot(ly))
+    # def get_corr_template(l2, C, feed, ihalf):
+    #     C_template = np.zeros_like(C)
+    #     for k in range(2):
+    #         isb = ihalf*2 + k
+    #         P = l2.tofile_dict["freqfilter_P_reduced"][feed,isb]
+    #         F = l2.tofile_dict["freqfilter_F_reduced"][feed,isb]
+    #         if not l2.params.freqfilter_use_prior:
+    #             b = np.zeros((l2.Nfreqs, 3))
+    #             b[:,:2] = P[:]
+    #             b[:,2] = F[:,0]
+    #             b[~np.isfinite(b)] = 0
+    #             if (b != 0).any():
+    #                 _C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+    #                 _C_template[:,~l2.freqmask[feed,isb]] = 0.0
+    #                 _C_template[~l2.freqmask[feed,isb],:] = 0.0
+    #             else:
+    #                 _C_template = np.zeros((l2.Nfreqs, l2.Nfreqs))
+    #         else:
+    #             b = np.zeros((l2.Nfreqs, 3))
+    #             b[:,:2] = P[:]
+    #             b[:,2] = F[:,0]
+    #             b[~np.isfinite(b)] = 0
+    #             if (b != 0).any():
+    #                 Lfull = -b.dot(np.linalg.inv(b.T.dot(b))).dot(b.T)
+    #             else:
+    #                 return 0
+    #             b = P.copy()
+    #             b[~np.isfinite(b)] = 0
+    #             if (b != 0).any():
+    #                 Lreduced = -b.dot(np.linalg.inv(b.T.dot(b))).dot(b.T)
+    #             else:
+    #                 return 0
+    #             for ifreq in range(l2.Nfreqs):
+    #                 Lfull[ifreq,ifreq] = 0
+    #                 Lreduced[ifreq,ifreq] = 0
+    #                 if ifreq < l2.Nfreqs-1:
+    #                     Lfull[ifreq+1,ifreq] = 0
+    #                     Lreduced[ifreq+1,ifreq] = 0
+    #                     Lfull[ifreq,ifreq+1] = 0
+    #                     Lreduced[ifreq,ifreq+1] = 0
+    #             c = C[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs].copy()
+    #             c[~np.isfinite(c)] = 0.0
+    #             c = c.flatten()
+    #             lx = Lfull.flatten()
+    #             ly = Lreduced.flatten()
+    #             alpha = (c.T.dot(lx) - c.T.dot(ly) - lx.T.dot(ly) + ly.T.dot(ly))/(lx.T.dot(lx) - 2*lx.T.dot(ly) + ly.T.dot(ly))
             
-                # print("c", np.sum(~np.isfinite(c)))
-                # print("b", np.sum(~np.isfinite(b)))
-                # print("lx", np.sum(~np.isfinite(lx)))
-                # print("ly", np.sum(~np.isfinite(ly)))
-                # print("alpha", alpha)
+    #             # print("c", np.sum(~np.isfinite(c)))
+    #             # print("b", np.sum(~np.isfinite(b)))
+    #             # print("lx", np.sum(~np.isfinite(lx)))
+    #             # print("ly", np.sum(~np.isfinite(ly)))
+    #             # print("alpha", alpha)
 
-                if np.isfinite(alpha):
-                    if alpha < 0:
-                        alpha_safe = 0
-                    elif alpha > 1:
-                        alpha_safe = 1
-                    else:
-                        alpha_safe = alpha
-                    _C_template = alpha_safe*Lfull + (1-alpha_safe)*Lreduced
-                    _C_template[:,~l2.freqmask[feed,isb]] = 0.0
-                    _C_template[~l2.freqmask[feed,isb],:] = 0.0
-                else:
-                    _C_template = np.zeros((l2.Nfreqs, l2.Nfreqs))
-                l2.tofile_dict["freqfilter_prior_alpha"][feed, isb] = alpha
+    #             if np.isfinite(alpha):
+    #                 if alpha < 0:
+    #                     alpha_safe = 0
+    #                 elif alpha > 1:
+    #                     alpha_safe = 1
+    #                 else:
+    #                     alpha_safe = alpha
+    #                 _C_template = alpha_safe*Lfull + (1-alpha_safe)*Lreduced
+    #                 _C_template[:,~l2.freqmask[feed,isb]] = 0.0
+    #                 _C_template[~l2.freqmask[feed,isb],:] = 0.0
+    #             else:
+    #                 _C_template = np.zeros((l2.Nfreqs, l2.Nfreqs))
+    #             l2.tofile_dict["freqfilter_prior_alpha"][feed, isb] = alpha
 
-            C_template[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs] = _C_template
+    #         C_template[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs] = _C_template
 
-        # print("C", np.sum(~np.isfinite(C_template)))
-        # print(c.T.dot(lx), c.T.dot(ly), lx.T.dot(ly), ly.T.dot(ly))
-        # print(lx.T.dot(lx), lx.T.dot(ly), ly.T.dot(ly))
-        if not np.isfinite(C_template).all():
-            raise ValueError("Non-finite (probably NaN) value in frequency filter corr-matrix template.")
+    #     # print("C", np.sum(~np.isfinite(C_template)))
+    #     # print(c.T.dot(lx), c.T.dot(ly), lx.T.dot(ly), ly.T.dot(ly))
+    #     # print(lx.T.dot(lx), lx.T.dot(ly), ly.T.dot(ly))
+    #     if not np.isfinite(C_template).all():
+    #         raise ValueError("Non-finite (probably NaN) value in frequency filter corr-matrix template.")
 
-        return C_template
+    #     return C_template
 
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.prior_file = params.freqfilter_prior_file
         self.use_prior = params.freqfilter_use_prior
+        self.params = params
 
 
     def PS_1f(self, freqs, sigma0, fknee, alpha, wn=True, Wiener=False, fknee_W=0.01, alpha_W=-4.0):
@@ -434,34 +451,36 @@ class Frequency_filter(Filter):
             sigma0_est = np.mean(sigma0_est[sigma0_est != 0])
             Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.pinv(P.T.dot(P))).dot(P.T)
             RHS = np.fft.rfft(F.T.dot(Z).dot(y))
-            z = F.T.dot(Z).dot(F)
+            z = F.T.dot(Z).dot(F)[0]
             a_bestfit_f = RHS/(z + sigma0_est**2/Cf)
             a_bestfit = np.fft.irfft(a_bestfit_f, n=Ntod)
-            del(freqs, Cf, Z, RHS, a_bestfit_f)
+            del(freqs, RHS, a_bestfit_f)
+            m_bestfit = np.linalg.pinv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
+            return a_bestfit, m_bestfit, Cf, z, Z
         else:
-            Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.inv(P.T.dot(P))).dot(P.T)
+            Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.pinv(P.T.dot(P))).dot(P.T)
             RHS = F.T.dot(Z).dot(y)
             z = F.T.dot(Z).dot(F)
             a_bestfit = RHS/z
-        m_bestfit = np.linalg.pinv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
-        
-        return a_bestfit, m_bestfit
+            m_bestfit = np.linalg.pinv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
+            return a_bestfit, m_bestfit
 
 
-    def run(self, l2):
+    def run(self, l2, masking_run=False):
         with h5py.File(self.prior_file, "r") as f:
             sigma0_prior = f["sigma0_prior"][l2.feeds-1]
             fknee_prior = f["fknee_prior"][l2.feeds-1]
             alpha_prior = f["alpha_prior"][l2.feeds-1]
         
-        if False:  # Testing of all-sb instead of per-sb for gain.
+        if True:  # Testing of all-sb instead of per-sb for gain.
             l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 2))
             l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 1))
             l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, 2, l2.Ntod))
             l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, 1, l2.Ntod))
-            sb_freqs = np.linspace(-1, 1, l2.Nfreqs*4)
-            sb_freqs = sb_freqs.reshape((4, 1024))
-            sb_freqs[(0, 2), :] = sb_freqs[(0, 2), ::-1]
+            # sb_freqs = np.linspace(-1, 1, l2.Nfreqs*l2.Nsb)
+            # sb_freqs = sb_freqs.reshape((l2.Nsb, l2.Nfreqs))
+            # sb_freqs[(0, 2), :] = sb_freqs[(0, 2), ::-1]
+            sb_freqs = l2.freqs.copy()
             for feed in range(l2.Nfeeds):
                 P = np.zeros((4, l2.Nfreqs, 2))
                 F = np.zeros((4, l2.Nfreqs, 1))
@@ -474,173 +493,220 @@ class Frequency_filter(Filter):
                 F[l2.freqmask[feed] == 0, :] = 0
 
                 end_cut = 100
-                y[:,:4] = 0
-                y[:,-end_cut:] = 0
-                P[:,:4] = 0
-                P[:,-end_cut:] = 0
-                F[:,:4] = 0
-                F[:,-end_cut:] = 0
-
-                P[~np.isfinite(P)] = 0
-                F[~np.isfinite(F)] = 0
-                
-                P = P.reshape((4*1024, 2))
-                F = F.reshape((4*1024, 1))
-                y = y.reshape((4*1024, y.shape[-1]))
-
-                if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
-                    print(feed, l2.feeds[feed])
-                    a, m = self.gain_temp_sep(y, P, F, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
-                    # a, m = self.gain_temp_sep(y, P, F)  # No prior
-                else:
-                    a = np.zeros((1, l2.Ntod))
-                    m = np.zeros((2, l2.Ntod))
-
-                for sb in range(4):
-                    l2.tod[feed,sb] = l2.tod[feed,sb] - F[1024*sb:1024*(sb+1)].dot(a) - P[1024*sb:1024*(sb+1)].dot(m)
-
-                    # b = P[1024*sb:1024*(sb+1)].copy()
-                    # b[~np.isfinite(b)] = 0
-                    # b[:,0] /= np.linalg.norm(b[:,0])
-                    # b[:,1] /= np.linalg.norm(b[:,1])
-                    # l2.corr_template[feed, l2.Nfreqs*sb:l2.Nfreqs*(sb+1), l2.Nfreqs*sb:l2.Nfreqs*(sb+1)] += -b.dot(b.T)
-
-                l2.tofile_dict["freqfilter_P"][feed] = P
-                l2.tofile_dict["freqfilter_F"][feed] = F
-                l2.tofile_dict["freqfilter_m"][feed] = m
-                l2.tofile_dict["freqfilter_a"][feed] = a
-
-                
-            
-        l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
-        l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
-        l2.tofile_dict["freqfilter_P_reduced"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
-        l2.tofile_dict["freqfilter_F_reduced"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
-        l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, l2.Nsb, 2, l2.Ntod))
-        l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, l2.Nsb, 1, l2.Ntod))
-        l2.tofile_dict["freqfilter_a_m_corr"] = np.zeros((l2.Nfeeds, l2.Nsb, 2))
-        if self.use_prior:
-            l2.tofile_dict["freqfilter_prior_alpha"] = np.zeros((l2.Nfeeds, l2.Nsb))
-
-        self.tod_frequency_filtered = np.zeros_like(l2.tod)
-        sb_freqs = np.linspace(-1, 1, l2.Nfreqs)
-        P = np.zeros((l2.Nfreqs, 2))
-        F = np.zeros((l2.Nfreqs, 1))
-        for feed in range(l2.Nfeeds):
-            for sb in range(l2.Nsb):
-                y = l2.tod[feed,sb].copy()
-                P[:,0] = 1/l2.Tsys[feed,sb]
-                P[:,1] = sb_freqs/l2.Tsys[feed,sb]
-                F[:,0] = 1
-                y[l2.freqmask[feed,sb] == 0] = 0
-                P[l2.freqmask[feed,sb] == 0, :] = 0
-                F[l2.freqmask[feed,sb] == 0, :] = 0
-                P[~np.isfinite(P)] = 0
-                F[~np.isfinite(F)] = 0
-
-                # Some cuts Håvard included:
                 P_reduced = P.copy()
                 F_reduced = F.copy()
-                end_cut = 100
-                y[:4] = 0
-                y[-end_cut:] = 0
-                P_reduced[:4] = 0
-                P_reduced[-end_cut:] = 0
-                F_reduced[:4] = 0
-                F_reduced[-end_cut:] = 0
+                if self.params.freqfilter_exclude_ends:
+                    y[:,:4] = 0
+                    y[:,-end_cut:] = 0
+                    P_reduced[:,:4] = 0
+                    P_reduced[:,-end_cut:] = 0
+                    F_reduced[:,:4] = 0
+                    F_reduced[:,-end_cut:] = 0
+                P_reduced[~np.isfinite(P_reduced)] = 0
+                F_reduced[~np.isfinite(F_reduced)] = 0
+                
+                P = P.reshape((l2.Nsb*l2.Nfreqs, 2))
+                F = F.reshape((l2.Nsb*l2.Nfreqs, 1))
+                P_reduced = P_reduced.reshape((l2.Nsb*l2.Nfreqs, 2))
+                F_reduced = F_reduced.reshape((l2.Nsb*l2.Nfreqs, 1))
+                y = y.reshape((l2.Nsb*l2.Nfreqs, y.shape[-1]))
 
-
-                if np.sum(P_reduced != 0) > 0 and np.sum(F_reduced != 0) > 0:
+                if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
                     if self.use_prior:
-                        a, m = self.gain_temp_sep(y, P_reduced, F_reduced, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                        a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
                     else:
                         a, m = self.gain_temp_sep(y, P_reduced, F_reduced)
                 else:
                     a = np.zeros((1, l2.Ntod))
                     m = np.zeros((2, l2.Ntod))
 
-                l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
+                for sb in range(l2.Nsb):
+                    l2.tod[feed,sb] = l2.tod[feed,sb] - F[l2.Nfreqs*sb:l2.Nfreqs*(sb+1)].dot(a) - P[l2.Nfreqs*sb:l2.Nfreqs*(sb+1)].dot(m)
 
-                # the b-vector which defines the correlation template contains the rows of F and P,
-                # unless there is a prior on F, in which case the expression becomes more complicated.
-                # if not self.use_prior:
-                #     b = np.zeros((l2.Nfreqs, 3))
-                #     b[:,:2] = P[:]
-                #     b[:,2] = F[:,0]
-                #     b[~np.isfinite(b)] = 0
-                #     C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
-                # else:
-                #     np.save("y.npy", y)
-                #     np.save("freqmask.npy", l2.freqmask[feed,sb])
-                #     c = np.corrcoef(y)
-                #     c[~l2.freqmask[feed,sb],:] = 0.0
-                #     c[:,~l2.freqmask[feed,sb]] = 0.0
-                #     c[~np.isfinite(c)] = 0.0
-                #     b = np.zeros((l2.Nfreqs, 3))
-                #     b[:,:2] = P[:]
-                #     b[:,2] = F[:,0]
-                #     b[~np.isfinite(b)] = 0
-                #     Lfull = -b.dot(np.linalg.pinv(b.T.dot(b))).dot(b.T)
-                #     b = P.copy()
-                #     b[~np.isfinite(b)] = 0
-                #     Lreduced = -b.dot(np.linalg.pinv(b.T.dot(b))).dot(b.T)
-                #     for ifreq in range(l2.Nfreqs):
-                #         Lfull[ifreq,ifreq] = 0
-                #         Lreduced[ifreq,ifreq] = 0
-                #         c[ifreq,ifreq] = 0
-                #         if ifreq < l2.Nfreqs-1:
-                #             Lfull[ifreq+1,ifreq] = 0
-                #             Lreduced[ifreq+1,ifreq] = 0
-                #             c[ifreq+1,ifreq] = 0
-                #             Lfull[ifreq,ifreq+1] = 0
-                #             Lreduced[ifreq,ifreq+1] = 0
-                #             c[ifreq,ifreq+1] = 0
-                #     np.save("Lfull.npy", Lfull)
-                #     np.save("Lreduced.npy", Lreduced)
-                #     np.save("c.npy", c)
-                #     c = c.flatten()
-                #     lx = Lfull.flatten()
-                #     ly = Lreduced.flatten()
-                #     alpha = (c.T.dot(lx) - c.T.dot(ly) - lx.T.dot(ly) + ly.T.dot(ly))/(lx.T.dot(lx) - 2*lx.T.dot(ly) + ly.T.dot(ly))
+                # b = P_reduced.copy()
+                # b[~np.isfinite(b)] = 0
+                # l2.corr_template[feed, :, :] += -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+
+                l2.tofile_dict["freqfilter_P"][feed] = P
+                l2.tofile_dict["freqfilter_F"][feed] = F
+                l2.tofile_dict["freqfilter_m"][feed] = m
+                l2.tofile_dict["freqfilter_a"][feed] = a
+
+                if masking_run:
+                    def var_est(fourier_func):
+                        div_factor = (l2.Ntod-1) / 2.0 
+                        if (l2.Ntod % 2 == 0):
+                            var_est = (np.sum(fourier_func[1:-1]) + fourier_func[-1] / 2) / div_factor
+                        else:
+                            var_est = np.sum(fourier_func[1:]) / div_factor
+                        return var_est
+
+                    F1 = F_reduced - F
+                    F0 = F_reduced                        
+                    Z = np.eye(l2.Nfreqs*4, l2.Nfreqs*4) - P.dot(np.linalg.pinv(P_reduced.T.dot(P_reduced))).dot(P_reduced.T)
+                    Z0 = np.eye(l2.Nfreqs*4, l2.Nfreqs*4) - P_reduced.dot(np.linalg.pinv(P_reduced.T.dot(P_reduced))).dot(P_reduced.T)
+                    z0 = F_reduced.T.dot(Z0).dot(F_reduced)[0]
+
+                    if self.use_prior:
+                        sigma_1 = np.nanmean(np.std(l2.tod[feed,sb,:,1:] - l2.tod[feed,sb,:,:-1], axis=-1))/np.sqrt(2)
+                        # sigma_2 = 0.005059644  # TODO: FIXX!!!
+                        sigma = sigma_1
+                        fourier_func = 1.0 /(z0 + sigma**2/Cf)
+                        # fourier_func2 = (1.0 /(z + sigma**2/Cf)) ** 2
+
+                        G = var_est(fourier_func)
+                        # G2 = var_est(fourier_func2)
+                    else:
+                        G = 1.0/z0
+
+
+                    U = G*F0.T.dot(Z0)
+                    L = (Z - Z.dot(F0).dot(U) + F1.dot(U))
+                    template = L.dot(L.T)
+                    for i in range(l2.Nfreqs*4):
+                        template[i,i] = 0
+                        if i < l2.Nfreqs*4-1:
+                            template[i+1,i] = 0
+                            template[i,i+1] = 0
+                    
+                    l2.corr_template[feed,:,:] += template
+
+
+
+
+        else:
                 
-                #     print("c", np.sum(~np.isfinite(c)))
-                #     print("b", np.sum(~np.isfinite(b)))
-                #     print("lx", np.sum(~np.isfinite(lx)))
-                #     print("ly", np.sum(~np.isfinite(ly)))
-                #     print("alpha", alpha)
+            l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
+            l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
+            l2.tofile_dict["freqfilter_P_reduced"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
+            l2.tofile_dict["freqfilter_F_reduced"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
+            l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, l2.Nsb, 2, l2.Ntod))
+            l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, l2.Nsb, 1, l2.Ntod))
+            l2.tofile_dict["freqfilter_a_m_corr"] = np.zeros((l2.Nfeeds, l2.Nsb, 2))
+            # if self.use_prior:
+            #     l2.tofile_dict["freqfilter_prior_alpha"] = np.zeros((l2.Nfeeds, l2.Nsb))
+            if masking_run and self.params.write_C_matrix:
+                l2.tofile_dict["C_template_freqfilter"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs, 2*l2.Nfreqs))
 
-                #     if np.isfinite(alpha):
-                #         if alpha < 0:
-                #             alpha_safe = 0
-                #         elif alpha > 1:
-                #             alpha_safe = 1
-                #         else:
-                #             alpha_safe = alpha
-                #         C_template = alpha_safe*Lfull + (1-alpha_safe)*Lreduced
-                #     else:
-                #         C_template = 0
+            self.tod_frequency_filtered = np.zeros_like(l2.tod)
+            sb_freqs = np.linspace(-1, 1, l2.Nfreqs)
+            P = np.zeros((l2.Nfreqs, 2))
+            F = np.zeros((l2.Nfreqs, 1))
+            for feed in range(l2.Nfeeds):
+                for sb in range(l2.Nsb):
+                    y = l2.tod[feed,sb].copy()
+                    P[:,0] = 1/l2.Tsys[feed,sb]
+                    P[:,1] = sb_freqs/l2.Tsys[feed,sb]
+                    F[:,0] = 1
+                    y[l2.freqmask[feed,sb] == 0] = 0
+                    P[l2.freqmask[feed,sb] == 0, :] = 0
+                    F[l2.freqmask[feed,sb] == 0, :] = 0
+                    P[~np.isfinite(P)] = 0
+                    F[~np.isfinite(F)] = 0
 
-                # print("C", np.sum(~np.isfinite(C_template)))
-                # print(c.T.dot(lx), c.T.dot(ly), lx.T.dot(ly), ly.T.dot(ly))
-                # print(lx.T.dot(lx), lx.T.dot(ly), ly.T.dot(ly))
-                # if not np.isfinite(C_template).all():
-                #     raise ValueError("Non-finite (probably NaN) value in frequency filter corr-matrix template.")
+                    # Some cuts Håvard included:
+                    P_reduced = P.copy()
+                    F_reduced = F.copy()
+                    end_cut = 100
+                    y[:4] = 0
+                    y[-end_cut:] = 0
+                    P_reduced[:4] = 0
+                    P_reduced[-end_cut:] = 0
+                    F_reduced[:4] = 0
+                    F_reduced[-end_cut:] = 0
 
-                # l2.corr_template[feed, l2.Nfreqs*sb:l2.Nfreqs*(sb+1), l2.Nfreqs*sb:l2.Nfreqs*(sb+1)] += C_template
 
-                # l2.tofile_dict["freqfilter_prior_alpha"][feed, sb] = alpha
-                l2.tofile_dict["freqfilter_P"][feed, sb] = P
-                l2.tofile_dict["freqfilter_F"][feed, sb] = F
-                l2.tofile_dict["freqfilter_P_reduced"][feed, sb] = P_reduced
-                l2.tofile_dict["freqfilter_F_reduced"][feed, sb] = F_reduced
-                l2.tofile_dict["freqfilter_m"][feed, sb] = m
-                l2.tofile_dict["freqfilter_a"][feed, sb] = a
-                l2.tofile_dict["freqfilter_a_m_corr"][feed, sb] = np.sum((a - np.mean(a, axis=-1)[:,None])*(m - np.mean(m, axis=-1)[:,None]), axis=-1)/(m.shape[-1]*np.std(a, axis=-1)*np.std(m, axis=-1))
-        PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"])
-        PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"])
-        l2.tofile_dict["freqfilter_PS_freqs"] = PS_freqs
-        l2.tofile_dict["freqfilter_PS_m"] = PS_m
-        l2.tofile_dict["freqfilter_PS_a"] = PS_a
+                    if np.sum(P_reduced != 0) > 0 and np.sum(F_reduced != 0) > 0:
+                        if self.use_prior:
+                            a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                        else:
+                            a, m = self.gain_temp_sep(y, P_reduced, F_reduced)
+                    else:
+                        a = np.zeros((1, l2.Ntod))
+                        m = np.zeros((2, l2.Ntod))
+
+                    l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
+
+
+                    # Corr template calculations:
+                    if masking_run:
+                        # if not self.use_prior:
+                        #     if not l2.params.freqfilter_use_prior:
+                        #         b = np.zeros((l2.Nfreqs, 3))
+                        #         b[:,:2] = P_reduced[:]
+                        #         b[:,2] = F_reduced[:,0]
+                        #         b[~np.isfinite(b)] = 0
+                        #         if (b != 0).any():
+                        #             template = -b.dot(np.linalg.pinv(b.T.dot(b)).dot(b.T))
+                        #             template[:,~l2.freqmask[feed,sb]] = 0.0
+                        #             template[~l2.freqmask[feed,sb],:] = 0.0
+                        #         else:
+                        #             template = np.zeros((l2.Nfreqs, l2.Nfreqs))
+                        #         l2.corr_template[feed,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs] += template
+                        #         if self.params.write_C_matrix:
+                        #             l2.tofile_dict["C_template_freqfilter"][feed, sb//2, sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs,sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs] += template
+                                
+                        # else:
+                        if (a != 0).any() or (m != 0).any():
+                            def var_est(fourier_func):
+                                div_factor = (l2.Ntod-1) / 2.0 
+                                if (l2.Ntod % 2 == 0):
+                                    var_est = (np.sum(fourier_func[1:-1]) + fourier_func[-1] / 2) / div_factor
+                                else:
+                                    var_est = np.sum(fourier_func[1:]) / div_factor
+                                return var_est
+
+                            F1 = F_reduced - F
+                            F0 = F_reduced                        
+                            Z = np.eye(l2.Nfreqs, l2.Nfreqs) - P.dot(np.linalg.pinv(P_reduced.T.dot(P_reduced))).dot(P_reduced.T)
+                            Z0 = np.eye(l2.Nfreqs, l2.Nfreqs) - P_reduced.dot(np.linalg.pinv(P_reduced.T.dot(P_reduced))).dot(P_reduced.T)
+                            z0 = F_reduced.T.dot(Z0).dot(F_reduced)[0]
+
+                            if self.use_prior:
+                                sigma_1 = np.nanmean(np.std(l2.tod[feed,sb,:,1:] - l2.tod[feed,sb,:,:-1], axis=-1))/np.sqrt(2)
+                                # sigma_2 = 0.005059644  # TODO: FIXX!!!
+                                sigma = sigma_1
+                                fourier_func = 1.0 /(z0 + sigma**2/Cf)
+                                # fourier_func2 = (1.0 /(z + sigma**2/Cf)) ** 2
+
+                                G = var_est(fourier_func)
+                                # G2 = var_est(fourier_func2)
+                            else:
+                                G = 1.0/z0
+
+
+                            U = G*F0.T.dot(Z0)
+                            L = (Z - Z.dot(F0).dot(U) + F1.dot(U))
+                            template = L.dot(L.T)
+                            for i in range(l2.Nfreqs):
+                                template[i,i] = 0
+                                if i < l2.Nfreqs-1:
+                                    template[i+1,i] = 0
+                                    template[i,i+1] = 0
+                            
+                            # template = Z - 2 * G * Z.dot(F_reduced.dot(F_reduced.T.dot(Z))) + G2 * z * Z.dot(F_reduced.dot(F_reduced.T.dot(Z)))
+                            # template *= sigma ** 2
+                            # variances = np.diag(template)
+                            # cov = np.cov(l2.tod[feed,sb])
+                            # template /= np.sqrt(np.outer(variances, variances))
+                            l2.corr_template[feed,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs] += template
+                            if self.params.write_C_matrix:
+                                l2.tofile_dict["C_template_freqfilter"][feed, sb//2, sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs,sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs] += template
+                            
+
+                    # l2.tofile_dict["freqfilter_prior_alpha"][feed, sb] = alpha
+                    l2.tofile_dict["freqfilter_P"][feed, sb] = P
+                    l2.tofile_dict["freqfilter_F"][feed, sb] = F
+                    l2.tofile_dict["freqfilter_P_reduced"][feed, sb] = P_reduced
+                    l2.tofile_dict["freqfilter_F_reduced"][feed, sb] = F_reduced
+                    l2.tofile_dict["freqfilter_m"][feed, sb] = m
+                    l2.tofile_dict["freqfilter_a"][feed, sb] = a
+                    l2.tofile_dict["freqfilter_a_m_corr"][feed, sb] = np.sum((a - np.mean(a, axis=-1)[:,None])*(m - np.mean(m, axis=-1)[:,None]), axis=-1)/(m.shape[-1]*np.std(a, axis=-1)*np.std(m, axis=-1))
+            PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"])
+            PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"])
+            l2.tofile_dict["freqfilter_PS_freqs"] = PS_freqs
+            l2.tofile_dict["freqfilter_PS_m"] = PS_m
+            l2.tofile_dict["freqfilter_PS_a"] = PS_a
 
 
 
@@ -651,7 +717,7 @@ class PCA_filter(Filter):
     run_when_masking = True
     has_corr_template = False
 
-    def __init__(self, params, omp_num_threads=2, use_ctypes=True):
+    def __init__(self, params, omp_num_threads=2, use_ctypes=False):
         self.omp_num_threads = omp_num_threads
         self.n_pca_comp = params.n_pca_comp
         self.use_ctypes = use_ctypes
@@ -688,36 +754,46 @@ class PCA_filter(Filter):
             C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
             PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
-            #float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
             float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
-            max_iter = 100
+            float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
+            float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
+            bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
+            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+            PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_int, ctypes.c_int]
+            max_iter = 50
             err_tol = 1e-12
+            l2.tofile_dict["PCA_err"] = np.zeros((4,max_iter))
             for i in range(4):
                 t0 = time.time()
                 M = l2.tod.reshape((n, p))
-                M = M[l2.freqmask.reshape(n), :]
-                M[~np.isfinite(M)] = 0
-                M = M[np.sum(M != 0, axis=-1) != 0]
+                mask = l2.freqmask.reshape(n)
+                # M = M[l2.freqmask.reshape(n), :]
+                # M[~np.isfinite(M)] = 0
+                # M = M[np.sum(M != 0, axis=-1) != 0]
                 if M.shape[0] > 4:
                     n_actual = M.shape[0]
                     r = np.ones(p)
                     r /= np.linalg.norm(r)
                     err = np.zeros(max_iter)
-                    print("1:", time.time() - t0)
+                    # print("1:", time.time() - t0)
                     # print(M.shape)
                     # print(n, n_actual, p)
                     # print(np.sum(~np.isfinite(M)))
                     t0 = time.time()
-                    PCAlib.PCA(M, r, err, n_actual, p, max_iter, err_tol)
-                    print("2:", time.time() - t0)
+                    PCAlib.PCA(M, mask, r, err, n_actual, p, max_iter, err_tol)
+                    # print("2:", time.time() - t0)
                     t0 = time.time()
                     pca_comp[i] = r
-                    for ifeed in range(l2.Nfeeds):
-                        ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
-                        l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
-                        pca_ampl[i,ifeed] = ak
-                    print("3:", time.time() - t0)
+                    # for ifeed in range(l2.Nfeeds):
+                    #     ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
+                    #     l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+                    #     pca_ampl[i,ifeed] = ak
+                    # print("3:", time.time() - t0)
+                    ak = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+                    PCAlib.subtract_eigcomp(l2.tod, r, ak, l2.Nfeeds*l2.Nsb*l2.Nfreqs, l2.Ntod)
+                    pca_ampl[i] = ak
+                    l2.tofile_dict["PCA_err"][i] = err
+
             l2.tofile_dict["pca_ampl"] = pca_ampl
             l2.tofile_dict["pca_comp"] = pca_comp
 
@@ -728,18 +804,18 @@ class PCA_feed_filter(Filter):
     run_when_masking = True
     has_corr_template = True
 
-    def get_corr_template(l2, C, feed, ihalf):
-        pca_ampl = l2.tofile_dict["pca_feed_ampl"][:,feed]
-        b = pca_ampl.reshape((pca_ampl.shape[0], l2.Nsb*l2.Nfreqs)).T
-        b[~np.isfinite(b)] = 0
-        b[~l2.freqmask[feed].flatten()] = 0.0
-        if (b != 0).any():
-            C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
-            C_template = C_template[ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2, ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
-            mask = l2.freqmask[feed,ihalf*2:(ihalf+1)*2].reshape((2*l2.Nfreqs))
-            C_template[~mask,:] = 0.0
-            C_template[:,~mask] = 0.0
-        return C_template
+    # def get_corr_template(l2, C, feed, ihalf):
+    #     pca_ampl = l2.tofile_dict["pca_feed_ampl"][:,feed]
+    #     b = pca_ampl.reshape((pca_ampl.shape[0], l2.Nsb*l2.Nfreqs)).T
+    #     b[~np.isfinite(b)] = 0
+    #     b[~l2.freqmask[feed].flatten()] = 0.0
+    #     if (b != 0).any():
+    #         C_template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+    #         C_template = C_template[ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2, ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
+    #         mask = l2.freqmask[feed,ihalf*2:(ihalf+1)*2].reshape((2*l2.Nfreqs))
+    #         C_template[~mask,:] = 0.0
+    #         C_template[:,~mask] = 0.0
+    #     return C_template
 
             # b = pca_ampl[:,ifeed].reshape((self.n_pca_comp, l2.Nsb*l2.Nfreqs)).T
             # b[~np.isfinite(b)] = 0
@@ -747,7 +823,7 @@ class PCA_feed_filter(Filter):
             #     b[:,i] /= np.linalg.norm(b[:,i])
             # l2.corr_template[ifeed] += -b.dot(b.T)
 
-    def __init__(self, params, omp_num_threads=2, use_ctypes=True):
+    def __init__(self, params, omp_num_threads=2, use_ctypes=False):
         self.omp_num_threads = omp_num_threads
         self.n_pca_comp = params.n_pca_comp
         self.deci_factor = 16
@@ -792,18 +868,25 @@ class PCA_feed_filter(Filter):
                 pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
                 pca_comp[:,ifeed] = np.transpose(comps, (1,0))
         else:
+            t0 = time.time()
             n = l2.Nsb*l2.Nfreqs
             p = l2.Ntod
             C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
             PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
-            #float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
             float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
-            max_iter = 100
+            float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
+            float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
+            bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
+            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+            PCAlib.subtract_eigcomp.argtypes = [float32_array3, float64_array1, float64_array2, ctypes.c_int, ctypes.c_int]
+            max_iter = 50
             err_tol = 1e-12
+            l2.tofile_dict["PCAf_err"] = np.zeros((4,l2.Nfeeds,max_iter))
+
             weight = 1.0/l2.Tsys**2
             weight[~l2.freqmask] = 0.0
+            # print("1:", time.time() - t0); t0=time.time()
             for icomp in range(4):
                 for ifeed in range(l2.Nfeeds):
                     M = np.zeros((N, l2.Ntod), dtype=np.float32)
@@ -815,34 +898,42 @@ class PCA_feed_filter(Filter):
                             M[i,:] /= w
                             M[i,:] *= np.sqrt(w)
                     M[~np.isfinite(M)] = 0
-                    M = M[np.sum(M != 0, axis=-1) != 0]
+                    # M = M[np.sum(M != 0, axis=-1) != 0]
                     if M.shape[0] < 4:
                         continue
-                    t0 = time.time()
                     n_actual = M.shape[0]
+                    mask = np.ones(n_actual, dtype=bool)
                     r = np.ones(p)
                     r /= np.linalg.norm(r)
                     err = np.zeros(max_iter)
-                    print("1:", time.time() - t0)
-                    t0 = time.time()
-                    PCAlib.PCA(M, r, err, n_actual, p, max_iter, err_tol)
-                    ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
-                    l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+                    # print("2:", time.time() - t0); t0=time.time()
+                    PCAlib.PCA(M, mask, r, err, n_actual, p, max_iter, err_tol)
+                    # print("3:", time.time() - t0); t0=time.time()
+
+                    # ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
+                    # l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+                    ak = np.zeros((l2.Nsb, l2.Nfreqs))
+                    PCAlib.subtract_eigcomp(l2.tod[ifeed], r, ak, l2.Nsb*l2.Nfreqs, l2.Ntod)
+
+
                     pca_ampl[icomp,ifeed] = ak
                     pca_comp[icomp,ifeed] = r
+                    l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
+                    # print("4:", time.time() - t0); t0=time.time()
 
                 
 
-            if masking_run:
+        if masking_run:
+            for ifeed in range(l2.Nfeeds):
                 b = pca_ampl[:,ifeed].reshape((self.n_pca_comp, l2.Nsb*l2.Nfreqs)).T
                 b[~np.isfinite(b)] = 0
                 b[~l2.freqmask[ifeed].flatten()] = 0.0
                 if (b != 0).any():
                     template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
-                    l2.corr_template[ifeed] += template
                     mask = l2.freqmask[ifeed].flatten()
                     template[~mask,:] = 0.0
                     template[:,~mask] = 0.0
+                    l2.corr_template[ifeed] += template
                 else:
                     template = np.zeros((l2.Nfreqs*4, l2.Nfreqs*4))
                 if l2.params.write_C_matrix:
@@ -854,6 +945,7 @@ class PCA_feed_filter(Filter):
         l2.tofile_dict["pca_feed_comp"] = pca_comp#[::-1]
 
 
+        
 
 class Masking(Filter):
     name = "mask"
@@ -888,12 +980,15 @@ class Masking(Filter):
         Ntod = l2_local.Ntod
         premask_tofile_dict_keys = list(l2_local.tofile_dict.keys())  # Store what keys where in the "tofile_dict" prior to premask filters.
         
+        
         for masking_filter in l2.filter_list:  # Look through filter list and see if any filter needs to be run prior to masking.
             if masking_filter.run_when_masking:
+                if masking_filter.name == "freq":  # TODO: Needs to done differently.
+                    masking_filter = Polynomial_filter
                 logging.debug(f"[{rank}] [{self.name}] Running local {masking_filter.name_long} for masking purposes...")
                 t0 = time.time(); pt0 = time.process_time()
                 filter_local = masking_filter(self.params)
-                filter_local.run(l2_local)
+                filter_local.run(l2_local, masking_run=True)
                 del(filter_local)
                 if self.params.write_inter_files:
                     l2_local.write_level2_data(name_extension=f"_premask_{masking_filter.name}")
@@ -905,6 +1000,7 @@ class Masking(Filter):
 
 
         if self.params.write_C_matrix:  # For debuging purposes only.
+            l2.tofile_dict["premask_C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
             l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
             l2.tofile_dict["C_template"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
         max_corr = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
@@ -917,7 +1013,7 @@ class Masking(Filter):
                 freqmask_reason = l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
 
                 C = np.corrcoef(tod)  # Correlation matrix.
-
+                
                 # Ignore masked frequencies.
                 C[~freqmask,:] = 0
                 C[:,~freqmask] = 0
@@ -931,32 +1027,36 @@ class Masking(Filter):
                         C[i+1,i] = 0
                         C[i,i+1] = 0
                 
-                corr_template = np.zeros((2*l2.Nfreqs, 2*l2.Nfreqs))  # The correlated induced by different filters, to be subtracted from the correlation matrix.
-                for filter in l2.filter_list:
-                    if filter.has_corr_template:
-                        corr_from_filter = filter.get_corr_template(l2_local, C, ifeed, ihalf)
-                        corr_from_filter[~freqmask,:] = 0.0
-                        corr_from_filter[:,~freqmask] = 0.0
-                        for i in range(Nfreqs*2):
-                            corr_from_filter[i,i] = 0
-                            if i+1 < Nfreqs*2:
-                                corr_from_filter[i+1,i] = 0
-                                corr_from_filter[i,i+1] = 0
-                        corr_template += corr_from_filter
+                if l2.params.write_C_matrix:  # For debuging purposes only.
+                    l2.tofile_dict["premask_C"][ifeed,ihalf] = C
+                
+                
+                # corr_template = np.zeros((2*l2.Nfreqs, 2*l2.Nfreqs))  # The correlated induced by different filters, to be subtracted from the correlation matrix.
+                # for filter in l2.filter_list:
+                #     if filter.has_corr_template:
+                #         corr_from_filter = filter.get_corr_template(l2_local, C, ifeed, ihalf)
+                #         corr_from_filter[~freqmask,:] = 0.0
+                #         corr_from_filter[:,~freqmask] = 0.0
+                #         for i in range(Nfreqs*2):
+                #             corr_from_filter[i,i] = 0
+                #             if i+1 < Nfreqs*2:
+                #                 corr_from_filter[i+1,i] = 0
+                #                 corr_from_filter[i,i+1] = 0
+                #         corr_template += corr_from_filter
                         
-                        if self.params.write_C_matrix:  # For debuging purposes only.
-                            dictstring = f"C_template_{filter.name}"
-                            if not dictstring in l2.tofile_dict:
-                                l2.tofile_dict[dictstring] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
-                            l2.tofile_dict[dictstring][ifeed,ihalf] += corr_from_filter
+                #         if self.params.write_C_matrix:  # For debuging purposes only.
+                #             dictstring = f"C_template_{filter.name}"
+                #             if not dictstring in l2.tofile_dict:
+                #                 l2.tofile_dict[dictstring] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
+                #             l2.tofile_dict[dictstring][ifeed,ihalf] += corr_from_filter
 
                 # print("2:", C[:5,:5])
 
-
+                corr_template = l2_local.corr_template[ifeed,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
 
                 C -= corr_template
 
-                if self.params.write_C_matrix:  # For debuging purposes only.
+                if l2.params.write_C_matrix:  # For debuging purposes only.
                     l2.tofile_dict["C"][ifeed,ihalf] = C
                     l2.tofile_dict["C_template"][ifeed,ihalf] = corr_template
 
@@ -1138,6 +1238,23 @@ class Masking(Filter):
         logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
+        if self.params.write_C_matrix:
+            outpath = os.path.join(l2.level2_dir, "plots")
+            if not os.path.exists(outpath):
+                os.mkdir(outpath)
+
+            fig, ax = plt.subplots(l2.Nfeeds, 4, figsize=(20, 100))
+            for i in range(l2.Nfeeds):
+                ax[i,0].imshow(l2.tofile_dict["premask_C"][i,0], cmap="bwr", vmin=-0.01, vmax=0.01)
+                ax[i,1].imshow(l2.tofile_dict["premask_C"][i,1], cmap="bwr", vmin=-0.01, vmax=0.01)
+                ax[i,2].imshow(l2.tofile_dict["C"][i,0], cmap="bwr", vmin=-0.01, vmax=0.01)
+                ax[i,3].imshow(l2.tofile_dict["C"][i,1], cmap="bwr", vmin=-0.01, vmax=0.01)
+                ax[i,0].set_title(f"Feed {l2.feeds[i]}")
+                for j in range(4):
+                    ax[i,j].grid(False)
+                    # ax[i,j].axis(False)
+
+            plt.savefig(os.path.join(outpath, f"corr_plot_{l2.scanid_str}.png"))
 
 
 class Tsys_calc(Filter):
