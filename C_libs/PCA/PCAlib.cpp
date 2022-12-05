@@ -45,10 +45,9 @@ inline double dot_product_float_double(float *x, double *y, int size){
 
 
 extern "C"
-void PCA(float *X, double *r, double *err, int n, int p, int max_iter, double err_tol){
+void PCA(float *X, bool *mask, double *r, double *err, int n, int p, int max_iter, double err_tol){
     double *s = new double[p];
     double lambda = 0.0;
-
 
     for(int iter=0; iter<max_iter; iter++){
         for(int i=0; i<p; i++){
@@ -56,9 +55,11 @@ void PCA(float *X, double *r, double *err, int n, int p, int max_iter, double er
         }
         #pragma omp parallel for reduction(+:s[:p])
         for(int row=0; row<n; row++){
-            double xr_dot = dot_product_float_double(&X[row*p], r, p);
-            for(int col=0; col<p; col++){
-                s[col] += X[row*p + col]*xr_dot;
+            if(mask[row]){
+                double xr_dot = dot_product_float_double(&X[row*p], r, p);
+                for(int col=0; col<p; col++){
+                    s[col] += X[row*p + col]*xr_dot;
+                }
             }
         }
 
@@ -232,38 +233,59 @@ void PCA_lanczos(float *X, double *V, double *alphas, double *betas, int n, int 
 
 
 
-int main(){
-    int n = 10;
-    int p = 5;
-    int max_iter = 10;
-	float *X = new float[n*p];
-    double *r = new double[p];
-    double *err = new double[max_iter];
 
-    vector <double> X_vec;
-    X_vec = {6, 3, 7, 4, 6, 9, 2, 6, 7, 4, 3, 7, 7, 2, 5, 4, 1, 7, 5, 1, 4, 0, 9, 5, 8, 0, 9, 2, 6, 3, 8, 2, 4, 2, 6, 4, 8, 6, 1, 3, 8, 1, 9, 8, 9, 4, 1, 3, 6, 7};
+extern "C"
+void subtract_eigcomp(float *tod, double *r, double *ak, int Nouter, int Ntod){
+    // for(int ifeed=0; ifeed<Nfeeds; ifeed++){
+    //     for(int isb=0; isb<Nsb; isb++){
+    //         for(int ifreq=0; ifreq<Nfreqs; ifreq++){
+    //             int outer_idx = ifeed*Nfreqs*Nsb + isb*Nfreqs + ifreq;
+    #pragma omp parallel for
+    for(int outer_idx=0; outer_idx<Nouter; outer_idx++){
 
-    for(int i=0; i<n*p; i++)
-        X[i] = X_vec[i];
+        ak[outer_idx] = dot_product_float_double(&tod[outer_idx*Ntod], r, Ntod);
 
-    for(int i=0; i<p; i++)
-        r[i] = 1.0;
-    normalize_vector(r, p);
-
-    for(int y=0; y<n; y++){
-        for(int x=0; x<p; x++){
-            cout << X[y*p + x] << " ";
+        for(int itod=0; itod<Ntod; itod++){
+            tod[outer_idx*Ntod + itod] -= r[itod]*ak[outer_idx];
         }
-        cout << endl;
     }
-    for(int i=0; i<p; i++)
-        cout << r[i] << endl;
+}
 
-    PCA(X, r, err, n, p, max_iter, 1e-12);
 
-    for(int i=0; i<p; i++)
-        cout << r[i] << endl;
 
+
+
+
+
+
+int main(){
+    // int n = 20000;
+    // int p = 20*4*1024;
+
+    // cout << p << " " << n << endl;
+
+    // int max_iter = 10;
+    // double error_tol = 1e-100;
+
+	// float *X = new float[n*p];
+    // double *r = new double[p];
+    // double *err = new double[max_iter];
+
+    // for(int i=0; i<n*p; i++){
+    //     X[i] = i*0.001 - 1000;  // rand();
+    // }
+
+    // for(int i=0; i<p; i++)
+    //     r[i] = rand();
+    // normalize_vector(r, p);
+
+    // cout << "Starting PCA" << endl;
+
+    // PCA(X, r, err, n, p, max_iter, error_tol);
+
+    // for(int i=0; i<max_iter; i++){
+    //     cout << err[i] << endl;
+    // }
 
     return 0;
 }
