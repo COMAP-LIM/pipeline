@@ -168,6 +168,21 @@ parser.add_argument(
     help="(pca) Number of feed-global PCA components to be subtracted.",
 )
 
+parser.add_argument(
+    "--pca_max_iter",
+    type=int,
+    default=40,
+    help="(pca) Max number of power iterations used to solve for PCA.",
+)
+
+parser.add_argument(
+    "--pca_error_tol",
+    type=float,
+    default=1e-12,
+    help="(pca) Error toleranse (|r - s/lamb|/n) when using power iterations to solve for PCA.",
+)
+
+
 ### PCA feed filter
 # parser.add_argument("--n_feed_pca_comp",    type=int,   default=4,      help="[feedpca] Number of per-feed PCA components to be subtracted.")
 
@@ -273,11 +288,11 @@ parser.add_argument("--accept_data_folder", type=str, default="/mn/stornext/d22/
 ### Field information and grid resolutions
 parser.add_argument("--grid_size", type=int, default=(120, 120))
 parser.add_argument("--grid_res", type=float, default=[2 / 60, 2 / 60])  # in deg
-parser.add_argument(
-    "--field_center",
-    type=float,
-    default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
-)  # in deg
+# parser.add_argument(
+#     "--field_center",
+#     type=float,
+#     default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
+# )  # in deg
 
 parser.add_argument(
     "--make_nhit",

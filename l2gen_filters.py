@@ -721,6 +721,7 @@ class PCA_filter(Filter):
         self.omp_num_threads = omp_num_threads
         self.n_pca_comp = params.n_pca_comp
         self.use_ctypes = use_ctypes
+        self.params = params
     
     def run(self, l2, masking_run=False):
         if not self.use_ctypes:
@@ -749,6 +750,7 @@ class PCA_filter(Filter):
         else:
             pca_ampl = np.zeros((self.n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             pca_comp = np.zeros((self.n_pca_comp, l2.Ntod))
+            pca_eigval = np.zeros((self.n_pca_comp))
             n = l2.Nfeeds*l2.Nsb*l2.Nfreqs
             p = l2.Ntod
             C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
@@ -758,12 +760,12 @@ class PCA_filter(Filter):
             float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
             float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
             bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
             PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_int, ctypes.c_int]
-            max_iter = 50
-            err_tol = 1e-12
-            l2.tofile_dict["PCA_err"] = np.zeros((4,max_iter))
-            for i in range(4):
+            max_iter = self.params.pca_max_iter
+            err_tol = self.params.pca_error_tol
+            l2.tofile_dict["PCA_err"] = np.zeros((self.n_pca_comp, max_iter))
+            for i in range(self.n_pca_comp):
                 t0 = time.time()
                 M = l2.tod.reshape((n, p))
                 mask = l2.freqmask.reshape(n)
@@ -775,12 +777,17 @@ class PCA_filter(Filter):
                     r = np.ones(p)
                     r /= np.linalg.norm(r)
                     err = np.zeros(max_iter)
+                    eigvals = np.zeros(max_iter)
                     # print("1:", time.time() - t0)
                     # print(M.shape)
                     # print(n, n_actual, p)
                     # print(np.sum(~np.isfinite(M)))
+                    # print(M.shape, mask.shape, r.shape, eigvals.shape, err.shape, n_actual, p, max_iter, err_tol)
+                    # print(M)
+                    # print(np.sum(mask != 0))
                     t0 = time.time()
-                    PCAlib.PCA(M, mask, r, err, n_actual, p, max_iter, err_tol)
+                    PCAlib.PCA(M, mask, r, eigvals, err, n_actual, p, max_iter, err_tol)
+                    pca_eigval[i] = eigvals[-1]
                     # print("2:", time.time() - t0)
                     t0 = time.time()
                     pca_comp[i] = r
@@ -796,6 +803,7 @@ class PCA_filter(Filter):
 
             l2.tofile_dict["pca_ampl"] = pca_ampl
             l2.tofile_dict["pca_comp"] = pca_comp
+            l2.tofile_dict["pca_eigval"] = pca_eigval
 
 
 class PCA_feed_filter(Filter):
@@ -878,11 +886,12 @@ class PCA_feed_filter(Filter):
             float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
             float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
             bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
             PCAlib.subtract_eigcomp.argtypes = [float32_array3, float64_array1, float64_array2, ctypes.c_int, ctypes.c_int]
-            max_iter = 50
-            err_tol = 1e-12
-            l2.tofile_dict["PCAf_err"] = np.zeros((4,l2.Nfeeds,max_iter))
+            max_iter = self.params.pca_max_iter
+            err_tol = self.params.pca_error_tol
+            l2.tofile_dict["PCAf_err"] = np.zeros((self.n_pca_comp, l2.Nfeeds, max_iter))
+            pca_eigval = np.zeros((self.n_pca_comp, l2.Nfeeds))
 
             weight = 1.0/l2.Tsys**2
             weight[~l2.freqmask] = 0.0
@@ -899,15 +908,17 @@ class PCA_feed_filter(Filter):
                             M[i,:] *= np.sqrt(w)
                     M[~np.isfinite(M)] = 0
                     # M = M[np.sum(M != 0, axis=-1) != 0]
-                    if M.shape[0] < 4:
+                    if M.shape[0] < self.n_pca_comp:
                         continue
                     n_actual = M.shape[0]
                     mask = np.ones(n_actual, dtype=bool)
                     r = np.ones(p)
                     r /= np.linalg.norm(r)
                     err = np.zeros(max_iter)
+                    eigvals = np.zeros(max_iter)
                     # print("2:", time.time() - t0); t0=time.time()
-                    PCAlib.PCA(M, mask, r, err, n_actual, p, max_iter, err_tol)
+                    PCAlib.PCA(M, mask, r, eigvals, err, n_actual, p, max_iter, err_tol)
+                    pca_eigval[icomp,ifeed] = eigvals[-1]
                     # print("3:", time.time() - t0); t0=time.time()
 
                     # ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
@@ -920,6 +931,7 @@ class PCA_feed_filter(Filter):
                     pca_comp[icomp,ifeed] = r
                     l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
                     # print("4:", time.time() - t0); t0=time.time()
+            l2.tofile_dict["pca_feed_eigval"] = pca_eigval
 
                 
 

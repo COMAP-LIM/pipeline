@@ -45,9 +45,8 @@ inline double dot_product_float_double(float *x, double *y, int size){
 
 
 extern "C"
-void PCA(float *X, bool *mask, double *r, double *err, int n, int p, int max_iter, double err_tol){
+void PCA(float *X, bool *mask, double *r, double *lambda, double *err, int n, int p, int max_iter, double err_tol){
     double *s = new double[p];
-    double lambda = 0.0;
 
     for(int iter=0; iter<max_iter; iter++){
         for(int i=0; i<p; i++){
@@ -63,9 +62,9 @@ void PCA(float *X, bool *mask, double *r, double *err, int n, int p, int max_ite
             }
         }
 
-        lambda = dot_product(r, s, p);
+        lambda[iter] = dot_product(r, s, p);
         for(int col=0; col<p; col++){
-            err[iter] += fabs(r[col] - s[col]/lambda)/n;
+            err[iter] += fabs(r[col] - s[col]/lambda[iter])/n;
         }
         normalize_vector(s, p);
         for(int col=0; col<p; col++){
@@ -74,6 +73,7 @@ void PCA(float *X, bool *mask, double *r, double *err, int n, int p, int max_ite
         if(err[iter] < err_tol){
             for(int i=iter; i<max_iter; i++){
                 err[i] = 0.0;
+                lambda[i] = lambda[iter];
             }
             break;
         }
