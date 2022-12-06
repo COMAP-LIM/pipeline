@@ -162,16 +162,16 @@ parser.add_argument(
 
 ### PCA filter
 parser.add_argument(
-    "--n_pca_comp",
+    "--max_pca_comp",
     type=int,
-    default=4,
+    default=8,
     help="(pca) Number of feed-global PCA components to be subtracted.",
 )
 
 parser.add_argument(
     "--pca_max_iter",
     type=int,
-    default=40,
+    default=20,
     help="(pca) Max number of power iterations used to solve for PCA.",
 )
 
