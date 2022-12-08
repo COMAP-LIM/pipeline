@@ -244,13 +244,12 @@ parser.add_argument(
 
 ###### MAPMAKER ######
 ### Field information and grid resolutions
-parser.add_argument("--grid_size", type=int, default=(120, 120))
-parser.add_argument("--grid_res", type=float, default=[2 / 60, 2 / 60])  # in deg
 parser.add_argument(
-    "--field_center",
+    "--res_factor",
     type=float,
-    default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
-)  # in deg
+    default=1,
+    help="Resolution factor. Default value 1 gives 2 arcmin pixels; value 2 gives 1 arcmin pixels; value 0.5 gives 4 arcmin pixels; etc.",
+)
 
 parser.add_argument(
     "--make_nhit",
