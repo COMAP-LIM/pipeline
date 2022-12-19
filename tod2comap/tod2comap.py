@@ -3,6 +3,7 @@ import numpy.typing as ntyping
 import ctypes
 import time
 import h5py
+import re
 from mpi4py import MPI
 
 from COmap import COmap
@@ -180,6 +181,10 @@ class Mapmaker:
             for key, value in splitfile.items():
                 self.splitdata[key] = value[()]
 
+        # List of map datasets we want to bin.
+        # By default only the "non-split" maps will be binned
+        self.maps_to_bin = ["numerator_map"]
+
         self.perform_splits = self.params.split
         if self.perform_splits:
 
@@ -188,45 +193,75 @@ class Mapmaker:
                 split_types_dict = {}
                 N_primary_splits = 0
                 N_secondary_splits = 0
+
+                primary_splits = []
+                secondary_splits = []
+
                 for line in split_def_file.readlines()[2:]:
                     split_name, split_type = line.split()[:2]
                     split_types_dict[split_name] = int(split_type)
 
+                    # Count number of primary and secondary splits
                     if int(split_type) == 2:
                         N_primary_splits += 1
+                        primary_splits.append(split_name)
                     elif int(split_type) == 3:
                         N_secondary_splits += 1
-
-            # print(N_primary_splits, N_secondary_splits)
+                        secondary_splits.append(split_name)
 
             split_names = self.splitdata["split_list"].astype(str)
             Nsplits = len(split_names)
             split_list = self.splitdata["jk_list"]
 
             unique_numbers = np.unique(split_list)
-            unique_numbers = unique_numbers[unique_numbers != 0]
-            bits = np.zeros((len(unique_numbers), Nsplits + 1))
+            unique_numbers = unique_numbers[unique_numbers % 2 != 0]
 
+            N_unique_numbers = unique_numbers.size
+
+            bits = np.ones((len(unique_numbers), Nsplits + 1), dtype=np.int8)
+
+            if self.rank == 0:
+                print(f"Total number of splits: {unique_numbers.size}")
+                print(f"Perform primary splits: {primary_splits}")
+                print(f"For each primary split perform splits: {secondary_splits}")
+
+            # Dictionary to contain mapping between split id number and dataset name
             split_key_mapping = {}
 
             for i, number in enumerate(unique_numbers):
                 # Convert number to bits
                 bit_num = f"{number:0{Nsplits+1}b}"
 
-                key = ""
-
                 # Loop through all but last bit (accept/recect)
                 for j in range(Nsplits):
                     bits[i, j] = int(bit_num[j])
-                    key += str(split_names[j]) + bit_num[j] + "_"
 
+            for i, number in enumerate(unique_numbers):
+                # For each unique number generate mapping between number and split name
+                for p, primary in enumerate(primary_splits):
+                    # Begin mapping name with primary key
+                    key = f"{primary}/{primary}"
+                    key += f"{bits[i, N_secondary_splits + p]:d}"
+
+                    # Add secondary keys to primary key
+                    for s, secondary in enumerate(secondary_splits):
+                        key += f"_{secondary}"
+                        key += f"{bits[i, s]:d}"
+
+                # Save mapping in dictionary
                 split_key_mapping[key] = number
 
-        #         print(number, bits[i, :], bit_num, key)
-        # print(split_key_mapping)
+            self.split_key_mapping = split_key_mapping
+            split_keys = list(self.split_key_mapping.keys())
 
-        ## Need to parse split_def file to get keys right. In particular "parent" split must be first
-        # sys.exit()
+            # Generating list of map keys that are to be binned up into maps
+            # including the "non-split" map
+            self.maps_to_bin += [
+                split_keys[i] + f"_{self.maps_to_bin[0]}"
+                for i in range(N_unique_numbers)
+            ]
+
+            self.primary_splits = primary_splits
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -244,7 +279,9 @@ class Mapmaker:
             self.params.decimation_freqs,
             self.params.res_factor,
             self.params.make_nhit,
+            self.maps_to_bin,
         )
+
         self.RA_min = full_map.ra_min
         self.DEC_min = full_map.dec_min
 
@@ -338,7 +375,11 @@ class Mapmaker:
 
         if self.rank == 0:
             self.postprocess_map(full_map, l2data)
-            full_map.write_map()
+            if self.perform_splits:
+                # Providing name of primary splits to make group names
+                full_map.write_map(primary_splits=self.primary_splits)
+            else:
+                full_map.write_map()
             finish_time = time.perf_counter()
 
             print("=" * 80)
@@ -355,48 +396,58 @@ class Mapmaker:
             MPI reduce on. All data will be MPI reduced with MPI.SUM
             operation to rank 0 buffer.
         """
-        # Define buffer arrays
-        if self.rank == 0:
-            numerator_buffer = np.zeros_like(mapdata["numerator_map"])
-            denominator_buffer = np.zeros_like(mapdata["denominator_map"])
-            if self.params.make_nhit:
-                nhit_buffer = np.zeros_like(mapdata["nhit"])
-        else:
-            numerator_buffer = None
-            denominator_buffer = None
-            if self.params.make_nhit:
-                nhit_buffer = None
 
-        # Perform MPI reduction
-        self.comm.Reduce(
-            [mapdata["numerator_map"], MPI.FLOAT],
-            [numerator_buffer, MPI.FLOAT],
-            op=MPI.SUM,
-            root=0,
-        )
+        for numerator_key in self.maps_to_bin:
+            denominator_key = re.sub(r"numerator", "denominator", numerator_key)
 
-        self.comm.Reduce(
-            [mapdata["denominator_map"], MPI.FLOAT],
-            [denominator_buffer, MPI.FLOAT],
-            op=MPI.SUM,
-            root=0,
-        )
+            # Define buffer arrays
+            if self.rank == 0:
+                numerator_buffer = np.zeros_like(mapdata[numerator_key])
+                denominator_buffer = np.zeros_like(mapdata[denominator_key])
 
-        if self.rank == 0:
-            # Overwrite rank 0 datasets
-            mapdata["numerator_map"] = numerator_buffer
-            mapdata["denominator_map"] = denominator_buffer
+                if self.params.make_nhit:
+                    # Generate hit map keys
+                    hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
+                    nhit_buffer = np.zeros_like(mapdata[hit_key])
+            else:
+                numerator_buffer = None
+                denominator_buffer = None
+                if self.params.make_nhit:
+                    nhit_buffer = None
 
-        if self.params.make_nhit:
+            # Perform MPI reduction
             self.comm.Reduce(
-                [mapdata["nhit"], MPI.INT],
-                [nhit_buffer, MPI.INT],
+                [mapdata[numerator_key], MPI.FLOAT],
+                [numerator_buffer, MPI.FLOAT],
+                op=MPI.SUM,
+                root=0,
+            )
+
+            self.comm.Reduce(
+                [mapdata[denominator_key], MPI.FLOAT],
+                [denominator_buffer, MPI.FLOAT],
                 op=MPI.SUM,
                 root=0,
             )
 
             if self.rank == 0:
-                mapdata["nhit"] = nhit_buffer
+                # Overwrite rank 0 datasets
+                mapdata[numerator_key] = numerator_buffer
+                mapdata[denominator_key] = denominator_buffer
+
+            if self.params.make_nhit:
+                # Generate hit map keys
+                hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
+
+                self.comm.Reduce(
+                    [mapdata[hit_key], MPI.INT],
+                    [nhit_buffer, MPI.INT],
+                    op=MPI.SUM,
+                    root=0,
+                )
+
+                if self.rank == 0:
+                    mapdata[hit_key] = nhit_buffer
 
     def preprocess_l2data(
         self,
@@ -506,31 +557,78 @@ class Mapmaker:
             to be saved to map object.
         """
 
-        inv_var = mapdata["denominator_map"]
+        # For each split dataset
+        for numerator_key in self.maps_to_bin:
+            # Generating map keys
+            denominator_key = re.sub(r"numerator", "denominator", numerator_key)
+            map_key = re.sub(r"numerator_map", "map", numerator_key)
+            sigma_wn_key = re.sub(r"numerator_map", "sigma_wn", numerator_key)
 
-        # Full map is made by computing map = sum(TOD * inv_var) / sum(inv_var)
-        map = mapdata["numerator_map"] / inv_var
+            inv_var = mapdata[denominator_key]
 
-        # White noise level map
-        sigma = 1 / np.sqrt(inv_var)
+            # Full map is made by computing map = sum(TOD * inv_var) / sum(inv_var)
+            map = mapdata[numerator_key] / inv_var
 
-        # Mask all non-hit regions for feed-coaddition
-        map[inv_var == 0] = 0
+            # White noise level map
+            sigma = 1 / np.sqrt(inv_var)
 
-        # Computing feed-coadded map and white noise map
-        map_coadd = np.sum(map * inv_var, axis=0)
-        sigma_coadd = np.sum(inv_var, axis=0)
+            # Mask all non-hit regions for feed-coaddition
+            map[inv_var == 0] = 0
 
-        map_coadd /= sigma_coadd
-        sigma_coadd = 1 / np.sqrt(sigma_coadd)
+            # Computing feed-coadded map and white noise map
+            map_coadd = np.sum(map * inv_var, axis=0)
+            sigma_coadd = np.sum(inv_var, axis=0)
 
-        if self.params.make_nhit:
-            nhit = mapdata["nhit"]
+            map_coadd /= sigma_coadd
+            sigma_coadd = 1 / np.sqrt(sigma_coadd)
 
-            # Computing coadded hit map
-            nhit_coadd = np.sum(nhit, axis=0)
+            if self.params.make_nhit:
+                # Generate hit map keys
+                hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
-            mapdata["nhit"] = nhit.reshape(
+                nhit = mapdata[hit_key]
+
+                # Computing coadded hit map
+                nhit_coadd = np.sum(nhit, axis=0)
+
+                mapdata[hit_key] = nhit.reshape(
+                    20,
+                    mapdata["n_ra"],
+                    mapdata["n_dec"],
+                    mapdata["n_sidebands"],
+                    mapdata["n_channels"],
+                )
+
+                if hit_key == "nhit":
+                    mapdata[f"{hit_key}_coadd"] = nhit_coadd.reshape(
+                        mapdata["n_ra"],
+                        mapdata["n_dec"],
+                        mapdata["n_sidebands"],
+                        mapdata["n_channels"],
+                    )
+
+            if map_key == "map":
+                # Saving coadded and reshaped data to map object
+                mapdata[f"{map_key}_coadd"] = map_coadd.reshape(
+                    mapdata["n_ra"],
+                    mapdata["n_dec"],
+                    mapdata["n_sidebands"],
+                    mapdata["n_channels"],
+                )
+
+                mapdata[f"{sigma_wn_key}_coadd"] = sigma_coadd.reshape(
+                    mapdata["n_ra"],
+                    mapdata["n_dec"],
+                    mapdata["n_sidebands"],
+                    mapdata["n_channels"],
+                )
+
+            # Masking non-hit regions with NaNs again
+            map[inv_var == 0] = np.nan
+            sigma[inv_var == 0] = np.nan
+
+            # Saving and reshaping map data to map object
+            mapdata[f"{map_key}"] = map.reshape(
                 20,
                 mapdata["n_ra"],
                 mapdata["n_dec"],
@@ -538,52 +636,19 @@ class Mapmaker:
                 mapdata["n_channels"],
             )
 
-            mapdata["nhit_coadd"] = nhit_coadd.reshape(
+            mapdata[f"{sigma_wn_key}"] = sigma.reshape(
+                20,
                 mapdata["n_ra"],
                 mapdata["n_dec"],
                 mapdata["n_sidebands"],
                 mapdata["n_channels"],
             )
 
-        # Saving coadded and reshaped data to map object
-        mapdata["map_coadd"] = map_coadd.reshape(
-            mapdata["n_ra"],
-            mapdata["n_dec"],
-            mapdata["n_sidebands"],
-            mapdata["n_channels"],
-        )
+            # Deleting numerator and denominator from map object
+            del mapdata[numerator_key]
+            del mapdata[denominator_key]
 
-        mapdata["sigma_wn_coadd"] = sigma_coadd.reshape(
-            mapdata["n_ra"],
-            mapdata["n_dec"],
-            mapdata["n_sidebands"],
-            mapdata["n_channels"],
-        )
-
-        # Masking non-hit regions with NaNs again
-        map[inv_var == 0] = np.nan
-        sigma[inv_var == 0] = np.nan
-
-        # Saving and reshaping map data to map object
-        mapdata["map"] = map.reshape(
-            20,
-            mapdata["n_ra"],
-            mapdata["n_dec"],
-            mapdata["n_sidebands"],
-            mapdata["n_channels"],
-        )
-
-        mapdata["sigma_wn"] = sigma.reshape(
-            20,
-            mapdata["n_ra"],
-            mapdata["n_dec"],
-            mapdata["n_sidebands"],
-            mapdata["n_channels"],
-        )
-
-        # Deleting numerator and denominator from map object
-        del mapdata["numerator_map"]
-        del mapdata["denominator_map"]
+            print(numerator_key, denominator_key, map_key, sigma_wn_key, hit_key)
 
     def get_pointing_matrix(
         self,
