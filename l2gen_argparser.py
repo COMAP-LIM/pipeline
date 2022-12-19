@@ -100,7 +100,9 @@ parser.add_argument(
 parser.add_argument(
     "--scantypes",
     type=int,
-    default=[16,],
+    default=[
+        16,
+    ],
     nargs="+",
     help="Scan types to include in run.",
 )
@@ -273,33 +275,51 @@ parser.add_argument(
 )
 
 
-
 ###### ACCEPT MOD ######
 ### Please do set ###
 parser.add_argument("--accept_data_id_string", type=str, default="")
 parser.add_argument("--jk_data_string", type=str, default="")
 parser.add_argument("--scan_stats_from_file", type=str2bool, default=False)
-parser.add_argument("--jk_def_file", type=str, default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt")
+parser.add_argument(
+    "--jk_def_file",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt",
+)
 parser.add_argument("--show_accept_plot", type=str2bool, default=True)
 
 ### Defaults ###
 parser.add_argument("--stats_list", type=str, default="stats_list.py")
-parser.add_argument("--accept_param_folder", type=str, default="/mn/stornext/d22/cmbco/comap/protodir/accept_mod/")
+parser.add_argument(
+    "--accept_param_folder",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/accept_mod/",
+)
 parser.add_argument("--accept_mod_params", type=str, default="accept_params.py")
-parser.add_argument("--patch_definition_file", type=str, default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/patches_celestial.txt")
-parser.add_argument("--weather_filepath", type=str, default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/weather_list.txt")
-parser.add_argument("--accept_data_folder", type=str, default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/")
+parser.add_argument(
+    "--patch_definition_file",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/patches_celestial.txt",
+)
+parser.add_argument(
+    "--weather_filepath",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/weather_list.txt",
+)
+parser.add_argument(
+    "--accept_data_folder",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
+)
 
 
 ###### MAPMAKER ######
 ### Field information and grid resolutions
-parser.add_argument("--grid_size", type=int, default=(120, 120))
-parser.add_argument("--grid_res", type=float, default=[2 / 60, 2 / 60])  # in deg
-# parser.add_argument(
-#     "--field_center",
-#     type=float,
-#     default={"co2": [25.435, 0.000], "co6": [226.00, 55.00], "co7": [170.00, 52.50]},
-# )  # in deg
+parser.add_argument(
+    "--res_factor",
+    type=float,
+    default=1,
+    help="Resolution factor. Default value 1 gives 2 arcmin pixels; value 2 gives 1 arcmin pixels; value 0.5 gives 4 arcmin pixels; etc.",
+)
 
 parser.add_argument(
     "--make_nhit",

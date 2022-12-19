@@ -3,8 +3,11 @@ from typing import Optional
 import h5py
 import numpy as np
 import numpy.typing as ntyping
+from pixell import enmap
 from dataclasses import dataclass, field
 import re
+import os
+import sys
 
 
 @dataclass
@@ -51,7 +54,11 @@ class COmap:
         self.keys = self._data.keys()
 
     def init_emtpy_map(
-        self, field_info: tuple, decimation_freqs: tuple, make_nhit: bool = False
+        self,
+        fieldname: str,
+        decimation_freqs: tuple,
+        resolution_factor: float = 1,
+        make_nhit: bool = False,
     ) -> None:
         """Methode used to set up empty maps and field grid for given field.
         Both an empty numerator and denominator map are generated to acumulate
@@ -59,19 +66,55 @@ class COmap:
 
 
         Args:
-            field_info (tuple): Tuple containing;
-                                * NSIDE: Number of pixels in RA and Dec.
-                                * PIX_RES: pixel resolution (in degrees) in RA and Dec as
-                                  an ArrayLike with size 2.
-                                * FIELD_CENTER: RA and Dec field center coordinates (in degrees)
-                                  as an ArrayLike with size 2.
+            fieldname (str): Name of field patch.
             decimation_freqs (float): Number of frequency channels after decimation in l2gen.
+            resolution_factor (int): Integer factor to upgrade or downgrade standard
+            geometry (2' pixels) with.
             make_nhit (bool, optional): Boolean specifying whether to make an empty hit map.
         """
-        GRID_SIZE, PIX_RES, FIELD_CENTER = field_info
+
+        standard_geometry_path = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            f"standard_geometries/{fieldname}_standard_geometry.fits",
+        )
+
+        self.standard_geometry = enmap.read_map(standard_geometry_path).copy()
+
+        if resolution_factor > 1:
+            self.standard_geometry = enmap.upgrade(
+                self.standard_geometry, resolution_factor
+            )
+        elif resolution_factor < 1:
+            resolution_factor = int(1 / resolution_factor)
+            self.standard_geometry = enmap.downgrade(
+                self.standard_geometry, resolution_factor
+            )
+
+        # Defining pixel centers
+        # Ensuring that RA in (0, 360) degrees and dec in (-180, 180) degrees
+        RA_center = np.degrees(self.standard_geometry.posmap()[1][0, :]) % 360
+        DEC_center = (
+            np.degrees(self.standard_geometry.posmap()[0][:, 0]) - 180
+        ) % 360 - 180
+
+        dRA, dDEC = self.standard_geometry.wcs.wcs.cdelt
+
+        # Defining pixel edges
+        RA_edge = RA_center - dRA / 2
+        RA_edge = np.append(RA_edge, RA_center[-1] + dRA / 2)
+        DEC_edge = DEC_center - dDEC / 2
+        DEC_edge = np.append(DEC_edge, DEC_center[-1] + np.abs(dDEC) / 2)
 
         # Number of pixels in {RA, DEC}
-        NSIDE_RA, NSIDE_DEC = GRID_SIZE
+        NSIDE_DEC, NSIDE_RA = self.standard_geometry.shape
+
+        FIELD_CENTER = np.degrees(
+            enmap.pix2sky(
+                self.standard_geometry.shape,
+                self.standard_geometry.wcs,
+                ((NSIDE_DEC - 1) / 2, (NSIDE_RA - 1) / 2),
+            )
+        )[::-1]
 
         # Number of feeds
         NFEED = 20
@@ -92,44 +135,6 @@ class COmap:
 
         # Empty denomitator map containing sum 1 / sigma^2
         self._data["denominator_map"] = np.zeros_like(self._data["numerator_map"])
-
-        # RA/Dec grid
-        RA_center = np.zeros(NSIDE_RA)
-        DEC_center = np.zeros(NSIDE_DEC)
-        RA_edge = np.zeros(NSIDE_RA + 1)
-        DEC_edge = np.zeros(NSIDE_DEC + 1)
-
-        dRA = PIX_RES[0]
-        dDEC = PIX_RES[1]
-
-        # Min values in RA/Dec. directions (i.e. bin edges)
-        if NSIDE_RA % 2 == 0:
-            RA_min = FIELD_CENTER[0] - dRA * NSIDE_RA / 2.0
-        else:
-            RA_min = FIELD_CENTER[0] - dRA * NSIDE_RA / 2.0 - dRA / 2.0
-
-        if NSIDE_DEC % 2 == 0:
-            DEC_min = FIELD_CENTER[1] - dDEC * NSIDE_DEC / 2.0
-        else:
-            DEC_min = FIELD_CENTER[1] - dDEC * NSIDE_DEC / 2.0 - dDEC / 2.0
-
-        # Defining pixel centers
-        RA_center[0] = RA_min + dRA / 2
-        DEC_center[0] = DEC_min + dDEC / 2
-        for i in range(1, NSIDE_RA):
-            RA_center[i] = RA_center[i - 1] + dRA
-
-        for i in range(1, NSIDE_DEC):
-            DEC_center[i] = DEC_center[i - 1] + dDEC
-
-        # Defining pixel edges
-        RA_edge[0] = RA_min
-        DEC_edge[0] = DEC_min
-        for i in range(1, NSIDE_RA + 1):
-            RA_edge[i] = RA_edge[i - 1] + dRA
-
-        for i in range(1, NSIDE_DEC + 1):
-            DEC_edge[i] = DEC_edge[i - 1] + dDEC
 
         # Save grid in private data dict
         self._data["ra_centers"] = RA_center
@@ -158,6 +163,17 @@ class COmap:
         # Map starts out not being PCA subtracted
         self._data["is_pca_subtr"] = False
 
+        # Save World-Coordinate-System parameters (WCS) for
+        # construction fits headers later.
+        self._data["wcs"] = {
+            "CDELT1": self.standard_geometry.wcs.wcs.cdelt[0],
+            "CDELT2": self.standard_geometry.wcs.wcs.cdelt[1],
+            "CRPIX1": self.standard_geometry.wcs.wcs.crpix[0],
+            "CRPIX2": self.standard_geometry.wcs.wcs.crpix[1],
+            "CRVAL1": self.standard_geometry.wcs.wcs.crval[0],
+            "CRVAL2": self.standard_geometry.wcs.wcs.crval[1],
+        }
+
     def write_map(self, outpath: Optional[str] = None) -> None:
         """Method for writing map data to file.
 
@@ -184,7 +200,13 @@ class COmap:
             print("Saving map to: ", outpath)
             with h5py.File(outpath, "w") as outfile:
                 for key in self.keys:
-                    outfile.create_dataset(key, data=self._data[key])
+                    if "wcs" in key:
+                        outfile.create_group("wcs")
+                        for wcs_key, wcs_param in self._data["wcs"].items():
+                            outfile.create_dataset("wcs/" + wcs_key, data=wcs_param)
+
+                    else:
+                        outfile.create_dataset(key, data=self._data[key])
 
     def __getitem__(self, key: str) -> ntyping.ArrayLike:
         """Method for indexing map data as dictionary

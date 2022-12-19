@@ -15,6 +15,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import os
 import sys
+import matplotlib.pyplot as plt
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
@@ -37,17 +38,6 @@ class Mapmaker:
         # Read parameter file and runlist
         self.read_params()
         self.read_runlist()
-
-        # Define map grid parameters
-        self.GRID_SIZE = self.params.grid_size
-
-        self.FIELD_CENTER = self.params.field_center[self.fieldname]
-
-        # Converting Delta RA to physical degrees
-        self.DRA = self.params.grid_res[0] / np.abs(
-            np.cos(np.radians(self.FIELD_CENTER[1]))
-        )
-        self.DDEC = self.params.grid_res[1]
 
         if not self.params.map_name:
             raise ValueError(
@@ -193,16 +183,25 @@ class Mapmaker:
         self.perform_splits = self.params.split
         if self.perform_splits:
 
+            # Parse split definition file and save definitions to dictionary
+            with open(self.params.split_def, "r") as split_def_file:
+                split_types_dict = {}
+                N_primary_splits = 0
+                N_secondary_splits = 0
+                for line in split_def_file.readlines()[2:]:
+                    split_name, split_type = line.split()[:2]
+                    split_types_dict[split_name] = int(split_type)
+
+                    if int(split_type) == 2:
+                        N_primary_splits += 1
+                    elif int(split_type) == 3:
+                        N_secondary_splits += 1
+
+            # print(N_primary_splits, N_secondary_splits)
+
             split_names = self.splitdata["split_list"].astype(str)
             Nsplits = len(split_names)
             split_list = self.splitdata["jk_list"]
-            _split_list = split_list.copy()
-
-            # split_bits = np.zeros((Nsplits + 1,) + split_list.shape)
-
-            # for i in range(Nsplits + 1):
-            #    split_bits[i, ...] = _split_list >= 2**i
-            #    _split_list -= 2**i
 
             unique_numbers = np.unique(split_list)
             unique_numbers = unique_numbers[unique_numbers != 0]
@@ -241,8 +240,9 @@ class Mapmaker:
         # Define and initialize empty map object to acumulate data
         full_map = COmap(full_map_name)
         full_map.init_emtpy_map(
-            (self.GRID_SIZE, (self.DRA, self.DDEC), self.FIELD_CENTER),
+            self.fieldname,
             self.params.decimation_freqs,
+            self.params.res_factor,
             self.params.make_nhit,
         )
         self.RA_min = full_map.ra_min
@@ -282,14 +282,16 @@ class Mapmaker:
                 l2data.read_l2()
                 time_array[1] += time.perf_counter() - t0
 
+                try:
+                    t0 = time.perf_counter()
+                    self.preprocess_l2data(l2data)
+                    time_array[2] += time.perf_counter() - t0
+                except ValueError:
+                    continue
+
                 t0 = time.perf_counter()
 
-                self.preprocess_l2data(l2data)
-                time_array[2] += time.perf_counter() - t0
-
-                t0 = time.perf_counter()
-
-                self.get_pointing_matrix(l2data)
+                self.get_pointing_matrix(l2data, full_map)
                 time_array[3] += time.perf_counter() - t0
 
                 t0 = time.perf_counter()
@@ -425,14 +427,15 @@ class Mapmaker:
         tod[pixels, ...] = l2data["tod"]
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
-        pointing[pixels, ...] = l2data["point_cel"][..., :-1]
-        freqs = l2data["nu"][0, ...]
+        pointing[pixels, ...] = l2data["point_cel"][..., :2]
+
+        # freqs = l2data["nu"][0, ...]
 
         # Flip sideband 0 and 2
         tod[:, (0, 2), :, :] = tod[:, (0, 2), ::-1, :]
         sigma0[:, (0, 2), :] = sigma0[:, (0, 2), ::-1]
         freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
-        freqs[(0, 2), :] = freqs[(0, 2), ::-1]
+        # freqs[(0, 2), :] = freqs[(0, 2), ::-1]
 
         # Masking accept mod rejected feeds and sidebands
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
@@ -463,6 +466,23 @@ class Mapmaker:
         inv_var[masked_feeds, masked_freqs] = 0
         tod[masked_feeds, :, masked_freqs] = 0
 
+        nan_in_tod = np.any(~np.isfinite(tod))
+        nan_in_inv_var = np.any(~np.isfinite(inv_var))
+
+        if nan_in_tod or nan_in_inv_var:
+            print(
+                "\n"
+                + "#" * 50
+                + "\n"
+                + f"Scan: {l2data.id}: found NaNs in; TOD {np.sum(~np.isfinite(tod))}, inv_var {np.sum(~np.isfinite(inv_var))}"
+                + "\n"
+                + "#" * 50
+                + "\n"
+            )
+            tod[~np.isfinite(tod)] = 0
+            inv_var[~np.isfinite(inv_var)] = 0
+            # raise ValueError
+
         # Overwrite old data
         l2data["tod"] = tod
         l2data["inv_var"] = inv_var
@@ -471,7 +491,7 @@ class Mapmaker:
         # Found that transposing the pixels here makes the binning
         # faster for some reason
         l2data["point_cel"] = np.ascontiguousarray(pointing.transpose(1, 0, 2))
-        l2data["nu"] = freqs
+        # l2data["nu"] = freqs
 
     def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
         """Method that performes a post-processing of map object.
@@ -505,10 +525,12 @@ class Mapmaker:
         sigma_coadd = 1 / np.sqrt(sigma_coadd)
 
         if self.params.make_nhit:
-            # Computing coadded hit map
-            nhit_coadd = np.sum(mapdata["nhit"], axis=0)
+            nhit = mapdata["nhit"]
 
-            mapdata["nhit"] = nhit_coadd.reshape(
+            # Computing coadded hit map
+            nhit_coadd = np.sum(nhit, axis=0)
+
+            mapdata["nhit"] = nhit.reshape(
                 20,
                 mapdata["n_ra"],
                 mapdata["n_dec"],
@@ -566,6 +588,7 @@ class Mapmaker:
     def get_pointing_matrix(
         self,
         l2data: L2file,
+        mapdata: COmap,
     ) -> None:
         """Method which converts the {RA, DEC} pointing of the
         level 2 file into a pixel-feed index for later binning the maps.
@@ -573,21 +596,30 @@ class Mapmaker:
         Args:
             l2data (L2file): Input level 2 file object for which
             to compute the pixel-feed index.
+            mapdata (COmap): Map object from which to get grid parameters.
         """
         # Get pointing from level 2 object
         pointing = l2data["point_cel"]
-        ra = pointing[:, :, 0]
-        dec = pointing[:, :, 1]
+        ra = pointing[:, :, 0].astype(np.float64)
+        dec = pointing[:, :, 1].astype(np.float64)
 
-        # Read these from file in future
-        NSIDE_RA = self.GRID_SIZE[0]
-        NSIDE_DEC = self.GRID_SIZE[1]
-        NPIX = NSIDE_RA * NSIDE_DEC
-        NFEED = 20
+        # Get WCS grid parameters from map
+        DRA = mapdata["wcs"]["CDELT1"].astype(np.float64)
+        DDEC = mapdata["wcs"]["CDELT2"].astype(np.float64)
+
+        CRVAL_RA = mapdata["wcs"]["CRVAL1"].astype(np.float64)
+        CRVAL_DEC = mapdata["wcs"]["CRVAL2"].astype(np.float64)
+
+        CRPIX_RA = mapdata["wcs"]["CRPIX1"].astype(np.float64)
+        CRPIX_DEC = mapdata["wcs"]["CRPIX2"].astype(np.float64)
 
         # Define {RA, DEC} indecies
-        idx_ra_allfeed = np.round((ra - self.RA_min) / self.DRA).astype(np.int32)
-        idx_dec_allfeed = np.round((dec - self.DEC_min) / self.DDEC).astype(np.int32)
+        idx_ra_allfeed = (np.round((ra - CRVAL_RA) / DRA + (CRPIX_RA - 1))).astype(
+            np.int32
+        )
+        idx_dec_allfeed = (np.round((dec - CRVAL_DEC) / DDEC + (CRPIX_DEC - 1))).astype(
+            np.int32
+        )
 
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
@@ -652,8 +684,8 @@ class Mapmaker:
                 NFREQ,
                 NFEED,
                 NSAMP,
-                self.GRID_SIZE[0],
-                self.GRID_SIZE[1],
+                mapdata["n_ra"],
+                mapdata["n_dec"],
                 self.OMP_NUM_THREADS,
                 l2data.id,
             )
@@ -685,8 +717,8 @@ class Mapmaker:
                 NFREQ,
                 NFEED,
                 NSAMP,
-                self.GRID_SIZE[0],
-                self.GRID_SIZE[1],
+                mapdata["n_ra"],
+                mapdata["n_dec"],
                 self.OMP_NUM_THREADS,
             )
 
@@ -706,10 +738,7 @@ if __name__ == "__main__":
     main()
 
     # TODO:
-    # * Cycle when all of scan is masked/rejected
     # * Fix documentations
-    # * Make map saver
-    # * Implement MPI over scans
     # * Implement splits
     # * Save frequency edges and
     #   centers when Jonas
