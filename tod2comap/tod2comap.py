@@ -429,13 +429,13 @@ class Mapmaker:
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
 
-        freqs = l2data["nu"][0, ...]
+        # freqs = l2data["nu"][0, ...]
 
         # Flip sideband 0 and 2
         tod[:, (0, 2), :, :] = tod[:, (0, 2), ::-1, :]
         sigma0[:, (0, 2), :] = sigma0[:, (0, 2), ::-1]
         freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
-        freqs[(0, 2), :] = freqs[(0, 2), ::-1]
+        # freqs[(0, 2), :] = freqs[(0, 2), ::-1]
 
         # Masking accept mod rejected feeds and sidebands
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
@@ -491,7 +491,7 @@ class Mapmaker:
         # Found that transposing the pixels here makes the binning
         # faster for some reason
         l2data["point_cel"] = np.ascontiguousarray(pointing.transpose(1, 0, 2))
-        l2data["nu"] = freqs
+        # l2data["nu"] = freqs
 
     def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
         """Method that performes a post-processing of map object.
@@ -600,20 +600,19 @@ class Mapmaker:
         """
         # Get pointing from level 2 object
         pointing = l2data["point_cel"]
-        ra = pointing[:, :, 0]
-        dec = pointing[:, :, 1]
+        ra = pointing[:, :, 0].astype(np.float64)
+        dec = pointing[:, :, 1].astype(np.float64)
 
         # Get WCS grid parameters from map
-        DRA = mapdata["wcs"]["CDELT1"]
-        DDEC = mapdata["wcs"]["CDELT2"]
+        DRA = mapdata["wcs"]["CDELT1"].astype(np.float64)
+        DDEC = mapdata["wcs"]["CDELT2"].astype(np.float64)
 
-        CRVAL_RA = mapdata["wcs"]["CRVAL1"]
-        CRVAL_DEC = mapdata["wcs"]["CRVAL2"]
+        CRVAL_RA = mapdata["wcs"]["CRVAL1"].astype(np.float64)
+        CRVAL_DEC = mapdata["wcs"]["CRVAL2"].astype(np.float64)
 
-        CRPIX_RA = mapdata["wcs"]["CRPIX1"]
-        CRPIX_DEC = mapdata["wcs"]["CRPIX2"]
+        CRPIX_RA = mapdata["wcs"]["CRPIX1"].astype(np.float64)
+        CRPIX_DEC = mapdata["wcs"]["CRPIX2"].astype(np.float64)
 
-        print(CRVAL_RA, CRVAL_DEC, CRPIX_RA, CRPIX_DEC, DRA, DDEC)
         # Define {RA, DEC} indecies
         idx_ra_allfeed = (np.round((ra - CRVAL_RA) / DRA + (CRPIX_RA - 1))).astype(
             np.int32
@@ -621,26 +620,6 @@ class Mapmaker:
         idx_dec_allfeed = (np.round((dec - CRVAL_DEC) / DDEC + (CRPIX_DEC - 1))).astype(
             np.int32
         )
-
-        # idx_ra_allfeed = np.round((ra - mapdata["ra_centers"][0]) / DRA - 1).astype(
-        #     np.int32
-        # )
-        # idx_dec_allfeed = np.round((dec - mapdata["dec_centers"][0]) / DDEC).astype(
-        #     np.int32
-        # )
-
-        # _idx_ra_allfeed = np.round(
-        #     (ra - mapdata["ra_centers"][-1]) / np.abs(DRA)
-        # ).astype(np.int32)
-        # _idx_dec_allfeed = np.round((dec - mapdata["dec_centers"][0]) / DDEC).astype(
-        #     np.int32
-        # )
-        # print(
-        #     f"{ra[np.where(np.abs(_idx_ra_allfeed - idx_ra_allfeed) == 1)][0]:20f}",
-        #     ra[np.where(np.abs(_idx_ra_allfeed - idx_ra_allfeed) == 1)][0].dtype,
-        # )
-        # print(DRA, mapdata["ra_centers"][0], mapdata["ra_centers"][-1])
-        # print(dec[np.where(np.abs(_idx_dec_allfeed - idx_dec_allfeed) == 1)])
 
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed

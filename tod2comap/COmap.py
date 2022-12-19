@@ -7,6 +7,7 @@ from pixell import enmap
 from dataclasses import dataclass, field
 import re
 import os
+import sys
 
 
 @dataclass
@@ -99,8 +100,8 @@ class COmap:
         dRA, dDEC = self.standard_geometry.wcs.wcs.cdelt
 
         # Defining pixel edges
-        RA_edge = RA_center - np.abs(dRA) / 2
-        RA_edge = np.append(RA_edge, RA_center[-1] + np.abs(dRA) / 2)
+        RA_edge = RA_center - dRA / 2
+        RA_edge = np.append(RA_edge, RA_center[-1] + dRA / 2)
         DEC_edge = DEC_center - dDEC / 2
         DEC_edge = np.append(DEC_edge, DEC_center[-1] + np.abs(dDEC) / 2)
 
