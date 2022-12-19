@@ -159,6 +159,13 @@ parser.add_argument(
     help="(freq) Exclude the first 4 and the last 100 frequency channels from freqfilter fits.",
 )
 
+parser.add_argument(
+    "--freqfilter_full_feed",
+    type=str2bool,
+    default=False,
+    help="(freq) Fit the templates across the entire feed, as opposed to for each sideband.",
+)
+
 
 ### PCA filter
 parser.add_argument(
@@ -330,4 +337,34 @@ parser.add_argument(
     "--split_data",
     type=str,
     help="Name of accept mod generated jk_data file.",
+)
+
+
+#### Scan detect stuff ####
+parser.add_argument(
+    "--scandetect_cut_start",
+    type=int,
+    default=10,
+    help="(scan_detect) Number of datapoints to cut at start of scan when creating runlist.",
+)
+
+parser.add_argument(
+    "--scandetect_cut_end",
+    type=int,
+    default=50,
+    help="(scan_detect) Number of datapoints to cut at end of scan when creating runlist.",
+)
+
+parser.add_argument(
+    "--scandetect_minimum_scan_length",
+    type=float,
+    default = 2.0,
+    help="(scan_detect) Minimum allowed length of scans, in minutes, when creating runlist.",
+)
+
+parser.add_argument(
+    "--ces_only",
+    type=str2bool,
+    default = True,
+    help="(scan_detect) Use only CES scans when creating runlist.",
 )
