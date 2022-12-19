@@ -127,8 +127,8 @@ extern "C" void bin_nhit_and_map(
 
                 int idx_tod = nfreq * time_det_idx + f;
 
-                numerator[idx_map] += tod[idx_tod] * inv_var;
-                denominator[idx_map] += inv_var;
+                numerator[idx_map] += tod[idx_tod] * inv_var * freqmask[freq_feed_idx];
+                denominator[idx_map] += inv_var * freqmask[freq_feed_idx];
 
                 nhit[idx_map] += freqmask[freq_feed_idx];
             }

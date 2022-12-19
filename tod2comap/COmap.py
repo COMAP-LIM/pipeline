@@ -132,7 +132,7 @@ class COmap:
             if make_nhit:
                 # Empty hit map
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
-                print(numerator_key, denominator_key, hit_key)
+
                 self._data[hit_key] = np.zeros(
                     (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.int32
                 )

@@ -648,8 +648,6 @@ class Mapmaker:
             del mapdata[numerator_key]
             del mapdata[denominator_key]
 
-            print(numerator_key, denominator_key, map_key, sigma_wn_key, hit_key)
-
     def get_pointing_matrix(
         self,
         l2data: L2file,
@@ -734,30 +732,63 @@ class Mapmaker:
                 ctypes.c_int,  # scanid
             ]
 
+            scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
             NFEED, NSAMP, NFREQ = l2data["tod"].shape
 
-            # self.mapbinner.bin_map(
-            self.mapbinner.bin_nhit_and_map(
-                l2data["tod"],
-                l2data["inv_var"],
-                l2data["freqmask"],
-                l2data["pointing_ra_index"],
-                l2data["pointing_dec_index"],
-                mapdata["nhit"],
-                mapdata["numerator_map"],
-                mapdata["denominator_map"],
-                NFREQ,
-                NFEED,
-                NSAMP,
-                mapdata["n_ra"],
-                mapdata["n_dec"],
-                self.OMP_NUM_THREADS,
-                l2data.id,
-            )
+            for numerator_key in self.maps_to_bin:
+                # Generating map keys
+                denominator_key = re.sub(r"numerator", "denominator", numerator_key)
+
+                if numerator_key == "numerator_map":
+                    freqmask = l2data["freqmask"].copy()
+                else:
+                    split_key = re.sub(r"_numerator_map", "", numerator_key)
+
+                    split_list = self.splitdata["jk_list"][scan_idx, ...]
+
+                    split_feed_mask, split_sideband_mask = np.where(
+                        split_list == self.split_key_mapping[split_key]
+                    )
+                    NCHANNEL = mapdata["n_channels"]
+                    NSB = mapdata["n_sidebands"]
+
+                    freqmask = (
+                        l2data["freqmask"]
+                        .reshape(
+                            NFEED,
+                            NSB,
+                            NCHANNEL,
+                        )
+                        .copy()
+                    )
+
+                    freqmask[split_feed_mask, split_sideband_mask, :] = 0
+                    freqmask = freqmask.reshape(NFEED, NFREQ)
+
+                self.mapbinner.bin_nhit_and_map(
+                    l2data["tod"],
+                    l2data["inv_var"],
+                    freqmask,
+                    l2data["pointing_ra_index"],
+                    l2data["pointing_dec_index"],
+                    mapdata["nhit"],
+                    mapdata[numerator_key],
+                    mapdata[denominator_key],
+                    NFREQ,
+                    NFEED,
+                    NSAMP,
+                    mapdata["n_ra"],
+                    mapdata["n_dec"],
+                    self.OMP_NUM_THREADS,
+                    l2data.id,
+                )
+
         else:
+
             self.mapbinner.bin_map.argtypes = [
                 float32_array3,  # tod
                 float32_array2,  # sigma
+                int32_array2,  # freqmask
                 int32_array2,  # idx_ra_pix
                 int32_array2,  # idx_dec_pix
                 float32_array4,  # numerator map
@@ -772,20 +803,51 @@ class Mapmaker:
 
             NFEED, NSAMP, NFREQ = l2data["tod"].shape
 
-            self.mapbinner.bin_map(
-                l2data["tod"],
-                l2data["inv_var"],
-                l2data["pointing_ra_index"],
-                l2data["pointing_dec_index"],
-                mapdata["numerator_map"],
-                mapdata["denominator_map"],
-                NFREQ,
-                NFEED,
-                NSAMP,
-                mapdata["n_ra"],
-                mapdata["n_dec"],
-                self.OMP_NUM_THREADS,
-            )
+            for numerator_key in self.maps_to_bin:
+                # Generating map keys
+                denominator_key = re.sub(r"numerator", "denominator", numerator_key)
+
+                if numerator_key == "numerator_map":
+                    freqmask = l2data["freqmask"].copy()
+                else:
+                    split_key = re.sub(r"_numerator_map", "", numerator_key)
+
+                    split_list = self.splitdata["jk_list"][scan_idx, ...]
+
+                    split_feed_mask, split_sideband_mask = np.where(
+                        split_list == self.split_key_mapping[split_key]
+                    )
+                    NCHANNEL = mapdata["n_channels"]
+                    NSB = mapdata["n_sidebands"]
+
+                    freqmask = (
+                        l2data["freqmask"]
+                        .reshape(
+                            NFEED,
+                            NSB,
+                            NCHANNEL,
+                        )
+                        .copy()
+                    )
+
+                    freqmask[split_feed_mask, split_sideband_mask, :] = 0
+                    freqmask = freqmask.reshape(NFEED, NFREQ)
+
+                self.mapbinner.bin_map(
+                    l2data["tod"],
+                    l2data["inv_var"],
+                    freqmask,
+                    l2data["pointing_ra_index"],
+                    l2data["pointing_dec_index"],
+                    mapdata[numerator_key],
+                    mapdata[denominator_key],
+                    NFREQ,
+                    NFEED,
+                    NSAMP,
+                    mapdata["n_ra"],
+                    mapdata["n_dec"],
+                    self.OMP_NUM_THREADS,
+                )
 
 
 def main():
