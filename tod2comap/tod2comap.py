@@ -218,15 +218,12 @@ class Mapmaker:
 
             N_unique_numbers = unique_numbers.size
 
-            bits = np.ones((len(unique_numbers), Nsplits + 1), dtype=np.int8)
+            bits = np.ones((len(unique_numbers), Nsplits), dtype=np.int8)
 
             if self.rank == 0:
                 print(f"Total number of splits: {unique_numbers.size}")
                 print(f"Perform primary splits: {primary_splits}")
                 print(f"For each primary split perform splits: {secondary_splits}")
-
-            # Dictionary to contain mapping between split id number and dataset name
-            split_key_mapping = {}
 
             for i, number in enumerate(unique_numbers):
                 # Convert number to bits
@@ -236,6 +233,11 @@ class Mapmaker:
                 for j in range(Nsplits):
                     bits[i, j] = int(bit_num[j])
 
+            # Flipping bit digits to match split names read from file
+            bits = bits[:, ::-1]
+
+            # Dictionary to contain mapping between split id number and dataset name
+            split_key_mapping = {}
             for i, number in enumerate(unique_numbers):
                 # For each unique number generate mapping between number and split name
                 for p, primary in enumerate(primary_splits):
@@ -248,8 +250,13 @@ class Mapmaker:
                         key += f"_{secondary}"
                         key += f"{bits[i, s]:d}"
 
-                # Save mapping in dictionary
-                split_key_mapping[key] = number
+                    # Save mapping in dictionary
+                    if key not in split_key_mapping.keys():
+                        split_key_mapping[key] = np.array([number])
+                    else:
+                        split_key_mapping[key] = np.append(
+                            split_key_mapping[key], [number]
+                        )
 
             self.split_key_mapping = split_key_mapping
             split_keys = list(self.split_key_mapping.keys())
@@ -258,7 +265,7 @@ class Mapmaker:
             # including the "non-split" map
             self.maps_to_bin += [
                 split_keys[i] + f"_{self.maps_to_bin[0]}"
-                for i in range(N_unique_numbers)
+                for i in range(len(split_keys))
             ]
 
             self.primary_splits = primary_splits
@@ -302,11 +309,15 @@ class Mapmaker:
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0][0]
                 if np.all(~self.splitdata["accept_list"][scan_idx]):
-                    print(f"Rejected scan {scanid} @ rank {self.rank}")
+                    # Print in red forground color
+                    print(
+                        f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
+                    )
                     rejection_number += 1
                     continue
 
-                print(f"Processing scan {scan[0]} @ rank {self.rank}")
+                # Print in green forground color
+                print(f"\033[92m Processing scan {scan[0]} @ rank {self.rank}\033[00m")
                 l2path = scan[-1]
 
                 ti = time.perf_counter()
@@ -767,7 +778,7 @@ class Mapmaker:
                     split_list = self.splitdata["jk_list"][scan_idx, ...]
 
                     split_feed_mask, split_sideband_mask = np.where(
-                        split_list == self.split_key_mapping[split_key]
+                        np.isin(split_list, self.split_key_mapping[split_key])
                     )
                     NCHANNEL = mapdata["n_channels"]
                     NSB = mapdata["n_sidebands"]
@@ -835,7 +846,7 @@ class Mapmaker:
                     split_list = self.splitdata["jk_list"][scan_idx, ...]
 
                     split_feed_mask, split_sideband_mask = np.where(
-                        split_list == self.split_key_mapping[split_key]
+                        np.isin(split_list, self.split_key_mapping[split_key])
                     )
                     NCHANNEL = mapdata["n_channels"]
                     NSB = mapdata["n_sidebands"]
