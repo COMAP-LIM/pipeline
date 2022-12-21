@@ -612,7 +612,7 @@ class Mapmaker:
 
             if map_key == "map":
                 # Saving coadded and reshaped data to map object
-                mapdata[f"{map_key}_coadd"] = map_coadd.reshape(
+                map_coadd = map_coadd.reshape(
                     mapdata["n_ra"],
                     mapdata["n_dec"],
                     mapdata["n_sidebands"],
