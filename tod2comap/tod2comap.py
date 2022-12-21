@@ -591,7 +591,7 @@ class Mapmaker:
                 # Computing coadded hit map
                 nhit_coadd = np.sum(nhit, axis=0)
 
-                mapdata[hit_key] = nhit.reshape(
+                nhit = nhit.reshape(
                     20,
                     mapdata["n_ra"],
                     mapdata["n_dec"],
@@ -599,13 +599,16 @@ class Mapmaker:
                     mapdata["n_channels"],
                 )
 
+                mapdata[hit_key] = nhit.transpose(0, 3, 4, 1, 2)
+
                 if hit_key == "nhit":
-                    mapdata[f"{hit_key}_coadd"] = nhit_coadd.reshape(
+                    nhit_coadd = nhit_coadd.reshape(
                         mapdata["n_ra"],
                         mapdata["n_dec"],
                         mapdata["n_sidebands"],
                         mapdata["n_channels"],
                     )
+                    mapdata[f"{hit_key}_coadd"] = nhit_coadd.transpose(2, 3, 0, 1)
 
             if map_key == "map":
                 # Saving coadded and reshaped data to map object
@@ -616,19 +619,23 @@ class Mapmaker:
                     mapdata["n_channels"],
                 )
 
-                mapdata[f"{sigma_wn_key}_coadd"] = sigma_coadd.reshape(
+                sigma_coadd = sigma_coadd.reshape(
                     mapdata["n_ra"],
                     mapdata["n_dec"],
                     mapdata["n_sidebands"],
                     mapdata["n_channels"],
                 )
 
+                # Changing axis order to old standard
+                mapdata[f"{map_key}_coadd"] = map_coadd.transpose(2, 3, 0, 1)
+                mapdata[f"{sigma_wn_key}_coadd"] = sigma_coadd.transpose(2, 3, 0, 1)
+
             # Masking non-hit regions with NaNs again
             map[inv_var == 0] = np.nan
             sigma[inv_var == 0] = np.nan
 
             # Saving and reshaping map data to map object
-            mapdata[f"{map_key}"] = map.reshape(
+            map = map.reshape(
                 20,
                 mapdata["n_ra"],
                 mapdata["n_dec"],
@@ -636,13 +643,17 @@ class Mapmaker:
                 mapdata["n_channels"],
             )
 
-            mapdata[f"{sigma_wn_key}"] = sigma.reshape(
+            sigma = sigma.reshape(
                 20,
                 mapdata["n_ra"],
                 mapdata["n_dec"],
                 mapdata["n_sidebands"],
                 mapdata["n_channels"],
             )
+
+            # Changing axis order to old standard
+            mapdata[f"{map_key}"] = map.transpose(0, 3, 4, 1, 2)
+            mapdata[f"{sigma_wn_key}"] = sigma.transpose(0, 3, 4, 1, 2)
 
             # Deleting numerator and denominator from map object
             del mapdata[numerator_key]
@@ -705,6 +716,14 @@ class Mapmaker:
             dtype=ctypes.c_float, ndim=2, flags="contiguous"
         )  # 4D array 32-bit float pointer object.
 
+        # float64_array3 = np.ctypeslib.ndpointer(
+        #     dtype=ctypes.c_double, ndim=3, flags="contiguous"
+        # )  # 4D array 32-bit float pointer object.
+
+        # float64_array2 = np.ctypeslib.ndpointer(
+        #     dtype=ctypes.c_double, ndim=2, flags="contiguous"
+        # )  # 4D array 32-bit float pointer object.
+
         int32_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_int, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
@@ -737,6 +756,7 @@ class Mapmaker:
 
             for numerator_key in self.maps_to_bin:
                 # Generating map keys
+
                 denominator_key = re.sub(r"numerator", "denominator", numerator_key)
 
                 if numerator_key == "numerator_map":
