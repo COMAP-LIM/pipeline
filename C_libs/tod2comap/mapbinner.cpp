@@ -23,6 +23,7 @@
 extern "C" void bin_map(
     float *tod,
     float *sigma,
+    int *freqmask,
     int *idx_ra_pix,
     int *idx_dec_pix,
     float *numerator,
@@ -67,8 +68,8 @@ extern "C" void bin_map(
 
                 int idx_tod = nfreq * time_det_idx + f;
 
-                numerator[idx_map] += tod[idx_tod] * inv_var;
-                denominator[idx_map] += inv_var;
+                numerator[idx_map] += tod[idx_tod] * inv_var * freqmask[freq_feed_idx];
+                denominator[idx_map] += inv_var * freqmask[freq_feed_idx];
             }
         }
     }

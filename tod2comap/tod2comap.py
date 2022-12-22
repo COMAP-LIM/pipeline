@@ -757,6 +757,8 @@ class Mapmaker:
             dtype=ctypes.c_int, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
 
+        scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
+
         if self.params.make_nhit:
             int32_array4 = np.ctypeslib.ndpointer(
                 dtype=ctypes.c_int, ndim=4, flags="contiguous"
@@ -780,7 +782,6 @@ class Mapmaker:
                 ctypes.c_int,  # scanid
             ]
 
-            scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
             NFEED, NSAMP, NFREQ = l2data["tod"].shape
 
             for numerator_key in self.maps_to_bin:
@@ -853,7 +854,6 @@ class Mapmaker:
                 )
 
         else:
-
             self.mapbinner.bin_map.argtypes = [
                 float32_array3,  # tod
                 float32_array2,  # sigma
