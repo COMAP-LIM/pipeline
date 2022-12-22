@@ -52,6 +52,18 @@ class Mapmaker:
         )
         self.mapbinner = ctypes.cdll.LoadLibrary(mapbinner_path)
 
+        # Computing allowed limits of noise in l2 TODs
+        self.sample_time = 0.02  # seconds
+        self.frequency_resolution = (
+            1e9 * (34 - 26) / (4 * self.params.decimation_freqs)
+        )  # Hz
+
+        self.Tsys_limits = np.array([20, 100])  # [Min, Max] in K
+
+        self.radiometer_limits = self.Tsys_limits / np.sqrt(
+            self.sample_time * self.frequency_resolution
+        )
+
     def read_params(self):
         from l2gen_argparser import parser
 
@@ -490,6 +502,12 @@ class Mapmaker:
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
+
+        # Check if noise level is above allowed limit
+        if np.any(sigma0[sigma0 > 0] < self.radiometer_limits[0]):
+            print(
+                f"\033[95m WARNING: Scan: {l2data.id} lowest non-zero sigma_wn  {np.nanmin(sigma0[sigma0 > 0]):.5f} K < lower limit {self.radiometer_limits[0]:.5f} K! @ rank {self.rank} \033[00m"
+            )
 
         # freqs = l2data["nu"][0, ...]
 
