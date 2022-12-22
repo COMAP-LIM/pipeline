@@ -254,13 +254,13 @@ class Mapmaker:
                 # For each unique number generate mapping between number and split name
                 for p, primary in enumerate(primary_splits):
                     # Begin mapping name with primary key
-                    key = f"{primary}/{primary}"
+                    key = f"{primary}"
                     key += f"{bits[i, N_secondary_splits + p]:d}"
 
                     # Add secondary keys to primary key
-                    for s, secondary in enumerate(secondary_splits):
-                        key += f"_{secondary}"
-                        key += f"{bits[i, s]:d}"
+                    for s, secondary in enumerate(secondary_splits[::-1]):
+                        key += f"{secondary}"
+                        key += f"{bits[i,N_secondary_splits - 1 - s]:d}"
 
                     # Save mapping in dictionary
                     if key not in split_key_mapping.keys():
@@ -276,7 +276,7 @@ class Mapmaker:
             # Generating list of map keys that are to be binned up into maps
             # including the "non-split" map
             self.maps_to_bin += [
-                split_keys[i] + f"_{self.maps_to_bin[0]}"
+                f"/{self.maps_to_bin[0]}_{split_keys[i]}"
                 for i in range(len(split_keys))
             ]
 
@@ -522,7 +522,7 @@ class Mapmaker:
         rejected_feed, rejected_sideband = np.where(
             ~self.splitdata["accept_list"][scan_idx]
         )
-        # freqmask[rejected_feed, rejected_sideband, :] = 0
+        freqmask[rejected_feed, rejected_sideband, :] = 0
 
         # Ordering TOD axis so that fast freuquency axis is last
         tod = tod.transpose(
@@ -684,25 +684,6 @@ class Mapmaker:
             mapdata[f"{map_key}"] = map.transpose(0, 3, 4, 1, 2)
             mapdata[f"{sigma_wn_key}"] = sigma.transpose(0, 3, 4, 1, 2)
 
-            print(
-                f"{map_key}",
-                np.all(np.isnan(mapdata[f"{map_key}"])),
-                np.nanmin((mapdata[f"{map_key}"])),
-                np.nanmax((mapdata[f"{map_key}"])),
-            )
-            print(
-                f"{sigma_wn_key}",
-                np.all(np.isnan(mapdata[f"{sigma_wn_key}"])),
-                np.nanmin((mapdata[f"{sigma_wn_key}"])),
-                np.nanmax((mapdata[f"{sigma_wn_key}"])),
-            )
-            print(
-                f"{hit_key}",
-                np.all(mapdata[f"{hit_key}"] == 0),
-                np.nanmin((mapdata[f"{hit_key}"])),
-                np.nanmax((mapdata[f"{hit_key}"])),
-            )
-
             # Deleting numerator and denominator from map object
             del mapdata[numerator_key]
             del mapdata[denominator_key]
@@ -811,7 +792,7 @@ class Mapmaker:
                     freqmask = l2data["freqmask"].copy()
                 else:
                     freqmask = l2data["freqmask"].copy()
-                    split_key = re.sub(r"_numerator_map", "", numerator_key)
+                    split_key = re.sub(r"/numerator_map_", "", numerator_key)
 
                     split_list = self.splitdata["jk_list"][scan_idx, ...]
 
@@ -899,7 +880,7 @@ class Mapmaker:
                     freqmask = l2data["freqmask"].copy()
                 else:
                     freqmask = l2data["freqmask"].copy()
-                    split_key = re.sub(r"_numerator_map", "", numerator_key)
+                    split_key = re.sub(r"/numerator_map_", "", numerator_key)
 
                     split_list = self.splitdata["jk_list"][scan_idx, ...]
                     split_feed_mask, split_sideband_mask = np.where(
