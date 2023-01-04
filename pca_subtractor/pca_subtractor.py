@@ -294,7 +294,12 @@ class PCA_SubTractor:
                 # Assert if coadded rms and nhit maps are same as the ones from
                 # original initialization
                 assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
+
+                rms_coadd[rms_coadd == 0] = np.inf
+
                 assert np.allclose(rms_coadd, self.map["sigma_wn_coadd"])
+
+            rms_coadd[np.isinf(rms_coadd)] = np.nan
 
             self.map["map_coadd"] = map_coadd
             self.map["nhit_coadd"] = nhit_coadd

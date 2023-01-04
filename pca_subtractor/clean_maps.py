@@ -1,6 +1,15 @@
 import argparse
-from map_object import COmap
 from pca_subtractor import PCA_SubTractor
+
+
+import os
+import sys
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+sys.path.append(parent_directory)
+
+from tod2comap.COmap import COmap
 
 
 def main():
