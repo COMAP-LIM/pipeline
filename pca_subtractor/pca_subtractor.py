@@ -1,4 +1,3 @@
-from map_object import COmap
 from scipy import linalg
 
 import numpy as np
@@ -7,6 +6,16 @@ import numpy.typing as ntyping
 import re
 import warnings
 from tqdm import tqdm
+
+
+import os
+import sys
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+sys.path.append(parent_directory)
+
+from tod2comap.COmap import COmap
 
 # Ignore RuntimeWarning
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -39,7 +48,7 @@ class PCA_SubTractor:
         self.clean = clean
         self.maskrms = maskrms
 
-        # List of keys to perform PCA on (only per feed hence remove "map" and "rms")
+        # List of keys to perform PCA on (only per feed hence remove "map" and "sigma_wn")
         self.keys_to_pca = [
             key for key in map.keys if ("map" in key) and ("coadd" not in key)
         ]
@@ -102,7 +111,7 @@ class PCA_SubTractor:
             Tuple[np.ndarray, np.ndarray, np.ndarray]: Tuple of coadded map, hit map and rms map.
         """
         # Make keys for rms and nhit datasets that corresponds to map dataset
-        rms_key = re.sub(r"map", "rms", key)
+        rms_key = re.sub(r"map", "sigma_wn", key)
         nhit_key = re.sub(r"map", "nhit", key)
 
         # Get feed map data
@@ -141,28 +150,28 @@ class PCA_SubTractor:
 
         Args:
             key (str): key to map dataset to perform PCA on
-            norm (str): String that specifies what RMS normalization to apply to map prior to SVD. Defaults to "rms".
+            norm (str): String that specifies what RMS normalization to apply to map prior to SVD. Defaults to "sigma_wn".
                         Can take values;
                          - 'approx' - for normalizing map by first PCA mode of RMS-map
                          - 'rms' - for normalizing map by RMS-map
                          - 'var' - for normalizing map by variance-map
 
         Raises:
-            ValueError: norm must be either of "approx", "rms", "var".
+            ValueError: norm must be either of "approx", "sigma_wn", "var".
 
         Returns:
             np.ndarray: Normalized map dataset
         """
 
         # Making sure normalization is valid
-        if norm not in ["approx", "rms", "var"]:
-            message = 'Make sure that normalization argument norm is either of the three "approx", "rms", "var".'
+        if norm not in ["approx", "sigma_wn", "var"]:
+            message = 'Make sure that normalization argument norm is either of the three "approx", "sigma_wn", "var".'
             raise ValueError(message)
 
         # Make key for rms dataset that corresponds to map dataset
-        rms_key = re.sub(r"map", "rms", key)
+        rms_key = re.sub(r"map", "sigma_wn", key)
 
-        if norm == "rms":
+        if norm == "sigma_wn":
             # rms normalized PCA
             self.norm_exponent = 1
         elif norm == "var":
@@ -195,7 +204,7 @@ class PCA_SubTractor:
         singular_values = self.map[key + "_pca_sing_val"][:, : self.ncomps]
 
         # Make key for rms dataset that corresponds to map dataset
-        rms_key = re.sub(r"map", "rms", key)
+        rms_key = re.sub(r"map", "sigma_wn", key)
 
         # Input rms map from key
         inrms = self.map[rms_key]
@@ -223,11 +232,11 @@ class PCA_SubTractor:
 
         return map_reconstruction
 
-    def compute_pca(self, norm: str = "rms") -> COmap:
+    def compute_pca(self, norm: str = "sigma_wn") -> COmap:
         """Method to compute PCA of map datasets
 
         Args:
-            norm (str, optional): String that specifies what RMS normalization to apply to map prior to SVD. Defaults to "rms".
+            norm (str, optional): String that specifies what RMS normalization to apply to map prior to SVD. Defaults to "sigma_wn".
                         Can take values;
                          - 'approx' - for normalizing map by first PCA mode of RMS-map
                          - 'rms' - for normalizing map by RMS-map
@@ -248,7 +257,7 @@ class PCA_SubTractor:
                 # Masking high-noise regions
                 maskrms = self.maskrms
                 # Make keys for rms and nhit datasets that corresponds to map dataset
-                rms_key = re.sub(r"map", "rms", key)
+                rms_key = re.sub(r"map", "sigma_wn", key)
                 nhit_key = re.sub(r"map", "nhit", key)
 
                 self.map[key] = np.where(
@@ -285,11 +294,11 @@ class PCA_SubTractor:
                 # Assert if coadded rms and nhit maps are same as the ones from
                 # original initialization
                 assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
-                assert np.allclose(rms_coadd, self.map["rms_coadd"])
+                assert np.allclose(rms_coadd, self.map["sigma_wn_coadd"])
 
             self.map["map_coadd"] = map_coadd
             self.map["nhit_coadd"] = nhit_coadd
-            self.map["rms_coadd"] = rms_coadd
+            self.map["sigma_wn_coadd"] = rms_coadd
 
         # Assigning parameter specifying that map object is PCA subtracted
         # and what norm was used

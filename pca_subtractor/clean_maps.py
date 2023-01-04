@@ -19,8 +19,8 @@ def main():
         "--rmsnorm",
         type=str,
         help="""Which normalistion to use before PCA decomposition. 
-        Choose between "approx", "rms" or "var". Default is "rms".""",
-        default="rms",
+        Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
+        default="sigma_wn",
     )
 
     parser.add_argument(
@@ -64,7 +64,7 @@ def main():
 
     try:
         rmsnorm = args.rmsnorm
-        assert rmsnorm in ["approx", "rms", "var"]
+        assert rmsnorm in ["approx", "sigma_wn", "var"]
     except:
         message = """Please choose a normalisation to apply prior to PCA;  -n approx, -n rms or -n var."""
         raise NameError(message)
