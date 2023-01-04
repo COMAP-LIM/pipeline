@@ -96,8 +96,10 @@ class level2_file:
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
+        # We write to a hidden file (starting with a ".") first, and then rename it. This makes it safe to abort the program during writes:
+        temp_outfilename = os.path.join(outpath, "." + self.l2_filename + name_extension + ".h5")
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
-        with h5py.File(outfilename, "w") as f:
+        with h5py.File(temp_outfilename, "w") as f:
             # Hardcoded level2 parameters:
             f["feeds"] = self.feeds
             f["tod"] = self.tod
@@ -150,3 +152,4 @@ class level2_file:
                 pix2ind_fortran[self.feeds[ifeed]-1] = ifeed+1
             # f["pix2ind_python"] = pix2ind_python
             f["pix2ind_fortran"] = pix2ind_fortran
+        os.rename(temp_outfilename, outfilename)
