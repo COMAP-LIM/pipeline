@@ -147,7 +147,9 @@ class Decimation(Filter):
         tsys_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs))
         for ifreq in range(self.Nfreqs):
             delta_nu = np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)], axis=-1)
-            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(1.0/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
+            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
+
+        tsys_decimated[~l2.freqmask_decimated] = np.nan
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = self.dnu
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
@@ -472,7 +474,7 @@ class Frequency_filter(Filter):
             fknee_prior = f["fknee_prior"][l2.feeds-1]
             alpha_prior = f["alpha_prior"][l2.feeds-1]
         
-        if True:  # Testing of all-sb instead of per-sb for gain.
+        if self.params.freqfilter_full_feed:  # Testing of all-sb instead of per-sb for gain.
             l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 2))
             l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 1))
             l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, 2, l2.Ntod))
@@ -717,7 +719,7 @@ class PCA_filter(Filter):
     run_when_masking = True
     has_corr_template = False
 
-    def __init__(self, params, omp_num_threads=2, use_ctypes=True):
+    def __init__(self, params, omp_num_threads=2, use_ctypes=False):
         self.omp_num_threads = omp_num_threads
         self.max_pca_comp = params.max_pca_comp
         self.use_ctypes = use_ctypes
@@ -725,6 +727,7 @@ class PCA_filter(Filter):
     
     def run(self, l2, masking_run=False):
         if not self.use_ctypes:
+            self.max_pca_comp = 4
             pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             # pca_comp = np.zeros((self.N_pca_modes, l2.Ntod))
             N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
@@ -760,8 +763,8 @@ class PCA_filter(Filter):
             float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
             float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
             bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
-            PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_int, ctypes.c_int]
+            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_double]
+            PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
             max_iter = self.params.pca_max_iter
             err_tol = self.params.pca_error_tol
             l2.tofile_dict["PCA_err"] = np.zeros((self.max_pca_comp, max_iter))
@@ -811,9 +814,9 @@ class PCA_filter(Filter):
                     PCAlib.subtract_eigcomp(l2.tod, r, ak, l2.Nfeeds*l2.Nsb*l2.Nfreqs, l2.Ntod)
                     pca_ampl[i] = ak
                     l2.tofile_dict["PCA_err"][i] = err
+                    self.n_pca_comp = i+1
 
                     if eigvals[-1] < lambda_treshold:
-                        self.n_pca_comp = i+1
                         pca_ampl = pca_ampl[:i+1]
                         pca_comp = pca_comp[:i+1]
                         pca_eigval = pca_eigval[:i+1]
@@ -850,7 +853,7 @@ class PCA_feed_filter(Filter):
             #     b[:,i] /= np.linalg.norm(b[:,i])
             # l2.corr_template[ifeed] += -b.dot(b.T)
 
-    def __init__(self, params, omp_num_threads=2, use_ctypes=True):
+    def __init__(self, params, omp_num_threads=2, use_ctypes=False):
         self.omp_num_threads = omp_num_threads
         self.max_pca_comp = params.max_pca_comp
         self.deci_factor = 16
@@ -859,6 +862,7 @@ class PCA_feed_filter(Filter):
     
     def run(self, l2, masking_run=False):
         self.N_deci_freqs = l2.Nfreqs//self.deci_factor
+        self.max_pca_comp = 4
 
         pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         pca_comp = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Ntod))
@@ -905,8 +909,8 @@ class PCA_feed_filter(Filter):
             float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
             float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
             bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
-            PCAlib.subtract_eigcomp.argtypes = [float32_array3, float64_array1, float64_array2, ctypes.c_int, ctypes.c_int]
+            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_double]
+            PCAlib.subtract_eigcomp.argtypes = [float32_array3, float64_array1, float64_array2, ctypes.c_long, ctypes.c_long]
             max_iter = self.params.pca_max_iter
             err_tol = self.params.pca_error_tol
             l2.tofile_dict["PCAf_err"] = np.zeros((self.max_pca_comp, l2.Nfeeds, max_iter))
@@ -969,8 +973,8 @@ class PCA_feed_filter(Filter):
                     l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
                     # print("4:", time.time() - t0); t0=time.time()
 
+                    self.n_pca_comp[ifeed] = icomp+1
                     if eigvals[-1] < lambda_treshold:
-                        self.n_pca_comp[ifeed] = icomp+1
                         break
 
             l2.tofile_dict["pca_feed_eigval"] = pca_eigval
@@ -1329,12 +1333,19 @@ class Tsys_calc(Filter):
         Phot_interp = np.zeros(l2.Nfeeds)
         
         with h5py.File(self.cal_database_file, "r") as f:
-            Phot = f[f"/obsid/{obsid}/Phot"][()]
-            for isb in l2.flipped_sidebands:
-                Phot[:,isb,:] = Phot[:,isb,::-1]
-            Thot = f[f"/obsid/{obsid}/Thot"][()]
-            calib_times = f[f"/obsid/{obsid}/calib_times"][()]
-            successful = f[f"/obsid/{obsid}/successful"][()]
+            try:
+                Phot = f[f"/obsid/{obsid}/Phot"][()]
+                for isb in l2.flipped_sidebands:
+                    Phot[:,isb,:] = Phot[:,isb,::-1]
+                Thot = f[f"/obsid/{obsid}/Thot"][()]
+                calib_times = f[f"/obsid/{obsid}/calib_times"][()]
+                successful = f[f"/obsid/{obsid}/successful"][()]
+            except:
+                Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan
+                Thot = np.zeros((l2.Nfeeds, 2)) + np.nan
+                calib_times = np.zeros((l2.Nfeeds, 2)) + np.nan
+                successful = np.zeros((l2.Nfeeds, 2))
+                l2.freqmask[:] = False
 
         n_cal = np.zeros(l2.Nfeeds, dtype=int)
         for ifeed in range(l2.Nfeeds):
@@ -1349,12 +1360,16 @@ class Tsys_calc(Filter):
                 n_cal[ifeed] = 2
             elif successful[feed-1,0]:  # Only first calibration successful: Use values from that one.
                 Phot_interp = Phot[feed-1,:,:,0]
-                Thot_interp = Thot[feed-1,:,:,0]
+                Thot_interp = Thot[feed-1,0]
                 n_cal[ifeed] = 1
             elif successful[feed-1,1]:  # Only second...
                 Phot_interp = Phot[feed-1,:,:,1]
-                Thot_interp = Thot[feed-1,:,:,1]
+                Thot_interp = Thot[feed-1,1]
                 n_cal[ifeed] = 1
+            else:
+                Phot_interp = np.zeros_like(Phot[feed-1,:,:,0]) + np.nan
+                Thot_interp = np.zeros_like(Thot[feed-1,0]) + np.nan
+
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
 
         l2.tofile_dict["Tsys"] = l2.Tsys
