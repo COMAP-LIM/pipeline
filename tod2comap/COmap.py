@@ -59,11 +59,11 @@ class COmap:
         decimation_freqs: tuple,
         resolution_factor: float = 1,
         make_nhit: bool = False,
+        maps_to_bin: list = ["numerator_map"],
     ) -> None:
         """Methode used to set up empty maps and field grid for given field.
         Both an empty numerator and denominator map are generated to acumulate
         data during binning of TODs. Optionally an empty hit map is generated.
-
 
         Args:
             fieldname (str): Name of field patch.
@@ -71,6 +71,9 @@ class COmap:
             resolution_factor (int): Integer factor to upgrade or downgrade standard
             geometry (2' pixels) with.
             make_nhit (bool, optional): Boolean specifying whether to make an empty hit map.
+            maps_to_bin (optional, list): List of numerator map datasets to initialize.
+            The same number of denominator maps will also be made. By default no splits are made
+            and hence only one numerator and denominator map are made.
         """
 
         standard_geometry_path = os.path.join(
@@ -122,19 +125,25 @@ class COmap:
         # Number of sidebands
         NSB = 4
 
-        if make_nhit:
-            # Empty hit map
-            self._data["nhit"] = np.zeros(
-                (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.int32
+        # Initializing empty split maps:
+        for numerator_key in maps_to_bin:
+            denominator_key = re.sub(r"numerator", "denominator", numerator_key)
+
+            if make_nhit:
+                # Empty hit map
+                hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
+
+                self._data[hit_key] = np.zeros(
+                    (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.int32
+                )
+
+            # Empty denomitator map containing sum TOD / sigma^2
+            self._data[numerator_key] = np.zeros(
+                (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.float32
             )
 
-        # Empty denomitator map containing sum TOD / sigma^2
-        self._data["numerator_map"] = np.zeros(
-            (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.float32
-        )
-
-        # Empty denomitator map containing sum 1 / sigma^2
-        self._data["denominator_map"] = np.zeros_like(self._data["numerator_map"])
+            # Empty denomitator map containing sum 1 / sigma^2
+            self._data[denominator_key] = np.zeros_like(self._data["numerator_map"])
 
         # Save grid in private data dict
         self._data["ra_centers"] = RA_center
@@ -174,7 +183,9 @@ class COmap:
             "CRVAL2": self.standard_geometry.wcs.wcs.crval[1],
         }
 
-    def write_map(self, outpath: Optional[str] = None) -> None:
+    def write_map(
+        self, outpath: Optional[str] = None, primary_splits: Optional[list] = None
+    ) -> None:
         """Method for writing map data to file.
 
         Args:
@@ -199,12 +210,27 @@ class COmap:
         else:
             print("Saving map to: ", outpath)
             with h5py.File(outpath, "w") as outfile:
+                outfile.create_group("wcs")
+
+                if primary_splits is not None:
+                    # Create all needed groups for multisplits
+                    outfile.create_group("multisplits")
+
+                    for primary_split in primary_splits:
+                        outfile.create_group(f"multisplits/{primary_split}")
+
                 for key in self.keys:
                     if "wcs" in key:
-                        outfile.create_group("wcs")
+                        # Saving World Coordinate System parameters to group
                         for wcs_key, wcs_param in self._data["wcs"].items():
-                            outfile.create_dataset("wcs/" + wcs_key, data=wcs_param)
-
+                            outfile.create_dataset(f"wcs/{wcs_key}", data=wcs_param)
+                    elif "/" in key:
+                        # If splis are to be performed save data to correct group
+                        primary_split = key.split("_")[-1]
+                        primary_split = primary_split[:4]
+                        outfile.create_dataset(
+                            f"multisplits/{primary_split}{key}", data=self._data[key]
+                        )
                     else:
                         outfile.create_dataset(key, data=self._data[key])
 
