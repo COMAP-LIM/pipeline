@@ -197,6 +197,12 @@ parser.add_argument(
 
 ### Masking
 parser.add_argument(
+    "--load_freqmask_path",
+    type=str,
+    default="",
+    help="(mask) Path to level2 files from which to load freqmasks instead of computing masks. If empty, will compute masking as usual."
+)
+parser.add_argument(
     "--box_sizes",
     type=int,
     default=[32, 128, 512],

@@ -1030,9 +1030,19 @@ class Masking(Filter):
         rank = comm.Get_rank()
         t0 = time.time(); pt0 = time.process_time()
 
-
         logging.debug(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
-
+        
+        if len(self.params.load_freqmask_path) > 0:  # If not empty string, load freqmasks from this directory instead of computing it.
+            filename = os.path.join(self.params.load_freqmask_path, l2.l2_filename + ".h5")
+            if not os.path.isfile(filename):
+                raise ValueError(f"Specified l2 file for loading freqmask does not exist: {filename}.")
+            logging.debug(f"Using imported freqmask from {filename}.")
+            with h5py.File(filename, "r") as f:
+                freqmask = f["freqmask_full_aftermasking"][()]
+            l2.freqmask[~freqmask] = False
+            l2.freqmask_reason[freqmask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Imported freqmask).")
+            return
 
         l2_local = copy.deepcopy(l2)
         Nfreqs = l2_local.Nfreqs
