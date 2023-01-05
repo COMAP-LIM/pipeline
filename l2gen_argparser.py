@@ -410,3 +410,10 @@ parser.add_argument(
     default=None,
     help="Complete path to signal cube to use for singal injection. Should be HDF5 file.",
 )
+
+parser.add_argument(
+    "--boost_factor",
+    type=float,
+    default=1,
+    help="Factor to multiply with simulation to be injected into TOD in simulation pipeline.",
+)
