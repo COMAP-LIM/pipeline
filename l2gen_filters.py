@@ -103,6 +103,7 @@ class Normalize_Gain(Filter):
                 for sb in range(l2.Nsb):
                     # tod_lowpass = lowpass_filter_new(l2.tod[feed, sb], fastlen, num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
                     tod_lowpass = self.lowpass_filter(l2.tod[feed, sb], num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    # tod_lowpass = self.lowpass_filter_safe(l2.tod[feed, sb], num_threads = self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
@@ -1033,7 +1034,8 @@ class Masking(Filter):
         logging.debug(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
         
         if len(self.params.load_freqmask_path) > 0:  # If not empty string, load freqmasks from this directory instead of computing it.
-            filename = os.path.join(self.params.load_freqmask_path, l2.l2_filename + ".h5")
+            path = os.path.join(self.params.load_freqmask_path, l2.fieldname)
+            filename = os.path.join(path, l2.l2_filename + ".h5")
             if not os.path.isfile(filename):
                 raise ValueError(f"Specified l2 file for loading freqmask does not exist: {filename}.")
             logging.debug(f"Using imported freqmask from {filename}.")
