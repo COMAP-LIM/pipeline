@@ -12,6 +12,7 @@ import logging
 import datetime
 import os
 import psutil
+import random
 from mpi4py import MPI
 from l2gen_l2class import level2_file
 import l2gen_filters
@@ -107,6 +108,10 @@ class l2gen_runner:
         for dir in os.listdir(self.params.level2_dir):
             if os.path.isdir(os.path.join(self.params.level2_dir, dir)):
                 for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
+                    if file[0] == "." and self.rank == 0:  # Delete any left-over hidden files from previously aborted runs.
+                        os.remove(os.path.join(os.path.join(self.params.level2_dir, dir), file))
+                self.comm.Barrier()
+                for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
                     if file[-3:] == ".h5" or file[-4:] == ".hd5":
                         if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
                             existing_scans.append(int(file.split(".")[0].split("_")[1]))
@@ -154,8 +159,9 @@ class l2gen_runner:
                 print(f"Scans outside obsid range:  {n_scans_outside_range}")
                 print(f"Scans already processed:    {n_scans_already_processed}")
 
+        random.seed(42)
+        random.shuffle(runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.
         self.runlist = runlist
-
 
 
 class l2gen:
