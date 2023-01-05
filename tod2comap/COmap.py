@@ -224,9 +224,13 @@ class COmap:
                         # Saving World Coordinate System parameters to group
                         for wcs_key, wcs_param in self._data["wcs"].items():
                             outfile.create_dataset(f"wcs/{wcs_key}", data=wcs_param)
+                    elif "multisplits" in key:
+                        outfile.create_dataset(f"{key}", data=self._data[key])
+
                     elif "/" in key:
                         # If splis are to be performed save data to correct group
                         primary_split = key.split("_")[-1]
+
                         primary_split = primary_split[:4]
                         outfile.create_dataset(
                             f"multisplits/{primary_split}{key}", data=self._data[key]

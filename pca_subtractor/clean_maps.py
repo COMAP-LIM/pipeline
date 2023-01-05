@@ -1,9 +1,12 @@
 import argparse
-from pca_subtractor import PCA_SubTractor
 
 
 import os
 import sys
+
+
+from pca_subtractor import PCA_SubTractor
+
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
@@ -27,7 +30,7 @@ def main():
         "-r",
         "--rmsnorm",
         type=str,
-        help="""Which normalistion to use before PCA decomposition. 
+        help="""Which normalistion to use before PCA decomposition.
         Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
         default="sigma_wn",
     )

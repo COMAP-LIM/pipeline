@@ -200,7 +200,7 @@ parser.add_argument(
     "--load_freqmask_path",
     type=str,
     default="",
-    help="(mask) Path to level2 files from which to load freqmasks instead of computing masks. If empty, will compute masking as usual."
+    help="(mask) Path to level2 files from which to load freqmasks instead of computing masks. If empty, will compute masking as usual.",
 )
 parser.add_argument(
     "--box_sizes",
@@ -384,13 +384,29 @@ parser.add_argument(
 parser.add_argument(
     "--scandetect_minimum_scan_length",
     type=float,
-    default = 2.0,
+    default=2.0,
     help="(scan_detect) Minimum allowed length of scans, in minutes, when creating runlist.",
 )
 
 parser.add_argument(
     "--ces_only",
     type=str2bool,
-    default = True,
+    default=True,
     help="(scan_detect) Use only CES scans when creating runlist.",
+)
+
+###### Cross-Spectrum stuff ######
+parser.add_argument(
+    "--field",
+    type=str,
+    default=None,
+    help="Name of field to use. Defualt None signals that field must be specified to compute cross-spectra.",
+)
+
+###### Signal Injection ######
+parser.add_argument(
+    "--signal_path",
+    type=str,
+    default=None,
+    help="Complete path to signal cube to use for singal injection. Should be HDF5 file.",
 )
