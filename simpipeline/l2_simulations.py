@@ -5,6 +5,8 @@ import scipy.interpolate as interp
 import numpy.typing as ntyping
 
 from dataclasses import dataclass, field
+from pixell import enmap, utils
+import os
 
 
 @dataclass
@@ -51,16 +53,13 @@ class SimCube:
         from pixell import enmap
 
         standard_geometry_path = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            f"standard_geometries/{fieldname}_standard_geometry.fits",
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+            f"tod2comap/standard_geometries/{fieldname}_standard_geometry.fits",
         )
 
-        # standard_geometry_path = os.path.join(
-        #     "/mn/stornext/d22/cmbco/comap/nils/comap_python/tod2comap",
-        #     f"standard_geometries/{fieldname}_standard_geometry.fits",
-        # )
-
         standard_geometry = enmap.read_map(standard_geometry_path).copy()
+
+        standard_geometry = enmap.upgrade(standard_geometry, 4)
 
         # Number of pixels in {DEC, RA}
         NSIDE_DEC, NSIDE_RA = standard_geometry.shape
@@ -78,12 +77,91 @@ class SimCube:
         ra, dec = self.get_bin_centers(ra, dec)
 
         simdata = self._data["simulation"]
-        simdata = simdata.reshape(
-            simdata.shape[0] * simdata.shape[1], simdata.shape[2], simdata.shape[3]
-        )
-        simdata = simdata.transpose(1, 2, 0)
+
+        # channels = np.arange(simdata.shape[0], dtype=np.int32)
+        # sidebands = np.arange(simdata.shape[1], dtype=np.int32)
+
+        # self.signal = interp.RegularGridInterpolator(
+        #     (sidebands, channels, ra, dec), simdata
+        # )
+
+        self.signal = [[] for _ in range(simdata.shape[0])]
         print(simdata.shape)
 
-        channels = np.arange(simdata.shape[-1], dtype=np.int32)
+        import time
 
-        self.signal = interp.RegularGridInterpolator((ra, dec, channels), simdata)
+        t0 = time.perf_counter()
+
+        for sb in range(simdata.shape[0]):
+            for channel in range(simdata.shape[1]):
+                interpolation = interp.RectBivariateSpline(
+                    ra, dec, simdata[sb, channel, :, :]
+                )
+                self.signal[sb].append(interpolation)
+        print("Time iterpolation", time.perf_counter() - t0, "s")
+        # self.signal = [
+        #     interp.RectBivariateSpline(ra, dec, simdata[sb, channel, :, :])
+        #     for sb in range(simdata.shape[0])
+        #     for channel in range(simdata.shape[1])
+        # ]
+
+        # print("hei", self.signal)
+
+    def prepare_geometry(self, fieldname: str, boost: float = 1):
+        """Method that defines the WCS geometry of the signal cube given the
+        COMAP standard geometries. The signal cube is then transformed into an
+        enmap with the computed WCS geometry and an optional signal boost applied.
+
+        Args:
+            fieldname (str): Name of field from which to load standard geometry.
+            boost (float, optional): Boost factor with which signal can be boosted. Defaults to 1.
+
+        Returns:
+            enmap.enmap: Simulation cube enmap object which contains geometry and simulated (boosted) signal.
+        """
+
+        # Path to standard geometry directory
+        standard_geometry_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+            f"tod2comap/standard_geometries/{fieldname}_standard_geometry.fits",
+        )
+
+        # Load and upgrade standard geomtry
+        standard_geometry = enmap.read_map(standard_geometry_path).copy()
+        standard_geometry = enmap.upgrade(
+            standard_geometry, (self._data["x"].size - 1) // standard_geometry.shape[1]
+        )
+
+        # Defining an enmap with geometry equal to upgraded standard geometry
+        self.simdata = enmap.enmap(
+            self._data["simulation"], standard_geometry.wcs, copy=False
+        )
+
+        self.simdata *= 1e-6  # muK to K
+
+        # Return optionally boosted signal
+        return boost * self.simdata
+
+    def sim2tod(self, ra: np.ndarray, dec: np.ndarray) -> np.ndarray:
+        """Method that, given the telescope pointing in RA and Dec, projects
+        the signal from the singal cube into time-stream space for all feeds
+        frequencies at the same time.
+
+        Args:
+            ra (np.ndarray): Right Acention from telescope pointing.
+            dec (np.ndarray): Declination from telescope pointing.
+
+        Returns:
+            np.ndarray: Simulation signal in time-stream space along
+            telescope pointing for all feeds and frequencies.
+        """
+
+        # Concatenating dec and ra, and changing units to radians
+        coords = np.array((dec, ra))
+        coords = np.deg2rad(coords)
+
+        # Find rounded pixel index corresponding to telescope pointing given the simulation map geometry
+        y_idx, x_idx = utils.nint(self.simdata.sky2pix(coords))
+
+        # Return pointing along pointing
+        return np.moveaxis(self.simdata[:, :, y_idx, x_idx], 2, 0)
