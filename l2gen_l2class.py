@@ -128,6 +128,9 @@ class level2_file:
             f["point_tel"][:,:,0] = self.az
             f["point_tel"][:,:,1] = self.el
             f["decimation_time"] = 1
+
+            f["is_sim"] = self.is_sim
+
             # Custom data (usually from the filters):
             for key in self.tofile_dict:  
                 f[key] = self.tofile_dict[key]
