@@ -147,8 +147,7 @@ class Decimation(Filter):
         l2.freqmask_decimated[~(np.isfinite(l2.tod).all(axis=-1))] = False
         tsys_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs))
         for ifreq in range(self.Nfreqs):
-            delta_nu = np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)], axis=-1)
-            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
+            tsys_decimated[:,:,ifreq] = np.sqrt(self.dnu/np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
 
         tsys_decimated[~l2.freqmask_decimated] = np.nan
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
