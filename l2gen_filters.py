@@ -1399,13 +1399,13 @@ class Calibration(Filter):
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
         l2.freqmask[~np.isfinite(l2.Tsys)] = False
-        l2.freqmask_reason[~np.isfinite(l2.Tsys)] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason[~np.isfinite(l2.Tsys)] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys NaN or inf")
 
         l2.freqmask[l2.Tsys < self.min_tsys] = False
-        l2.freqmask_reason[l2.Tsys < self.min_tsys] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason[l2.Tsys < self.min_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys < min_tsys")
 
         l2.freqmask[l2.Tsys > self.max_tsys] = False
-        l2.freqmask_reason[l2.Tsys > self.max_tsys] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason[l2.Tsys > self.max_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys > max_tsys")
