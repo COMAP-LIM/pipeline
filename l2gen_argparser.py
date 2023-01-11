@@ -328,7 +328,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--make_nhit",
+    "--make_no_nhit",
     action="store_false",
     help="(tod2comap) If flag is provided hit maps are made. By default hit maps are made.",
 )

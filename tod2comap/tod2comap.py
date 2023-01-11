@@ -5,6 +5,7 @@ import time
 import h5py
 import re
 from mpi4py import MPI
+import datetime
 
 from COmap import COmap
 from L2file import L2file
@@ -38,6 +39,14 @@ class Mapmaker:
         # Read parameter file and runlist
         self.read_params()
         self.read_runlist()
+
+        # Generate unique run ID to later enable easy identification of dataproducts
+        runID = 0
+        if self.rank == 0:
+            runID = str(datetime.datetime.now())[2:].replace(" ", "-").replace(":", "-")
+        runID = self.comm.bcast(runID, root=0)
+        
+        self.params.runID = int(runID.replace("-", "").replace(".", ""))
 
         if not self.params.map_name:
             raise ValueError(
@@ -296,7 +305,7 @@ class Mapmaker:
             self.fieldname,
             self.params.decimation_freqs,
             self.params.res_factor,
-            self.params.make_nhit,
+            self.params.make_no_nhit,
             self.maps_to_bin,
         )
 
@@ -400,9 +409,9 @@ class Mapmaker:
             self.postprocess_map(full_map)
             if self.perform_splits:
                 # Providing name of primary splits to make group names
-                full_map.write_map(primary_splits=self.primary_splits)
+                full_map.write_map(primary_splits=self.primary_splits, params = self.params)
             else:
-                full_map.write_map()
+                full_map.write_map(params = self.params)
             finish_time = time.perf_counter()
 
             print("=" * 80)
@@ -428,14 +437,14 @@ class Mapmaker:
                 numerator_buffer = np.zeros_like(mapdata[numerator_key])
                 denominator_buffer = np.zeros_like(mapdata[denominator_key])
 
-                if self.params.make_nhit:
+                if self.params.make_no_nhit:
                     # Generate hit map keys
                     hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
                     nhit_buffer = np.zeros_like(mapdata[hit_key])
             else:
                 numerator_buffer = None
                 denominator_buffer = None
-                if self.params.make_nhit:
+                if self.params.make_no_nhit:
                     nhit_buffer = None
 
             # Perform MPI reduction
@@ -458,7 +467,7 @@ class Mapmaker:
                 mapdata[numerator_key] = numerator_buffer
                 mapdata[denominator_key] = denominator_buffer
 
-            if self.params.make_nhit:
+            if self.params.make_no_nhit:
                 # Generate hit map keys
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
@@ -619,7 +628,7 @@ class Mapmaker:
             map_coadd /= sigma_coadd
             sigma_coadd = 1 / np.sqrt(sigma_coadd)
 
-            if self.params.make_nhit:
+            if self.params.make_no_nhit:
                 # Generate hit map keys
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
@@ -804,7 +813,7 @@ class Mapmaker:
 
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
 
-        if self.params.make_nhit:
+        if self.params.make_no_nhit:
             int32_array4 = np.ctypeslib.ndpointer(
                 dtype=ctypes.c_int, ndim=4, flags="contiguous"
             )  # 4D array 32-bit integer pointer object.

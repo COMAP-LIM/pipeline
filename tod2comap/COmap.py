@@ -7,8 +7,7 @@ from pixell import enmap
 from dataclasses import dataclass, field
 import re
 import os
-import sys
-
+import argparse
 
 @dataclass
 class COmap:
@@ -39,6 +38,11 @@ class COmap:
                                     self._data[complete_key] = data_value[()]
                         except AttributeError:
                             continue
+                    elif "wcs" in key:
+                        # Reading in world coordinate system parameters
+                        self._data[f"{key}"] = {}
+                        for wcs_key, wcs_param in infile[key].items():
+                            self._data[f"{key}"][wcs_key] = wcs_param[()]
                     else:
                         # TODO: fill in if new groups are implemented in map file later
                         pass
@@ -184,7 +188,9 @@ class COmap:
         }
 
     def write_map(
-        self, outpath: Optional[str] = None, primary_splits: Optional[list] = None
+        self, outpath: Optional[str] = None, 
+        primary_splits: Optional[list] = None, 
+        params: Optional[argparse.Namespace] = None
     ) -> None:
         """Method for writing map data to file.
 
@@ -211,6 +217,7 @@ class COmap:
             print("Saving map to: ", outpath)
             with h5py.File(outpath, "w") as outfile:
                 outfile.create_group("wcs")
+                outfile.create_group("params")
 
                 if primary_splits is not None:
                     # Create all needed groups for multisplits
@@ -237,6 +244,13 @@ class COmap:
                         )
                     else:
                         outfile.create_dataset(key, data=self._data[key])
+
+                if params is not None:
+                    for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
+                        if getattr(params, key) == None:  # hdf5 didn't like the None type.
+                            outfile[f"params/{key}"] = "None"
+                        else:
+                            outfile[f"params/{key}"] = getattr(params, key)
 
     def __getitem__(self, key: str) -> ntyping.ArrayLike:
         """Method for indexing map data as dictionary
