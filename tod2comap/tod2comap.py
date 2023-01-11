@@ -396,7 +396,8 @@ class Mapmaker:
         self.reduce_maps(full_map)
 
         if self.rank == 0:
-            self.postprocess_map(full_map, l2data)
+            # self.postprocess_map(full_map, l2data)
+            self.postprocess_map(full_map)
             if self.perform_splits:
                 # Providing name of primary splits to make group names
                 full_map.write_map(primary_splits=self.primary_splits)
@@ -481,6 +482,13 @@ class Mapmaker:
         Args:
             l2data (L2file): Level 2 file object to perform preprocessing on.
         """
+
+        if self.params.temporal_mask:
+            temporal_mask = self.get_temporal_mask(l2data)
+
+            l2data["tod"] = l2data["tod"][..., temporal_mask]
+            l2data["point_tel"] = l2data["point_tel"][:, temporal_mask, :]
+            l2data["point_cel"] = l2data["point_cel"][:, temporal_mask, :]
 
         _, NSB, NFREQ, NSAMP = l2data["tod"].shape
 
@@ -572,7 +580,8 @@ class Mapmaker:
         l2data["point_cel"] = np.ascontiguousarray(pointing.transpose(1, 0, 2))
         # l2data["nu"] = freqs
 
-    def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
+    # def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
+    def postprocess_map(self, mapdata: COmap) -> None:
         """Method that performes a post-processing of map object.
         In the post processing the map and noise maps are computed
         from the numerator and denominator maps, and feed-coadded maps
@@ -725,6 +734,43 @@ class Mapmaker:
 
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
+
+
+    def get_temporal_mask(self, l2data: L2file):
+        az_percentile = self.params.az_mask_percentile # Between 0 and 100
+
+        el_cut = self.params.el_mask_cut    # Degrees
+
+        if az_percentile < 0 or az_percentile > 100:
+            raise ValueError("Azimuth masking percentile must be between 0 and 100.")
+
+        # Since the time of turn around should be the same for all detectors,
+        # only the azimuth of feed index 0 is used.
+        az = l2data["point_tel"][0, :, 0]
+        el = l2data["point_tel"][0, :, 1]
+
+        # Define aximuth and elevation limits
+        az_lims = [
+            np.percentile(az, 100 - az_percentile),
+            np.percentile(az, az_percentile),
+        ]
+
+        el_lims = [
+            np.median(el) - el_cut,
+            np.median(el) + el_cut,
+        ]
+
+        az_mask = np.logical_and(az > az_lims[0], az < az_lims[1])
+        el_mask = np.logical_and(el > el_lims[0], el < el_lims[1])
+
+        temporal_mask = np.logical_and(az_mask, el_mask)
+
+        # Manually removing 0.5 seconds of the data at the scan edges 
+        # to avoid potential repointing leakage 
+        temporal_mask[:25] = False
+        temporal_mask[-25:] = False
+
+        return temporal_mask
 
     def bin_map(
         self,

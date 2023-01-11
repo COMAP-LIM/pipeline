@@ -324,46 +324,67 @@ parser.add_argument(
     "--res_factor",
     type=float,
     default=1,
-    help="Resolution factor. Default value 1 gives 2 arcmin pixels; value 2 gives 1 arcmin pixels; value 0.5 gives 4 arcmin pixels; etc.",
+    help="(tod2comap) Resolution factor. Default value 1 gives 2 arcmin pixels; value 2 gives 1 arcmin pixels; value 0.5 gives 4 arcmin pixels; etc.",
 )
 
 parser.add_argument(
     "--make_nhit",
-    action="store_true",
-    help="If flag is provided hit maps are made. By default no hit maps are made.",
+    action="store_false",
+    help="(tod2comap) If flag is provided hit maps are made. By default hit maps are made.",
 )
 
 parser.add_argument(
     "--split",
     action="store_true",
-    help="If flag is provided split maps are computed.",
+    help="(tod2comap) If flag is provided split maps are computed.",
 )
 
 parser.add_argument(
     "--split_def",
     type=str,
     default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt",
-    help="Split definition file in which split bit order and names are defined.",
+    help="(tod2comap) Split definition file in which split bit order and names are defined.",
 )
 
 parser.add_argument(
     "--accept_dir",
     type=str,
     default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
-    help="Direcotry to which accept mod data file are saved",
+    help="(tod2comap) Direcotry to which accept mod data file are saved",
 )
 
 parser.add_argument(
     "--scan_data",
     type=str,
-    help="Name of accept mod generated scan_data file.",
+    help="(tod2comap) Name of accept mod generated scan_data file.",
 )
 
 parser.add_argument(
     "--split_data",
     type=str,
-    help="Name of accept mod generated jk_data file.",
+    help="(tod2comap) Name of accept mod generated jk_data file.",
 )
+
+parser.add_argument(
+    "--temporal_mask",
+    action="store_true",
+    help="(tod2comap) If flag is provided temporal masking, excluding turn around points in azimuth and pathologically large fluctuations in elevation.",
+)
+
+parser.add_argument(
+    "--az_mask_percentile",
+    type=float,
+    default=90,
+    help="(tod2comap) Number of datapoints to cut at start of scan when creating runlist. Must be between 0 and 100",
+)
+
+parser.add_argument(
+    "--el_mask_cut",
+    type=float,
+    default=2.5e-3,
+    help="(tod2comap) Mask all points in time where elevation is larger og smaller respectively than median(elevation) ± el_mask_cut. Value must be in degrees.",
+)
+
 
 
 #### Scan detect stuff ####
@@ -400,8 +421,23 @@ parser.add_argument(
     "--field",
     type=str,
     default=None,
-    help="Name of field to use. Defualt None signals that field must be specified to compute cross-spectra.",
+    help="(comap2fpxs) Name of field to use. Defualt None signals that field must be specified to compute cross-spectra.",
 )
+
+parser.add_argument(
+    "--tf_cutoff",
+    type=float,
+    default=0.2,
+    help="(comap2fpxs) Value of transfer function above which to compute chi2 in feed-feed pseudo cross-spectra.",
+)
+
+parser.add_argument(
+    "--from_file",
+    action="store_true",
+    help="(comap2fpxs) If flag is provided already computed spectra are read from file.",
+)
+
+
 
 ###### Signal Injection ######
 parser.add_argument(

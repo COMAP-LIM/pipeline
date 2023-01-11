@@ -136,6 +136,7 @@ class SimCube:
             self._data["simulation"], standard_geometry.wcs, copy=False
         )
 
+        # NOTE: this will change in future due to the changed clock frequency in early 2022
         # Flipping frequencies
         self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
 
