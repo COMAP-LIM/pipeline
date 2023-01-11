@@ -147,8 +147,7 @@ class Decimation(Filter):
         l2.freqmask_decimated[~(np.isfinite(l2.tod).all(axis=-1))] = False
         tsys_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs))
         for ifreq in range(self.Nfreqs):
-            delta_nu = np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)], axis=-1)
-            tsys_decimated[:,:,ifreq] = np.sqrt(delta_nu/np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
+            tsys_decimated[:,:,ifreq] = np.sqrt(self.dnu/np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
 
         tsys_decimated[~l2.freqmask_decimated] = np.nan
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
@@ -1400,13 +1399,13 @@ class Calibration(Filter):
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
         l2.freqmask[~np.isfinite(l2.Tsys)] = False
-        l2.freqmask_reason[~np.isfinite(l2.Tsys)] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason[~np.isfinite(l2.Tsys)] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys NaN or inf")
 
         l2.freqmask[l2.Tsys < self.min_tsys] = False
-        l2.freqmask_reason[l2.Tsys < self.min_tsys] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason[l2.Tsys < self.min_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys < min_tsys")
 
         l2.freqmask[l2.Tsys > self.max_tsys] = False
-        l2.freqmask_reason[l2.Tsys > self.max_tsys] = 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason[l2.Tsys > self.max_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys > max_tsys")
