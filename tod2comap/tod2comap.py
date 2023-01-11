@@ -48,11 +48,6 @@ class Mapmaker:
         
         self.params.runID = int(runID.replace("-", "").replace(".", ""))
 
-        if not self.params.map_name:
-            raise ValueError(
-                "A map file name must be specified in parameter file or terminal."
-            )
-
         # Define c-library used for binning maps
         mapbinner_path = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
@@ -80,6 +75,20 @@ class Mapmaker:
             raise ValueError(
                 "A runlist must be specified in parameter file or terminal."
             )
+
+        if not params.map_name:
+            raise ValueError(
+                "A map file name must be specified in parameter file or terminal."
+            )
+
+        self.jk_data_string = params.jk_data_string
+        self.accept_data_id_string = params.accept_data_id_string
+        self.accept_dir = params.accept_data_folder
+
+        if not self.accept_data_id_string:
+            message = "Please specify a accept_data_id_string in parameter file or terminal."
+            raise ValueError(message)
+
         self.params = params
 
     def read_runlist(self):
@@ -178,24 +187,20 @@ class Mapmaker:
         self.runlist = runlist
 
     def parse_accept_data(self):
-        split_data_path = self.params.split_data
-        scan_data_path = self.params.scan_data
-        accept_dir = self.params.accept_dir
+        
+        if len(self.jk_data_string) >= 1:
+            self.jk_data_string = f"_{self.jk_data_string}"
+        
+        scan_data_path =  f'scan_data_{self.accept_data_id_string}_{self.fieldname}.h5'
+        split_data_path = f'jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5'
 
-        if not split_data_path:
-            message = "Please specify a split_data file name."
-            raise ValueError(message)
-        elif not scan_data_path:
-            message = "Please specify a scan_data file name."
-            raise ValueError(message)
-
-        scan_data_path = os.path.join(accept_dir, scan_data_path)
+        scan_data_path = os.path.join(self.accept_dir, scan_data_path)
         with h5py.File(scan_data_path, "r") as scanfile:
             self.scandata = {}
             for key, value in scanfile.items():
                 self.scandata[key] = value[()]
 
-        split_data_path = os.path.join(accept_dir, split_data_path)
+        split_data_path = os.path.join(self.accept_dir, split_data_path)
         with h5py.File(split_data_path, "r") as splitfile:
             self.splitdata = {}
             for key, value in splitfile.items():
@@ -209,7 +214,7 @@ class Mapmaker:
         if self.perform_splits:
 
             # Parse split definition file and save definitions to dictionary
-            with open(self.params.split_def, "r") as split_def_file:
+            with open(self.params.jk_def_file, "r") as split_def_file:
                 split_types_dict = {}
                 N_primary_splits = 0
                 N_secondary_splits = 0

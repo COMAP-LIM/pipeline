@@ -340,32 +340,6 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--split_def",
-    type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt",
-    help="(tod2comap) Split definition file in which split bit order and names are defined.",
-)
-
-parser.add_argument(
-    "--accept_dir",
-    type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
-    help="(tod2comap) Direcotry to which accept mod data file are saved",
-)
-
-parser.add_argument(
-    "--scan_data",
-    type=str,
-    help="(tod2comap) Name of accept mod generated scan_data file.",
-)
-
-parser.add_argument(
-    "--split_data",
-    type=str,
-    help="(tod2comap) Name of accept mod generated jk_data file.",
-)
-
-parser.add_argument(
     "--temporal_mask",
     action="store_true",
     help="(tod2comap) If flag is provided temporal masking, excluding turn around points in azimuth and pathologically large fluctuations in elevation.",

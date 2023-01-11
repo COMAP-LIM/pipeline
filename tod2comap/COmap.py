@@ -43,6 +43,11 @@ class COmap:
                         self._data[f"{key}"] = {}
                         for wcs_key, wcs_param in infile[key].items():
                             self._data[f"{key}"][wcs_key] = wcs_param[()]
+                    elif "params" in key:
+                        # Reading in parameter file parameters
+                        self._data[f"{key}"] = {}
+                        for params_key, params_param in infile[key].items():
+                            self._data[f"{key}"][params_key] = params_param[()]
                     else:
                         # TODO: fill in if new groups are implemented in map file later
                         pass
