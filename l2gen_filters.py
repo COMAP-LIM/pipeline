@@ -1304,8 +1304,7 @@ class Masking(Filter):
 
             
         l2.tod[~l2.freqmask] = np.nan
-        l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
-        l2.tofile_dict["acceptrate"] = l2.acceptrate
+        l2.acceptrate = np.mean(l2.freqmask, axis=(-1))
 
         # Just printing stuff:
         def get_color(value):
