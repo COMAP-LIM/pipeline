@@ -1332,7 +1332,6 @@ class Masking(Filter):
                 acc = np.sum(l2.acceptrate[ifeed,isb])*100
                 printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
         print(printstring)
-        print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
         logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
