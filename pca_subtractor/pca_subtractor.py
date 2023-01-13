@@ -117,7 +117,8 @@ class PCA_SubTractor:
         # Get feed map data
         inmap = self.map[key]
         inrms = self.map[rms_key]
-        innhit = self.map[nhit_key]
+        if nhit_key in self.map.keys:
+            innhit = self.map[nhit_key]
 
         # Define inverse variance
         inv_var = 1 / inrms**2
@@ -135,15 +136,20 @@ class PCA_SubTractor:
         map_coadd = map_coadd / inv_var.sum(0)
 
         # Coadd nhit and rms feed maps
-        nhit_coadd = innhit.sum(0).astype(np.float32)
+        if nhit_key in self.map.keys:
+            nhit_coadd = innhit.sum(0).astype(np.float32)
+
         rms_coadd = 1 / np.sqrt(inv_var.sum(0))
 
         # Mask regions with no hits in coadded feed maps
         mask_coadd = ~np.isfinite(rms_coadd)
         map_coadd[mask_coadd] = 0
-        nhit_coadd[mask_coadd] = 0
         rms_coadd[mask_coadd] = 0
-        return (map_coadd, nhit_coadd, rms_coadd)
+        if nhit_key in self.map.keys:
+            nhit_coadd[mask_coadd] = 0
+            return (map_coadd, nhit_coadd, rms_coadd)
+        else:
+            return (map_coadd, rms_coadd)
 
     def normalize_data(self, key: str, norm: str) -> ntyping.ArrayLike:
         """_summary_
@@ -263,9 +269,12 @@ class PCA_SubTractor:
                 self.map[key] = np.where(
                     1e6 * self.map[rms_key] < maskrms, self.map[key], 0
                 )
-                self.map[nhit_key] = np.where(
-                    1e6 * self.map[rms_key] < maskrms, self.map[nhit_key], 0
-                )
+
+                if nhit_key in self.map.keys:
+                    self.map[nhit_key] = np.where(
+                        1e6 * self.map[rms_key] < maskrms, self.map[nhit_key], 0
+                    )
+                
                 self.map[rms_key] = np.where(
                     1e6 * self.map[rms_key] < maskrms, self.map[rms_key], 0
                 )
@@ -288,12 +297,16 @@ class PCA_SubTractor:
 
         if self.clean:
             # Coadd feed map
-            map_coadd, nhit_coadd, rms_coadd = self.get_coadded_feeds("map")
+            if "nhit" in self.map.keys:
+                map_coadd, nhit_coadd, rms_coadd = self.get_coadded_feeds("map")
+            else:
+                map_coadd, rms_coadd = self.get_coadded_feeds("map")
 
             if not self.maskrms:
                 # Assert if coadded rms and nhit maps are same as the ones from
                 # original initialization
-                assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
+                if "nhit" in self.map.keys:
+                    assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
 
                 rms_coadd[rms_coadd == 0] = np.inf
 
@@ -302,7 +315,10 @@ class PCA_SubTractor:
             rms_coadd[np.isinf(rms_coadd)] = np.nan
 
             self.map["map_coadd"] = map_coadd
-            self.map["nhit_coadd"] = nhit_coadd
+
+            if "nhit" in self.map.keys:
+                self.map["nhit_coadd"] = nhit_coadd
+            
             self.map["sigma_wn_coadd"] = rms_coadd
 
         # Assigning parameter specifying that map object is PCA subtracted

@@ -86,7 +86,6 @@ class SimCube:
         # )
 
         self.signal = [[] for _ in range(simdata.shape[0])]
-        print(simdata.shape)
 
         import time
 
@@ -107,7 +106,7 @@ class SimCube:
 
         # print("hei", self.signal)
 
-    def prepare_geometry(self, fieldname: str, boost: float = 1):
+    def prepare_geometry(self, fieldname: str, boost: float = 1) -> None:
         """Method that defines the WCS geometry of the signal cube given the
         COMAP standard geometries. The signal cube is then transformed into an
         enmap with the computed WCS geometry and an optional signal boost applied.
@@ -137,10 +136,14 @@ class SimCube:
             self._data["simulation"], standard_geometry.wcs, copy=False
         )
 
-        self.simdata *= 1e-6  # muK to K
+        # NOTE: this will change in future due to the changed clock frequency in early 2022
+        # Flipping frequencies
+        self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
 
-        # Return optionally boosted signal
-        return boost * self.simdata
+        # muK to K
+        self.simdata *= 1e-6  
+        # Boost signal
+        self.simdata *= boost
 
     def sim2tod(self, ra: np.ndarray, dec: np.ndarray) -> np.ndarray:
         """Method that, given the telescope pointing in RA and Dec, projects

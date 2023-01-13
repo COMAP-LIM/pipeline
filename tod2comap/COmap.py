@@ -7,8 +7,7 @@ from pixell import enmap
 from dataclasses import dataclass, field
 import re
 import os
-import sys
-
+import argparse
 
 @dataclass
 class COmap:
@@ -39,6 +38,16 @@ class COmap:
                                     self._data[complete_key] = data_value[()]
                         except AttributeError:
                             continue
+                    elif "wcs" in key:
+                        # Reading in world coordinate system parameters
+                        self._data[f"{key}"] = {}
+                        for wcs_key, wcs_param in infile[key].items():
+                            self._data[f"{key}"][wcs_key] = wcs_param[()]
+                    elif "params" in key:
+                        # Reading in parameter file parameters
+                        self._data[f"{key}"] = {}
+                        for params_key, params_param in infile[key].items():
+                            self._data[f"{key}"][params_key] = params_param[()]
                     else:
                         # TODO: fill in if new groups are implemented in map file later
                         pass
@@ -184,7 +193,9 @@ class COmap:
         }
 
     def write_map(
-        self, outpath: Optional[str] = None, primary_splits: Optional[list] = None
+        self, outpath: Optional[str] = None, 
+        primary_splits: Optional[list] = None, 
+        params: Optional[argparse.Namespace] = None
     ) -> None:
         """Method for writing map data to file.
 
@@ -235,8 +246,20 @@ class COmap:
                         outfile.create_dataset(
                             f"multisplits/{primary_split}{key}", data=self._data[key]
                         )
+                    elif "params" in key: 
+                        print(len(self._data["params"].keys()))
+                        for param_key in self._data["params"].keys():
+                            # print(param_key)
+                            outfile[f"params/{param_key}"] = self._data["params"][param_key] 
                     else:
                         outfile.create_dataset(key, data=self._data[key])
+                
+                if params is not None and "params" not in self.keys:
+                    for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
+                        if getattr(params, key) == None:  # hdf5 didn't like the None type.
+                            outfile[f"params/{key}"] = "None"
+                        else:
+                            outfile[f"params/{key}"] = getattr(params, key)
 
     def __getitem__(self, key: str) -> ntyping.ArrayLike:
         """Method for indexing map data as dictionary

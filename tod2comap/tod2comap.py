@@ -5,6 +5,7 @@ import time
 import h5py
 import re
 from mpi4py import MPI
+import datetime
 
 from COmap import COmap
 from L2file import L2file
@@ -39,10 +40,13 @@ class Mapmaker:
         self.read_params()
         self.read_runlist()
 
-        if not self.params.map_name:
-            raise ValueError(
-                "A map file name must be specified in parameter file or terminal."
-            )
+        # Generate unique run ID to later enable easy identification of dataproducts
+        runID = 0
+        if self.rank == 0:
+            runID = str(datetime.datetime.now())[2:].replace(" ", "-").replace(":", "-")
+        runID = self.comm.bcast(runID, root=0)
+        
+        self.params.runID = int(runID.replace("-", "").replace(".", ""))
 
         # Define c-library used for binning maps
         mapbinner_path = os.path.join(
@@ -71,6 +75,20 @@ class Mapmaker:
             raise ValueError(
                 "A runlist must be specified in parameter file or terminal."
             )
+
+        if not params.map_name:
+            raise ValueError(
+                "A map file name must be specified in parameter file or terminal."
+            )
+
+        self.jk_data_string = params.jk_data_string
+        self.accept_data_id_string = params.accept_data_id_string
+        self.accept_dir = params.accept_data_folder
+
+        if not self.accept_data_id_string:
+            message = "Please specify a accept_data_id_string in parameter file or terminal."
+            raise ValueError(message)
+
         self.params = params
 
     def read_runlist(self):
@@ -169,24 +187,20 @@ class Mapmaker:
         self.runlist = runlist
 
     def parse_accept_data(self):
-        split_data_path = self.params.split_data
-        scan_data_path = self.params.scan_data
-        accept_dir = self.params.accept_dir
+        
+        if len(self.jk_data_string) >= 1:
+            self.jk_data_string = f"_{self.jk_data_string}"
+        
+        scan_data_path =  f'scan_data_{self.accept_data_id_string}_{self.fieldname}.h5'
+        split_data_path = f'jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5'
 
-        if not split_data_path:
-            message = "Please specify a split_data file name."
-            raise ValueError(message)
-        elif not scan_data_path:
-            message = "Please specify a scan_data file name."
-            raise ValueError(message)
-
-        scan_data_path = os.path.join(accept_dir, scan_data_path)
+        scan_data_path = os.path.join(self.accept_dir, scan_data_path)
         with h5py.File(scan_data_path, "r") as scanfile:
             self.scandata = {}
             for key, value in scanfile.items():
                 self.scandata[key] = value[()]
 
-        split_data_path = os.path.join(accept_dir, split_data_path)
+        split_data_path = os.path.join(self.accept_dir, split_data_path)
         with h5py.File(split_data_path, "r") as splitfile:
             self.splitdata = {}
             for key, value in splitfile.items():
@@ -200,7 +214,7 @@ class Mapmaker:
         if self.perform_splits:
 
             # Parse split definition file and save definitions to dictionary
-            with open(self.params.split_def, "r") as split_def_file:
+            with open(self.params.jk_def_file, "r") as split_def_file:
                 split_types_dict = {}
                 N_primary_splits = 0
                 N_secondary_splits = 0
@@ -296,7 +310,7 @@ class Mapmaker:
             self.fieldname,
             self.params.decimation_freqs,
             self.params.res_factor,
-            self.params.make_nhit,
+            self.params.make_no_nhit,
             self.maps_to_bin,
         )
 
@@ -396,12 +410,13 @@ class Mapmaker:
         self.reduce_maps(full_map)
 
         if self.rank == 0:
-            self.postprocess_map(full_map, l2data)
+            # self.postprocess_map(full_map, l2data)
+            self.postprocess_map(full_map)
             if self.perform_splits:
                 # Providing name of primary splits to make group names
-                full_map.write_map(primary_splits=self.primary_splits)
+                full_map.write_map(primary_splits=self.primary_splits, params = self.params)
             else:
-                full_map.write_map()
+                full_map.write_map(params = self.params)
             finish_time = time.perf_counter()
 
             print("=" * 80)
@@ -427,14 +442,14 @@ class Mapmaker:
                 numerator_buffer = np.zeros_like(mapdata[numerator_key])
                 denominator_buffer = np.zeros_like(mapdata[denominator_key])
 
-                if self.params.make_nhit:
+                if self.params.make_no_nhit:
                     # Generate hit map keys
                     hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
                     nhit_buffer = np.zeros_like(mapdata[hit_key])
             else:
                 numerator_buffer = None
                 denominator_buffer = None
-                if self.params.make_nhit:
+                if self.params.make_no_nhit:
                     nhit_buffer = None
 
             # Perform MPI reduction
@@ -457,7 +472,7 @@ class Mapmaker:
                 mapdata[numerator_key] = numerator_buffer
                 mapdata[denominator_key] = denominator_buffer
 
-            if self.params.make_nhit:
+            if self.params.make_no_nhit:
                 # Generate hit map keys
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
@@ -481,6 +496,13 @@ class Mapmaker:
         Args:
             l2data (L2file): Level 2 file object to perform preprocessing on.
         """
+
+        if self.params.temporal_mask:
+            temporal_mask = self.get_temporal_mask(l2data)
+
+            l2data["tod"] = l2data["tod"][..., temporal_mask]
+            l2data["point_tel"] = l2data["point_tel"][:, temporal_mask, :]
+            l2data["point_cel"] = l2data["point_cel"][:, temporal_mask, :]
 
         _, NSB, NFREQ, NSAMP = l2data["tod"].shape
 
@@ -572,7 +594,8 @@ class Mapmaker:
         l2data["point_cel"] = np.ascontiguousarray(pointing.transpose(1, 0, 2))
         # l2data["nu"] = freqs
 
-    def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
+    # def postprocess_map(self, mapdata: COmap, l2data: L2file) -> None:
+    def postprocess_map(self, mapdata: COmap) -> None:
         """Method that performes a post-processing of map object.
         In the post processing the map and noise maps are computed
         from the numerator and denominator maps, and feed-coadded maps
@@ -610,7 +633,7 @@ class Mapmaker:
             map_coadd /= sigma_coadd
             sigma_coadd = 1 / np.sqrt(sigma_coadd)
 
-            if self.params.make_nhit:
+            if self.params.make_no_nhit:
                 # Generate hit map keys
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
@@ -726,6 +749,43 @@ class Mapmaker:
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
 
+
+    def get_temporal_mask(self, l2data: L2file):
+        az_percentile = self.params.az_mask_percentile # Between 0 and 100
+
+        el_cut = self.params.el_mask_cut    # Degrees
+
+        if az_percentile < 0 or az_percentile > 100:
+            raise ValueError("Azimuth masking percentile must be between 0 and 100.")
+
+        # Since the time of turn around should be the same for all detectors,
+        # only the azimuth of feed index 0 is used.
+        az = l2data["point_tel"][0, :, 0]
+        el = l2data["point_tel"][0, :, 1]
+
+        # Define aximuth and elevation limits
+        az_lims = [
+            np.percentile(az, 100 - az_percentile),
+            np.percentile(az, az_percentile),
+        ]
+
+        el_lims = [
+            np.median(el) - el_cut,
+            np.median(el) + el_cut,
+        ]
+
+        az_mask = np.logical_and(az > az_lims[0], az < az_lims[1])
+        el_mask = np.logical_and(el > el_lims[0], el < el_lims[1])
+
+        temporal_mask = np.logical_and(az_mask, el_mask)
+
+        # Manually removing 0.5 seconds of the data at the scan edges 
+        # to avoid potential repointing leakage 
+        temporal_mask[:25] = False
+        temporal_mask[-25:] = False
+
+        return temporal_mask
+
     def bin_map(
         self,
         mapdata: COmap,
@@ -758,7 +818,7 @@ class Mapmaker:
 
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
 
-        if self.params.make_nhit:
+        if self.params.make_no_nhit:
             int32_array4 = np.ctypeslib.ndpointer(
                 dtype=ctypes.c_int, ndim=4, flags="contiguous"
             )  # 4D array 32-bit integer pointer object.
