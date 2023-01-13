@@ -1069,7 +1069,7 @@ class Masking(Filter):
                 if not key in premask_tofile_dict_keys:  # If something new was added to the tofile_dict of l2_local during the premask filters, we need to explicitly move it to the main l2 file not to lose them.
                     l2.tofile_dict[f"premask_{key}"] = l2_local.tofile_dict[key]
 
-            
+
             ### Aliasing masking ###
             if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
                 with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
@@ -1411,7 +1411,8 @@ class Calibration(Filter):
         self.omp_num_threads = omp_num_threads
         self.max_tsys = params.max_tsys
         self.min_tsys = params.min_tsys
-    
+        self.median_cut = params.median_tsys_cut
+
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
         l2.freqmask[~np.isfinite(l2.Tsys)] = False
@@ -1421,7 +1422,42 @@ class Calibration(Filter):
         l2.freqmask[l2.Tsys < self.min_tsys] = False
         l2.freqmask_reason[l2.Tsys < self.min_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys < min_tsys")
+        
+        ### Running median tsys cuts ###
+        kernel_size1 = 400
+        kernel_size2 = 150
+        median_cut1 = 15
+        median_cut2 = self.median_cut
 
-        l2.freqmask[l2.Tsys > self.max_tsys] = False
-        l2.freqmask_reason[l2.Tsys > self.max_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-        l2.freqmask_reason_string.append("Tsys > max_tsys")
+        tsys_temp = l2.Tsys.copy()
+        tsys_temp[tsys_temp < self.min_tsys] = np.nan
+        tsys_temp[tsys_temp > self.max_tsys] = np.nan
+        running_median1 = np.zeros_like(tsys_temp)
+        running_median2 = np.zeros_like(tsys_temp)
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                # Iteration 1
+                for i in range(l2.Nfreqs):
+                    start = max(i-kernel_size1//2, 0)
+                    stop = min(i+kernel_size1//2, l2.Nfreqs)
+                    tsys_local = tsys_temp[ifeed,isb,start:stop]
+                    if np.sum(np.isfinite(tsys_local)) > kernel_size1//5:  # If more than 20% of points remaining.
+                        running_median1[ifeed,isb,i] = np.nanmedian(tsys_local)
+                    else:
+                        running_median1[ifeed,isb,i] = 0
+                tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median1[ifeed,isb] + median_cut1)] = np.nan
+                # Iteration 2
+                for i in range(l2.Nfreqs):
+                    start = max(i-kernel_size2//2, 0)
+                    stop = min(i+kernel_size2//2, l2.Nfreqs)
+                    tsys_local = tsys_temp[ifeed,isb,start:stop]
+                    if np.sum(np.isfinite(tsys_local)) > kernel_size2//5:  # If more than 20% of points remaining.
+                        running_median2[ifeed,isb,i] = np.nanmedian(tsys_local)
+                    else:
+                        running_median2[ifeed,isb,i] = 0
+                tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median2[ifeed,isb] + median_cut2)] = np.nan
+        tsys_median_mask = np.isfinite(tsys_temp)
+        
+        l2.freqmask[~tsys_median_mask] = False
+        l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys > running median max")

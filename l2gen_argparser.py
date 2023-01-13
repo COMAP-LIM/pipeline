@@ -274,10 +274,13 @@ parser.add_argument(
 
 ### Tsys/Calibration
 parser.add_argument(
-    "--max_tsys", type=float, default=100.0, help="(cal) Max tsys. Mask above this."
+    "--max_tsys", type=float, default=75.0, help="(cal) Max tsys. Mask above this."
 )
 parser.add_argument(
-    "--min_tsys", type=float, default=0.0, help="(cal) Min tsys. Mask below this."
+    "--min_tsys", type=float, default=25.0, help="(cal) Min tsys. Mask below this."
+)
+parser.add_argument(
+    "--median_tsys_cut", type=float, default=5.0, help="(cal) How many Kelvin above the running median Tsys value to mask."
 )
 
 
