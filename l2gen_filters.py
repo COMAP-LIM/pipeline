@@ -1067,6 +1067,22 @@ class Masking(Filter):
                 if not key in premask_tofile_dict_keys:  # If something new was added to the tofile_dict of l2_local during the premask filters, we need to explicitly move it to the main l2 file not to lose them.
                     l2.tofile_dict[f"premask_{key}"] = l2_local.tofile_dict[key]
 
+                    
+            ### Aliasing masking ###
+            if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
+                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+                    AB_mask = f["/AB_mask"][()]
+                    leak_mask = f["/leak_mask"][()]
+                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
+                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
+                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
+                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+                l2.tofile_dict["AB_aliasing"] = AB_mask
+                l2.tofile_dict["leak_aliasing"] = leak_mask
+
+
 
             if self.params.write_C_matrix:  # For debuging purposes only.
                 l2.tofile_dict["premask_C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
@@ -1122,6 +1138,9 @@ class Masking(Filter):
                     # print("2:", C[:5,:5])
 
                     corr_template = l2_local.corr_template[ifeed,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
+                    # Ignore masked frequencies. (again, since template does not include aliasing masking, and has different mask.)
+                    corr_template[~freqmask,:] = 0
+                    corr_template[:,~freqmask] = 0
 
                     C -= corr_template
 
@@ -1151,6 +1170,8 @@ class Masking(Filter):
                                 if i < j:
                                     box = C[i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size]
                                     dof = np.sum(box != 0)
+                                    if dof == 0:
+                                        dof = 1
                                     # CHI2 MASKING
                                     corr = np.sum(box**2)*Ntod
                                     chi2 = (corr - dof)/np.sqrt(2*dof)
@@ -1169,6 +1190,8 @@ class Masking(Filter):
                                     jump = 16
                                     prod = np.sum(box[:-jump:2]*box[jump::2])*Ntod
                                     nprod = np.sum((box[:-jump:2]*box[jump::2]) != 0)
+                                    if nprod == 0:
+                                        nprod = 1
                                     if prod/nprod > Nsigma_prod_box*np.sqrt(1.0/nprod):
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1199,8 +1222,12 @@ class Masking(Filter):
                         Nsigma_prod_stripe = self.Nsigma_prod_stripes[istripe]
 
                         for i in range((2*Nfreqs)//stripe_size):
-                            stripe = C[i*stripe_size:(i+1)*stripe_size, :]
+                            stripe = C[i*stripe_size:(i+1)*stripe_size, :].copy()
+                            for x in range(stripe.shape[0]):
+                                stripe[x:,x] = 0
                             dof = np.sum(stripe != 0)
+                            if dof == 0:
+                                dof = 1
                             # CHI2 MASKING
                             corr = np.sum(stripe**2)*Ntod
                             chi2 = (corr - dof)/np.sqrt(2*dof)
@@ -1214,6 +1241,8 @@ class Masking(Filter):
                             # PROD MASKING
                             prod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2])
                             nprod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2] != 0)
+                            if nprod == 0:
+                                nprod = 1
                             if prod/nprod > Nsigma_prod_stripe*np.sqrt(1.0/nprod):
                                 freqmask[i*stripe_size:(i+1)*stripe_size] = False
                                 for x in range(i*stripe_size, (i+1)*stripe_size):
