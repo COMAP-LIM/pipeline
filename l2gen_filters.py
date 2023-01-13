@@ -874,7 +874,7 @@ class PCA_feed_filter(Filter):
 
         # weight = 1.0/np.nanvar(l2.tod, axis=-1)
         if not self.use_ctypes:
-            weight = 1.0/l2.Tsys**2
+            weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             for ifeed in range(l2.Nfeeds):
                 M = np.zeros((N, l2.Ntod))
@@ -882,9 +882,9 @@ class PCA_feed_filter(Filter):
                     for ifreq in range(self.N_deci_freqs):
                         i = isb*self.N_deci_freqs + ifreq
                         M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
-                        w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+                        w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                         M[i,:] /= w
-                        M[i,:] *= np.sqrt(w)
+                        M[i,:] *= (16.0/np.sqrt(w))
                 M[~np.isfinite(M)] = 0
                 M = M[np.sum(M != 0, axis=-1) != 0]
                 if M.shape[0] < 4:
