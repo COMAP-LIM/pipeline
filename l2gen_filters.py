@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import os
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-from simpipeline.l2gen_simulation_filters import Cube2TOD
+
 
 
 class Filter:
@@ -874,6 +874,7 @@ class PCA_feed_filter(Filter):
 
         # weight = 1.0/np.nanvar(l2.tod, axis=-1)
         if not self.use_ctypes:
+            # weight = 1.0/l2.Tsys**2
             weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             for ifeed in range(l2.Nfeeds):
@@ -884,7 +885,7 @@ class PCA_feed_filter(Filter):
                         M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
                         w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                         M[i,:] /= w
-                        M[i,:] *= (16.0/np.sqrt(w))
+                        M[i,:] /= (16.0/np.sqrt(w))
                 M[~np.isfinite(M)] = 0
                 M = M[np.sum(M != 0, axis=-1) != 0]
                 if M.shape[0] < 4:
@@ -916,6 +917,7 @@ class PCA_feed_filter(Filter):
             l2.tofile_dict["PCAf_err"] = np.zeros((self.max_pca_comp, l2.Nfeeds, max_iter))
             pca_eigval = np.zeros((self.max_pca_comp, l2.Nfeeds))
 
+            # weight = 1.0/l2.Tsys**2
             weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             # print("1:", time.time() - t0); t0=time.time()
@@ -1067,7 +1069,7 @@ class Masking(Filter):
                 if not key in premask_tofile_dict_keys:  # If something new was added to the tofile_dict of l2_local during the premask filters, we need to explicitly move it to the main l2 file not to lose them.
                     l2.tofile_dict[f"premask_{key}"] = l2_local.tofile_dict[key]
 
-                    
+            
             ### Aliasing masking ###
             if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
                 with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
@@ -1261,20 +1263,6 @@ class Masking(Filter):
                 for method in ["chi2", "prod"]:
                     l2.freqmask_reason_string.append(f"Stripe {stripe_size} {method}")
                     l2.freqmask_counter += 1
-
-            ### Aliasing masking ###
-            if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
-                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
-                    AB_mask = f["/AB_mask"][()]
-                    leak_mask = f["/leak_mask"][()]
-                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
-                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
-                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-                l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
-                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-                l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
-                l2.tofile_dict["AB_aliasing"] = AB_mask
-                l2.tofile_dict["leak_aliasing"] = leak_mask
 
 
             ### Radiometer cut ###
