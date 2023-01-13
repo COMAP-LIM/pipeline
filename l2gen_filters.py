@@ -916,7 +916,7 @@ class PCA_feed_filter(Filter):
             l2.tofile_dict["PCAf_err"] = np.zeros((self.max_pca_comp, l2.Nfeeds, max_iter))
             pca_eigval = np.zeros((self.max_pca_comp, l2.Nfeeds))
 
-            weight = 1.0/l2.Tsys**2
+            weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             # print("1:", time.time() - t0); t0=time.time()
             self.n_pca_comp = np.zeros(l2.Nfeeds, dtype=int)
@@ -928,9 +928,9 @@ class PCA_feed_filter(Filter):
                         for ifreq in range(self.N_deci_freqs):
                             i = isb*self.N_deci_freqs + ifreq
                             M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
-                            w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+                            w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                             M[i,:] /= w
-                            M[i,:] *= np.sqrt(w)
+                            M[i,:] /= (16.0/np.sqrt(w))
                             mask[i] = l2.freqmask[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor].any()
 
                     if (mask == 0).all():
