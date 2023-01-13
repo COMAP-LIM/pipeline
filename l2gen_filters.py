@@ -1284,8 +1284,45 @@ class Masking(Filter):
             l2.freqmask_reason[max_corr > max_corr_threshold] += 2**l2.freqmask_counter
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Max corr")
-            l2.tofile_dict["freqmask_full_aftermasking"] = l2.freqmask.copy()
             
+            
+            ### Mask channels stretches shorter or equal to 4 sequential channels.
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    stretch_start = []
+                    stretch_len = []
+                    i = -1
+                    while i < Nfreqs-1:
+                        i += 1
+                        if l2.freqmask[ifeed,isb,i]:
+                            stretch_start.append(i)
+                            while i < Nfreqs:
+                                i += 1
+                                if not l2.freqmask[ifeed,isb,i]:
+                                    stretch_len.append(i - stretch_start[-1])
+                                    break
+                    if len(stretch_start) > len(stretch_len):  # This happens if freqmask is True all the way to the end of the band, so the break is never reached.
+                        stretch_len.append(Nfreqs - stretch_start[-1])
+
+                    for i in range(len(stretch_len)):
+                        if stretch_len[i] <= 4:
+                            l2.freqmask[ifeed, isb, stretch_start[i]:stretch_start[i]+stretch_len[i]] = False
+                            l2.freqmask_reason[ifeed, isb, stretch_start[i]:stretch_start[i]+stretch_len[i]] += 2**l2.freqmask_counter
+            l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append(f"Lonely unmasked channel")
+
+            
+            ### Mask entire sideband if less than 10% of sideband is unmasked
+            temp_mask = np.mean(l2.freqmask, axis=-1) > 0.1
+            l2.freqmask[~temp_mask] = False
+            l2.freqmask_reason[~temp_mask] += 2**l2.freqmask_counter
+            l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append(f"Less than 10% of band unmasked")
+            del(temp_mask)
+            
+            
+            
+            l2.tofile_dict["freqmask_full_aftermasking"] = l2.freqmask.copy()            
             if self.params.write_C_matrix:
                 outpath = os.path.join(l2.level2_dir, "plots")
                 if not os.path.exists(outpath):
