@@ -1251,7 +1251,6 @@ class Masking(Filter):
 
                     l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                     l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
-            del(l2_local)
             
             # Since we have a "feed" outer loop, we need to do this afterwards:
             for box_size in self.box_sizes:
@@ -1278,17 +1277,17 @@ class Masking(Filter):
                 l2.tofile_dict["leak_aliasing"] = leak_mask
 
 
-
             ### Radiometer cut ###
             std_max = 1.15
             samprate = 50.0  # Hz. TODO: !! FIX !!
             dnu = np.abs(l2.freqs[0,1] - l2.freqs[0,0])*1e9  # GHz -> Hz
             radiometer = 1.0/np.sqrt(dnu * (1.0/samprate))
-            var = np.nanvar(l2.tod, axis=-1)
+            var = np.nanvar(l2_local.tod, axis=-1)
             l2.freqmask[var > (radiometer*std_max)**2] = False
             l2.freqmask_reason[var > (radiometer*std_max)**2] += 2**l2.freqmask_counter
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Radiometer std")
+            del(l2_local)
             
             
             ### Maxmimum freq-freq correlation masking ###
