@@ -74,6 +74,7 @@ class level2_file:
             self.freqmask_reason_string.append("Marked channels")
 
             self.tod[~self.freqmask] = np.nan
+            self.acceptrate = np.mean(self.freqmask, axis=-1)
 
             ### Frequency bins ###
             self.flipped_sidebands = []
@@ -94,6 +95,7 @@ class level2_file:
 
 
     def write_level2_data(self, name_extension=""):
+        self.acceptrate = np.mean(self.freqmask, axis=(-1))
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
@@ -111,6 +113,7 @@ class level2_file:
             f["sb_mean"] = self.sb_mean
             # f["freq_bin_edges"] = self.freq_bin_edges
             # f["freq_bin_centers"] = self.freq_bin_centers
+            f["acceptrate"] = self.acceptrate
             f["freqmask_full"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
