@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 import os
+import git
 
 class level2_file:
     def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, filter_list, params):
@@ -54,6 +55,8 @@ class level2_file:
             self.Nfreqs = self.tod.shape[2]
             self.Ntod = self.tod.shape[3]
             self.corr_template = np.zeros((self.Nfeeds, self.Nsb*self.Nfreqs, self.Nsb*self.Nfreqs))  # The correlated induced by different filters, to be subtracted in masking.
+            dir_path = os.path.dirname(os.path.realpath(__file__))  # Path to current directory.
+            self.git_hash = git.Repo(dir_path, search_parent_directories=True).head.object.hexsha  # Current git commit hash.
 
             ### Preliminary Masking ###
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
@@ -133,6 +136,7 @@ class level2_file:
             f["decimation_time"] = 1
 
             f["is_sim"] = self.is_sim
+            f["git_hash"] = self.git_hash
 
             # Custom data (usually from the filters):
             for key in self.tofile_dict:  
