@@ -1461,7 +1461,7 @@ class Calibration(Filter):
         ### Running median tsys cuts ###
         kernel_size1 = 400
         kernel_size2 = 150
-        median_cut1 = 15
+        median_cut1 = self.median_cut+10
         median_cut2 = self.median_cut
 
         tsys_temp = l2.Tsys.copy()
