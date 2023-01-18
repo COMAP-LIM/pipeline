@@ -444,3 +444,17 @@ parser.add_argument(
     default=1,
     help="Factor to multiply with simulation to be injected into TOD in simulation pipeline.",
 )
+
+parser.add_argument(
+    "--populate_cube",
+    action="store_true",
+    help="(tod2comap/signal injection) If flag is provided the simulation (only) cube needed to compute TF, with same sigma_wn and footprint as map with signal injected data, is produced.",
+)
+
+
+###### Signal Injection ######
+parser.add_argument(
+    "--Make new data",
+    action="store_true",
+    help="(comap2tf) If flag is provided a new raw data only run of l2gen is started to produce new level2 files for computiong noise power spectrum needed in transfer function.",
+)
