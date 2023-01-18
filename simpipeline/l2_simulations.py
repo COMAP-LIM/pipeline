@@ -138,7 +138,7 @@ class SimCube:
 
         # NOTE: this will change in future due to the changed clock frequency in early 2022
         # Flipping frequencies
-        self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
+        # self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
 
         # muK to K
         self.simdata *= 1e-6  

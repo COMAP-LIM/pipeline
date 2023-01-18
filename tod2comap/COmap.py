@@ -210,9 +210,13 @@ class COmap:
             # If PCA subtraction was performed append number
             # of components and "subtr" to path and name
             ncomps = self._data["n_pca"]
+            norm_mode = self._data["pca_norm"]
             outname = self.path.split("/")[-1]
             namelen = len(outname)
-            outname = re.sub(r".h5", rf"_n{ncomps}_subtr.h5", outname)
+            if self._data["pca_approx_noise"]:
+                outname = re.sub(r".h5", rf"_n{ncomps}_subtr_approx_{norm_mode}.h5", outname)
+            else:
+                outname = re.sub(r".h5", rf"_n{ncomps}_subtr_{norm_mode}.h5", outname)
             outpath = self.path[:-namelen]
             outpath += outname
 
