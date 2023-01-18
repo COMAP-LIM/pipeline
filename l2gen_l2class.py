@@ -81,20 +81,22 @@ class level2_file:
 
             ### Frequency bins ###
             self.flipped_sidebands = []
-            # self.freq_bin_edges = np.zeros((self.freqs.shape[0], self.freqs.shape[1]+1))
-            # self.freq_bin_centers = np.zeros_like(self.freqs)
-            # for isb in range(self.freqs.shape[0]):
-            #     delta_nu = self.freqs[isb,1] - self.freqs[isb,0]
-            #     self.freq_bin_edges[isb,:-1] = self.freqs[isb]
-            #     self.freq_bin_edges[isb,-1] = self.freq_bin_edges[isb,-2] + delta_nu
-            #     if delta_nu < 0:
-            #         self.flipped_sidebands.append(isb)
-            #         self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
-            #         self.tod[:,isb,:] = self.tod[:,isb,::-1]
-            #         self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
-            #         self.freqmask_reason[:,isb,:] = self.freqmask_reason[:,isb,::-1]
-            #     for ifreq in range(self.freqs.shape[1]):
-            #         self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
+            self.freq_bin_edges = np.zeros((self.freqs.shape[0], self.freqs.shape[1]+1))
+            self.freq_bin_centers = np.zeros_like(self.freqs)
+            for isb in range(self.freqs.shape[0]):
+                delta_nu = self.freqs[isb,1] - self.freqs[isb,0]
+                self.freq_bin_edges[isb,:-1] = self.freqs[isb]
+                self.freq_bin_edges[isb,-1] = self.freq_bin_edges[isb,-2] + delta_nu
+                if delta_nu < 0:
+                    self.flipped_sidebands.append(isb)
+                    self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
+                    self.tod[:,isb,:] = self.tod[:,isb,::-1]
+                    self.tod_mean[:,isb,:] = self.tod_mean[:,isb,::-1]
+                    self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
+                    self.freqmask_reason[:,isb,:] = self.freqmask_reason[:,isb,::-1]
+                    self.n_nans[:,isb,:] = self.n_nans[:,isb,::-1]
+                for ifreq in range(self.freqs.shape[1]):
+                    self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
 
 
     def write_level2_data(self, name_extension=""):

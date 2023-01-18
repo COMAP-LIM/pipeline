@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import os
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-
+from simpipeline.l2gen_simulation_filters import Cube2TOD
 
 
 class Filter:
@@ -1075,6 +1075,9 @@ class Masking(Filter):
                 with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
                     AB_mask = f["/AB_mask"][()]
                     leak_mask = f["/leak_mask"][()]
+                for isb in l2.flipped_sidebands:
+                    AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
+                    leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
                 l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
                 l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
                 l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
