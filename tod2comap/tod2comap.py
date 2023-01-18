@@ -6,6 +6,7 @@ import h5py
 import re
 from mpi4py import MPI
 import datetime
+from copy import copy, deepcopy
 
 from COmap import COmap
 from L2file import L2file
@@ -419,6 +420,11 @@ class Mapmaker:
                 full_map.write_map(params = self.params)
             finish_time = time.perf_counter()
 
+
+            # Check if last l2data object contained simualtion and assume all did and make map of cube data only:
+            if l2data["is_sim"] and self.params.populate_cube:
+                self.populate_simulation_ccube(full_map)
+
             print("=" * 80)
             print("=" * 80)
             print("Run time: ", finish_time - start_time, "s")
@@ -533,9 +539,9 @@ class Mapmaker:
         # freqs = l2data["nu"][0, ...]
 
         # Flip sideband 0 and 2
-        tod[:, (0, 2), :, :] = tod[:, (0, 2), ::-1, :]
-        sigma0[:, (0, 2), :] = sigma0[:, (0, 2), ::-1]
-        freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
+        # tod[:, (0, 2), :, :] = tod[:, (0, 2), ::-1, :]
+        # sigma0[:, (0, 2), :] = sigma0[:, (0, 2), ::-1]
+        # freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
         # freqs[(0, 2), :] = freqs[(0, 2), ::-1]
 
         # Masking accept mod rejected feeds and sidebands
@@ -982,6 +988,57 @@ class Mapmaker:
                     mapdata["n_dec"],
                     self.OMP_NUM_THREADS,
                 )
+
+    def populate_simulation_ccube(self, mapdata: COmap):
+
+        cube = {}
+        with h5py.File(self.params.signal_path, "r") as infile:
+            cube["simulation"] = infile["simulation"][()]
+        
+        signal = cube["simulation"]
+
+        _, NCHANNEL_sim, NDEC_sim, NRA_sim = signal.shape
+
+
+        # Marking map object as simulation
+        mapdata["is_sim"] = True
+        mapdata["is_simcube"] = True
+
+        NFEED, NSIDEBAND, NCHANNEL, NDEC, NRA = mapdata["map"].shape
+
+        NDOWNSAMPLE_RA = NRA_sim // NRA
+        NDOWNSAMPLE_DEC = NDEC_sim // NDEC
+        NDOWNSAMPLE_CHANNEL = NCHANNEL_sim // NCHANNEL
+
+
+        # Adapting cube to map resolution
+        signal = signal.reshape(NSIDEBAND, NCHANNEL, NDOWNSAMPLE_CHANNEL, NDEC, NDOWNSAMPLE_DEC, NRA, NDOWNSAMPLE_RA).mean((2, 4, 6))
+
+        # From muK to K and optional signal boost
+        signal *= 1e-6 * self.params.boost_factor
+
+
+        # Asigning map datasets
+        mask = np.isfinite(mapdata["map_coadd"])
+        mapdata["map_coadd"][mask] = signal[mask]
+
+
+        for i in range(NFEED):
+            mask = np.isfinite(mapdata["map"][i, ...])
+            mapdata["map"][i][mask] = signal[mask]
+
+        if self.perform_splits:
+            for key in mapdata.keys:
+                if "multisplits" in key and "map" in key:
+                    for i in range(NFEED):
+                        mask = np.isfinite(mapdata[key][i, ...])
+                        mapdata[key][i][mask] = signal[mask]
+
+            # Providing name of primary splits to make group names
+            mapdata.write_map(primary_splits=self.primary_splits, params = self.params)
+        else:
+            mapdata.write_map(params = self.params)
+
 
 
 def main():

@@ -83,7 +83,7 @@ class COmap:
             maps_to_bin (optional, list): List of numerator map datasets to initialize.
             The same number of denominator maps will also be made. By default no splits are made
             and hence only one numerator and denominator map are made.
-        """
+        """        
 
         standard_geometry_path = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
@@ -192,6 +192,10 @@ class COmap:
             "CRVAL2": self.standard_geometry.wcs.wcs.crval[1],
         }
 
+        # By default the map is not a simulation map and not a pure simulation cube map
+        self._data["is_sim"] = False
+        self._data["is_simcube"] = False
+
     def write_map(
         self, outpath: Optional[str] = None, 
         primary_splits: Optional[list] = None, 
@@ -219,6 +223,14 @@ class COmap:
                 outname = re.sub(r".h5", rf"_n{ncomps}_subtr_{norm_mode}.h5", outname)
             outpath = self.path[:-namelen]
             outpath += outname
+        elif self._data["is_simcube"]:
+            outname = self.path.split("/")[-1]
+            namelen = len(outname)
+            outname = re.sub(r".h5", rf"_simcube.h5", outname)
+            outpath = self.path[:-namelen]
+            outpath += outname
+            
+
 
         if len(self._data) == 0:
             raise ValueError("Cannot save map if data object is empty.")
