@@ -116,8 +116,8 @@ class level2_file:
             f["samprate"] = self.samprate
             f["mean_tp"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
-            # f["freq_bin_edges"] = self.freq_bin_edges
-            # f["freq_bin_centers"] = self.freq_bin_centers
+            f["freq_bin_edges"] = self.freq_bin_edges
+            f["freq_bin_centers"] = self.freq_bin_centers
             f["acceptrate"] = self.acceptrate
             f["freqmask_full"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
