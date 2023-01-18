@@ -90,6 +90,7 @@ class level2_file:
                 if delta_nu < 0:
                     self.flipped_sidebands.append(isb)
                     self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
+                    self.freqs[isb] = self.freqs[isb,::-1]
                     self.tod[:,isb,:] = self.tod[:,isb,::-1]
                     self.tod_mean[:,isb,:] = self.tod_mean[:,isb,::-1]
                     self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
