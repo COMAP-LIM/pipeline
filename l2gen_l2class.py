@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 import os
+import git
 
 class level2_file:
     def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, filter_list, params):
@@ -54,6 +55,8 @@ class level2_file:
             self.Nfreqs = self.tod.shape[2]
             self.Ntod = self.tod.shape[3]
             self.corr_template = np.zeros((self.Nfeeds, self.Nsb*self.Nfreqs, self.Nsb*self.Nfreqs))  # The correlated induced by different filters, to be subtracted in masking.
+            dir_path = os.path.dirname(os.path.realpath(__file__))  # Path to current directory.
+            self.git_hash = git.Repo(dir_path, search_parent_directories=True).head.object.hexsha  # Current git commit hash.
 
             ### Preliminary Masking ###
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
@@ -74,26 +77,30 @@ class level2_file:
             self.freqmask_reason_string.append("Marked channels")
 
             self.tod[~self.freqmask] = np.nan
+            self.acceptrate = np.mean(self.freqmask, axis=-1)
 
             ### Frequency bins ###
             self.flipped_sidebands = []
-            # self.freq_bin_edges = np.zeros((self.freqs.shape[0], self.freqs.shape[1]+1))
-            # self.freq_bin_centers = np.zeros_like(self.freqs)
-            # for isb in range(self.freqs.shape[0]):
-            #     delta_nu = self.freqs[isb,1] - self.freqs[isb,0]
-            #     self.freq_bin_edges[isb,:-1] = self.freqs[isb]
-            #     self.freq_bin_edges[isb,-1] = self.freq_bin_edges[isb,-2] + delta_nu
-            #     if delta_nu < 0:
-            #         self.flipped_sidebands.append(isb)
-            #         self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
-            #         self.tod[:,isb,:] = self.tod[:,isb,::-1]
-            #         self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
-            #         self.freqmask_reason[:,isb,:] = self.freqmask_reason[:,isb,::-1]
-            #     for ifreq in range(self.freqs.shape[1]):
-            #         self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
+            self.freq_bin_edges = np.zeros((self.freqs.shape[0], self.freqs.shape[1]+1))
+            self.freq_bin_centers = np.zeros_like(self.freqs)
+            for isb in range(self.freqs.shape[0]):
+                delta_nu = self.freqs[isb,1] - self.freqs[isb,0]
+                self.freq_bin_edges[isb,:-1] = self.freqs[isb]
+                self.freq_bin_edges[isb,-1] = self.freq_bin_edges[isb,-2] + delta_nu
+                if delta_nu < 0:
+                    self.flipped_sidebands.append(isb)
+                    self.freq_bin_edges[isb] = self.freq_bin_edges[isb,::-1]
+                    self.tod[:,isb,:] = self.tod[:,isb,::-1]
+                    self.tod_mean[:,isb,:] = self.tod_mean[:,isb,::-1]
+                    self.freqmask[:,isb,:] = self.freqmask[:,isb,::-1]
+                    self.freqmask_reason[:,isb,:] = self.freqmask_reason[:,isb,::-1]
+                    self.n_nans[:,isb,:] = self.n_nans[:,isb,::-1]
+                for ifreq in range(self.freqs.shape[1]):
+                    self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
 
 
     def write_level2_data(self, name_extension=""):
+        self.acceptrate = np.mean(self.freqmask, axis=(-1))
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
@@ -109,8 +116,9 @@ class level2_file:
             f["samprate"] = self.samprate
             f["mean_tp"] = self.tod_mean
             f["sb_mean"] = self.sb_mean
-            # f["freq_bin_edges"] = self.freq_bin_edges
-            # f["freq_bin_centers"] = self.freq_bin_centers
+            f["freq_bin_edges"] = self.freq_bin_edges
+            f["freq_bin_centers"] = self.freq_bin_centers
+            f["acceptrate"] = self.acceptrate
             f["freqmask_full"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
@@ -130,6 +138,7 @@ class level2_file:
             f["decimation_time"] = 1
 
             f["is_sim"] = self.is_sim
+            f["git_hash"] = self.git_hash
 
             # Custom data (usually from the filters):
             for key in self.tofile_dict:  

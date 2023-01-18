@@ -874,7 +874,8 @@ class PCA_feed_filter(Filter):
 
         # weight = 1.0/np.nanvar(l2.tod, axis=-1)
         if not self.use_ctypes:
-            weight = 1.0/l2.Tsys**2
+            # weight = 1.0/l2.Tsys**2
+            weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             for ifeed in range(l2.Nfeeds):
                 M = np.zeros((N, l2.Ntod))
@@ -882,9 +883,9 @@ class PCA_feed_filter(Filter):
                     for ifreq in range(self.N_deci_freqs):
                         i = isb*self.N_deci_freqs + ifreq
                         M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
-                        w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+                        w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                         M[i,:] /= w
-                        M[i,:] *= np.sqrt(w)
+                        M[i,:] /= (16.0/np.sqrt(w))
                 M[~np.isfinite(M)] = 0
                 M = M[np.sum(M != 0, axis=-1) != 0]
                 if M.shape[0] < 4:
@@ -916,7 +917,8 @@ class PCA_feed_filter(Filter):
             l2.tofile_dict["PCAf_err"] = np.zeros((self.max_pca_comp, l2.Nfeeds, max_iter))
             pca_eigval = np.zeros((self.max_pca_comp, l2.Nfeeds))
 
-            weight = 1.0/l2.Tsys**2
+            # weight = 1.0/l2.Tsys**2
+            weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             # print("1:", time.time() - t0); t0=time.time()
             self.n_pca_comp = np.zeros(l2.Nfeeds, dtype=int)
@@ -928,9 +930,9 @@ class PCA_feed_filter(Filter):
                         for ifreq in range(self.N_deci_freqs):
                             i = isb*self.N_deci_freqs + ifreq
                             M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
-                            w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor], axis=0)
+                            w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                             M[i,:] /= w
-                            M[i,:] *= np.sqrt(w)
+                            M[i,:] /= (16.0/np.sqrt(w))
                             mask[i] = l2.freqmask[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor].any()
 
                     if (mask == 0).all():
@@ -1068,6 +1070,25 @@ class Masking(Filter):
                     l2.tofile_dict[f"premask_{key}"] = l2_local.tofile_dict[key]
 
 
+            ### Aliasing masking ###
+            if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
+                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+                    AB_mask = f["/AB_mask"][()]
+                    leak_mask = f["/leak_mask"][()]
+                for isb in l2.flipped_sidebands:
+                    AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
+                    leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
+                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
+                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
+                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
+                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+                l2.tofile_dict["AB_aliasing"] = AB_mask
+                l2.tofile_dict["leak_aliasing"] = leak_mask
+
+
+
             if self.params.write_C_matrix:  # For debuging purposes only.
                 l2.tofile_dict["premask_C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
                 l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
@@ -1122,6 +1143,9 @@ class Masking(Filter):
                     # print("2:", C[:5,:5])
 
                     corr_template = l2_local.corr_template[ifeed,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
+                    # Ignore masked frequencies. (again, since template does not include aliasing masking, and has different mask.)
+                    corr_template[~freqmask,:] = 0
+                    corr_template[:,~freqmask] = 0
 
                     C -= corr_template
 
@@ -1151,6 +1175,8 @@ class Masking(Filter):
                                 if i < j:
                                     box = C[i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size]
                                     dof = np.sum(box != 0)
+                                    if dof == 0:
+                                        dof = 1
                                     # CHI2 MASKING
                                     corr = np.sum(box**2)*Ntod
                                     chi2 = (corr - dof)/np.sqrt(2*dof)
@@ -1169,6 +1195,8 @@ class Masking(Filter):
                                     jump = 16
                                     prod = np.sum(box[:-jump:2]*box[jump::2])*Ntod
                                     nprod = np.sum((box[:-jump:2]*box[jump::2]) != 0)
+                                    if nprod == 0:
+                                        nprod = 1
                                     if prod/nprod > Nsigma_prod_box*np.sqrt(1.0/nprod):
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1199,8 +1227,12 @@ class Masking(Filter):
                         Nsigma_prod_stripe = self.Nsigma_prod_stripes[istripe]
 
                         for i in range((2*Nfreqs)//stripe_size):
-                            stripe = C[i*stripe_size:(i+1)*stripe_size, :]
+                            stripe = C[i*stripe_size:(i+1)*stripe_size, :].copy()
+                            for x in range(stripe.shape[0]):
+                                stripe[x:,x] = 0
                             dof = np.sum(stripe != 0)
+                            if dof == 0:
+                                dof = 1
                             # CHI2 MASKING
                             corr = np.sum(stripe**2)*Ntod
                             chi2 = (corr - dof)/np.sqrt(2*dof)
@@ -1214,6 +1246,8 @@ class Masking(Filter):
                             # PROD MASKING
                             prod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2])
                             nprod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2] != 0)
+                            if nprod == 0:
+                                nprod = 1
                             if prod/nprod > Nsigma_prod_stripe*np.sqrt(1.0/nprod):
                                 freqmask[i*stripe_size:(i+1)*stripe_size] = False
                                 for x in range(i*stripe_size, (i+1)*stripe_size):
@@ -1222,7 +1256,6 @@ class Masking(Filter):
 
                     l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                     l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
-            del(l2_local)
             
             # Since we have a "feed" outer loop, we need to do this afterwards:
             for box_size in self.box_sizes:
@@ -1234,32 +1267,18 @@ class Masking(Filter):
                     l2.freqmask_reason_string.append(f"Stripe {stripe_size} {method}")
                     l2.freqmask_counter += 1
 
-            ### Aliasing masking ###
-            if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
-                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
-                    AB_mask = f["/AB_mask"][()]
-                    leak_mask = f["/leak_mask"][()]
-                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
-                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
-                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-                l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
-                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-                l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
-                l2.tofile_dict["AB_aliasing"] = AB_mask
-                l2.tofile_dict["leak_aliasing"] = leak_mask
-
-
 
             ### Radiometer cut ###
             std_max = 1.15
             samprate = 50.0  # Hz. TODO: !! FIX !!
             dnu = np.abs(l2.freqs[0,1] - l2.freqs[0,0])*1e9  # GHz -> Hz
             radiometer = 1.0/np.sqrt(dnu * (1.0/samprate))
-            var = np.nanvar(l2.tod, axis=-1)
+            var = np.nanvar(l2_local.tod, axis=-1)
             l2.freqmask[var > (radiometer*std_max)**2] = False
             l2.freqmask_reason[var > (radiometer*std_max)**2] += 2**l2.freqmask_counter
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Radiometer std")
+            del(l2_local)
             
             
             ### Maxmimum freq-freq correlation masking ###
@@ -1268,8 +1287,45 @@ class Masking(Filter):
             l2.freqmask_reason[max_corr > max_corr_threshold] += 2**l2.freqmask_counter
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Max corr")
-            l2.tofile_dict["freqmask_full_aftermasking"] = l2.freqmask.copy()
             
+            
+            ### Mask channels stretches shorter or equal to 4 sequential channels.
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    stretch_start = []
+                    stretch_len = []
+                    i = -1
+                    while i < Nfreqs-1:
+                        i += 1
+                        if l2.freqmask[ifeed,isb,i]:
+                            stretch_start.append(i)
+                            while i < Nfreqs:
+                                i += 1
+                                if not l2.freqmask[ifeed,isb,i]:
+                                    stretch_len.append(i - stretch_start[-1])
+                                    break
+                    if len(stretch_start) > len(stretch_len):  # This happens if freqmask is True all the way to the end of the band, so the break is never reached.
+                        stretch_len.append(Nfreqs - stretch_start[-1])
+
+                    for i in range(len(stretch_len)):
+                        if stretch_len[i] <= 4:
+                            l2.freqmask[ifeed, isb, stretch_start[i]:stretch_start[i]+stretch_len[i]] = False
+                            l2.freqmask_reason[ifeed, isb, stretch_start[i]:stretch_start[i]+stretch_len[i]] += 2**l2.freqmask_counter
+            l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append(f"Lonely unmasked channel")
+
+            
+            ### Mask entire sideband if less than 10% of sideband is unmasked
+            temp_mask = np.mean(l2.freqmask, axis=-1) > 0.1
+            l2.freqmask[~temp_mask] = False
+            l2.freqmask_reason[~temp_mask] += 2**l2.freqmask_counter
+            l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append(f"Less than 10% of band unmasked")
+            del(temp_mask)
+            
+            
+            
+            l2.tofile_dict["freqmask_full_aftermasking"] = l2.freqmask.copy()            
             if self.params.write_C_matrix:
                 outpath = os.path.join(l2.level2_dir, "plots")
                 if not os.path.exists(outpath):
@@ -1288,8 +1344,7 @@ class Masking(Filter):
 
             
         l2.tod[~l2.freqmask] = np.nan
-        l2.acceptrate = np.sum(l2.freqmask, axis=(-1))/l2.Nfreqs
-        l2.tofile_dict["acceptrate"] = l2.acceptrate
+        l2.acceptrate = np.mean(l2.freqmask, axis=(-1))
 
         # Just printing stuff:
         def get_color(value):
@@ -1317,7 +1372,6 @@ class Masking(Filter):
                 acc = np.sum(l2.acceptrate[ifeed,isb])*100
                 printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
         print(printstring)
-        print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
         logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
@@ -1395,7 +1449,8 @@ class Calibration(Filter):
         self.omp_num_threads = omp_num_threads
         self.max_tsys = params.max_tsys
         self.min_tsys = params.min_tsys
-    
+        self.median_cut = params.median_tsys_cut
+
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
         l2.freqmask[~np.isfinite(l2.Tsys)] = False
@@ -1405,7 +1460,42 @@ class Calibration(Filter):
         l2.freqmask[l2.Tsys < self.min_tsys] = False
         l2.freqmask_reason[l2.Tsys < self.min_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys < min_tsys")
+        
+        ### Running median tsys cuts ###
+        kernel_size1 = 400
+        kernel_size2 = 150
+        median_cut1 = self.median_cut+10
+        median_cut2 = self.median_cut
 
-        l2.freqmask[l2.Tsys > self.max_tsys] = False
-        l2.freqmask_reason[l2.Tsys > self.max_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-        l2.freqmask_reason_string.append("Tsys > max_tsys")
+        tsys_temp = l2.Tsys.copy()
+        tsys_temp[tsys_temp < self.min_tsys] = np.nan
+        tsys_temp[tsys_temp > self.max_tsys] = np.nan
+        running_median1 = np.zeros_like(tsys_temp)
+        running_median2 = np.zeros_like(tsys_temp)
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                # Iteration 1
+                for i in range(l2.Nfreqs):
+                    start = max(i-kernel_size1//2, 0)
+                    stop = min(i+kernel_size1//2, l2.Nfreqs)
+                    tsys_local = tsys_temp[ifeed,isb,start:stop]
+                    if np.sum(np.isfinite(tsys_local)) > kernel_size1//5:  # If more than 20% of points remaining.
+                        running_median1[ifeed,isb,i] = np.nanmedian(tsys_local)
+                    else:
+                        running_median1[ifeed,isb,i] = 0
+                tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median1[ifeed,isb] + median_cut1)] = np.nan
+                # Iteration 2
+                for i in range(l2.Nfreqs):
+                    start = max(i-kernel_size2//2, 0)
+                    stop = min(i+kernel_size2//2, l2.Nfreqs)
+                    tsys_local = tsys_temp[ifeed,isb,start:stop]
+                    if np.sum(np.isfinite(tsys_local)) > kernel_size2//5:  # If more than 20% of points remaining.
+                        running_median2[ifeed,isb,i] = np.nanmedian(tsys_local)
+                    else:
+                        running_median2[ifeed,isb,i] = 0
+                tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median2[ifeed,isb] + median_cut2)] = np.nan
+        tsys_median_mask = np.isfinite(tsys_temp)
+        
+        l2.freqmask[~tsys_median_mask] = False
+        l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask_reason_string.append("Tsys > running median max")

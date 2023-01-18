@@ -19,6 +19,7 @@ import l2gen_filters
 # from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
 
 import warnings
+warnings.filterwarnings("ignore", message="divide by zero encountered in double_scalars")
 warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 warnings.filterwarnings("ignore", message="divide by zero encountered in true_divide")
