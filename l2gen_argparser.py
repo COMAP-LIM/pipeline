@@ -144,7 +144,7 @@ parser.add_argument(
 parser.add_argument(
     "--freqfilter_use_prior",
     type=str2bool,
-    default=True,
+    default=False,
     help="(freq) Whether to use a prior on the gain term in the frequency filter.",
 )
 parser.add_argument(
