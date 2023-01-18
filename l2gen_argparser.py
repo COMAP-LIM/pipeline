@@ -327,7 +327,7 @@ parser.add_argument(
     "--res_factor",
     type=float,
     default=1,
-    help="(tod2comap) Resolution factor. Default value 1 gives 2 arcmin pixels; value 2 gives 1 arcmin pixels; value 0.5 gives 4 arcmin pixels; etc.",
+    help="(tod2comap) Resolution factor. Default value 1 gives 2 arcmin pixels; value 2 gives 1 arcmin pixels; value 0.5 gives 4 arcmin pixels; etc. Can also be used to upgrade/downgrade simulation cubes",
 )
 
 parser.add_argument(
@@ -415,6 +415,20 @@ parser.add_argument(
 )
 
 
+###### Make Signal Cube ######
+parser.add_argument(
+    "--model_name",
+    type=str,
+    default="",
+    help="(make_cube) Name of model to use. By defualt 'power_cov' is used.",
+)
+
+parser.add_argument(
+    "--exp_params",
+    type=str,
+    default="experimental_parameters_sim2tod.py",
+    help="File name (without path) to experimental parameters to use to make simulation cube.",
+)
 
 ###### Signal Injection ######
 parser.add_argument(

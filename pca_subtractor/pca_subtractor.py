@@ -31,6 +31,8 @@ class PCA_SubTractor:
         clean: bool = True,
         maskrms: Optional[float] = None,
         verbose: bool = False,
+        subtract_mean: bool = False,
+        approx_noise: bool = False,
     ):
         """Initializing class instance
 
@@ -47,11 +49,14 @@ class PCA_SubTractor:
         self.verbose = verbose
         self.clean = clean
         self.maskrms = maskrms
+        self.subtract_mean = subtract_mean
+        self.approx_noise = approx_noise
 
         # List of keys to perform PCA on (only per feed hence remove "map" and "sigma_wn")
         self.keys_to_pca = [
             key for key in map.keys if ("map" in key) and ("coadd" not in key)
         ]
+
 
     def get_svd_basis(
         self, data: np.ndarray
@@ -151,6 +156,29 @@ class PCA_SubTractor:
         else:
             return (map_coadd, rms_coadd)
 
+    def define_normalization_exponent(self, norm: str = "sigma_wn"):
+        """Methode that maps name of normalization to exponent number
+
+        Args:
+            norm (str, optional): String that specifies what RMS normalization to apply to map prior to SVD. Defaults to "sigma_wn".
+                        Can take values;
+                         - 'approx' - for normalizing map by first PCA mode of RMS-map
+                         - 'sigma_wn' - for normalizing map by RMS-map
+                         - 'var' - for normalizing map by variance-map
+        """
+        if norm == "sigma_wn":
+            # rms normalized PCA
+            self.norm_exponent = 1
+        elif norm == "var":
+            # variance normalized PCA
+            self.norm_exponent = 2
+        elif norm == "three":
+            # rms^3 normalized PCA
+            self.norm_exponent = 3
+        elif norm == "weightless":
+            # non-normalized PCA
+            self.norm_exponent = 0
+
     def normalize_data(self, key: str, norm: str) -> ntyping.ArrayLike:
         """_summary_
 
@@ -170,24 +198,23 @@ class PCA_SubTractor:
         """
 
         # Making sure normalization is valid
-        if norm not in ["approx", "sigma_wn", "var"]:
-            message = 'Make sure that normalization argument norm is either of the three "approx", "sigma_wn", "var".'
+        if norm not in ["approx", "sigma_wn", "var", "three", "weightless"]:
+            message = 'Make sure that normalization argument norm is either of the three "approx", "sigma_wn", "var", "three", "weightless".'
             raise ValueError(message)
 
         # Make key for rms dataset that corresponds to map dataset
         rms_key = re.sub(r"map", "sigma_wn", key)
 
-        if norm == "sigma_wn":
-            # rms normalized PCA
-            self.norm_exponent = 1
-        elif norm == "var":
-            # variance normalized PCA
-            self.norm_exponent = 2
+        
+        
+        if self.approx_noise:
+            norm_data = self.map[key] * (self.weights ** self.norm_exponent)
         else:
-            # rms approximation normalized PCA
-            return NotImplemented
+            norm_data = self.map[key] / (self.map[rms_key] ** self.norm_exponent)
 
-        norm_data = self.map[key] / self.map[rms_key] ** self.norm_exponent
+        if self.subtract_mean:
+            print("Subtracting line-of-sign mean:")
+            norm_data -= np.nanmean(norm_data, axis = (1, 2))[:, None, None, :, :]
 
         # Remove NaN values from indata
         norm_data = np.where(np.isfinite(norm_data), norm_data, 0)
@@ -234,10 +261,17 @@ class PCA_SubTractor:
         map_reconstruction = np.sum(map_reconstruction, axis=1)
 
         # Get back original units by undoing normalization
-        map_reconstruction = map_reconstruction * inrms**self.norm_exponent
+        if self.approx_noise:
+            map_reconstruction = map_reconstruction / self.weights 
+        else:
+            map_reconstruction = map_reconstruction * (inrms ** self.norm_exponent)
+
+
+        map_reconstruction = np.where(map_reconstruction != 0, map_reconstruction, np.nan)
+
 
         return map_reconstruction
-
+    
     def compute_pca(self, norm: str = "sigma_wn") -> COmap:
         """Method to compute PCA of map datasets
 
@@ -245,7 +279,7 @@ class PCA_SubTractor:
             norm (str, optional): String that specifies what RMS normalization to apply to map prior to SVD. Defaults to "sigma_wn".
                         Can take values;
                          - 'approx' - for normalizing map by first PCA mode of RMS-map
-                         - 'rms' - for normalizing map by RMS-map
+                         - 'sigma_wn' - for normalizing map by RMS-map
                          - 'var' - for normalizing map by variance-map
         Returns:
             COmap: Map object with PCA modes saved. If self.clean the map object
@@ -254,33 +288,66 @@ class PCA_SubTractor:
         if self.verbose:
             print(f"Computing {norm} normalized PCA of:")
 
+        self.define_normalization_exponent(norm)
+
         # Compute PCA of all feed-map datasets
         for key in self.keys_to_pca:
             if self.verbose:
                 print(" " * 4 + "Dataset: " + f"{key}")
 
-            if self.maskrms:
+            if self.maskrms is not None:
                 # Masking high-noise regions
                 maskrms = self.maskrms
+                
+                if self.verbose:
+                    print(f"Masking all sigma_wn > {maskrms} times the mean bottom 100 noise on each (feed, frequency):")
+
                 # Make keys for rms and nhit datasets that corresponds to map dataset
                 rms_key = re.sub(r"map", "sigma_wn", key)
                 nhit_key = re.sub(r"map", "nhit", key)
 
+                # self.map[key] = np.where(
+                #     1e6 * self.map[rms_key] < maskrms, self.map[key], np.nan
+                # )
+
+                # if nhit_key in self.map.keys:
+                #     self.map[nhit_key] = np.where(
+                #         1e6 * self.map[rms_key] < maskrms, self.map[nhit_key], np.nan
+                #     )
+                
+                # self.map[rms_key] = np.where(
+                #     1e6 * self.map[rms_key] < maskrms, self.map[rms_key], np.nan
+                # )
+
+                nfeed, nsb, nchannel, nra, ndec = self.map[rms_key].shape
+                sorted_rms = self.map[rms_key].reshape(nfeed, nsb, nchannel, nra * ndec)
+                
+                bottom100_idx = np.argpartition(sorted_rms, 100, axis = -1)[..., :100]
+                bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis = -1)
+
+                mean_bottom100_rms = np.nanmean(bottom100, axis = -1)
+
+                noise_lim = mean_bottom100_rms * self.maskrms
+
                 self.map[key] = np.where(
-                    1e6 * self.map[rms_key] < maskrms, self.map[key], 0
+                    self.map[rms_key] < noise_lim[..., None, None], self.map[key], np.nan
                 )
 
                 if nhit_key in self.map.keys:
                     self.map[nhit_key] = np.where(
-                        1e6 * self.map[rms_key] < maskrms, self.map[nhit_key], 0
+                        self.map[rms_key] < noise_lim[..., None, None], self.map[nhit_key], np.nan
                     )
                 
                 self.map[rms_key] = np.where(
-                    1e6 * self.map[rms_key] < maskrms, self.map[rms_key], 0
+                    self.map[rms_key] < noise_lim[..., None, None], self.map[rms_key], np.nan
                 )
+            
+            if self.approx_noise:
+                self.weights = self.approximate_sigma_wn(self.map[rms_key])
+                self.weights = 1 / self.weights 
 
             # Normalize data
-            indata = self.normalize_data(key, norm)
+            indata = self.normalize_data(key, norm).astype(np.float64)
 
             # Compute SVD basis of indata
             freqvec, angvec, singular_values = self.get_svd_basis(indata)
@@ -325,7 +392,40 @@ class PCA_SubTractor:
         # and what norm was used
         self.map["is_pca_subtr"] = True
         self.map["pca_norm"] = norm
+        self.map["pca_approx_noise"] = self.approx_noise
         self.map["n_pca"] = self.ncomps
 
         # Return copy of input map object
         return self.map
+
+
+    def approximate_sigma_wn(self, rms):
+        """Method that computes a PCA approximation of the noise level use as weights on dataset when computing map PCA. 
+        """
+
+        rms = np.where(np.isfinite(rms), rms ** self.norm_exponent, 0)
+        freqvec, angvec, singular_values = self.get_svd_basis(rms)
+
+        # We only want the dominant mode for this approximation
+        freqvec = freqvec[:, 0, ...]
+        angvec = angvec[:, 0, ...]
+        singular_values = singular_values[:, 0, ...]
+
+
+        # Perform outer product from basis vecotrs
+        rms_reconstruction = angvec[:, None, None, :, :]
+        rms_reconstruction = (
+            rms_reconstruction
+            * freqvec[
+                :,
+                :,
+                :,
+                None,
+                None,
+            ]
+        )
+        rms_reconstruction = (
+            rms_reconstruction * singular_values[:, None, None, None, None]
+        )
+
+        return rms_reconstruction        

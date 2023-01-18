@@ -1,3 +1,4 @@
+
 import argparse
 
 
@@ -36,10 +37,19 @@ def main():
     )
 
     parser.add_argument(
+        "-a",
+        "--approx_noise",
+        help="""Whether to approximate noise weights by PCA to conserve outer product""",
+        action="store_true",
+    )
+
+    
+
+    parser.add_argument(
         "-m",
         "--maskrms",
         type=float,
-        help="""Value of RMS value (in muK) beyond which to mask maps prior to coadding together feed maps.""",
+        help="""Factor of mean of bottom 100 sigma_wn of each feed and frequency beyond which map is masked.""",
         default=None,
     )
 
@@ -54,7 +64,14 @@ def main():
     parser.add_argument(
         "-v",
         "--verbose",
-        help="""Whether to run in verbose mode or not. Default is True""",
+        help="""Whether to run in verbose mode or not. Default is False""",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-s",
+        "--subtract_mean",
+        help="""Whether to subtract line-of-sight mean per pixel prior to PCA. Default is False""",
         action="store_true",
     )
 
@@ -76,7 +93,7 @@ def main():
 
     try:
         rmsnorm = args.rmsnorm
-        assert rmsnorm in ["approx", "sigma_wn", "var"]
+        assert rmsnorm in ["approx", "sigma_wn", "var", "three", "weightless"]
     except:
         message = """Please choose a normalisation to apply prior to PCA;  -n approx, -n rms or -n var."""
         raise NameError(message)
@@ -91,6 +108,9 @@ def main():
 
     is_verbose = args.verbose
 
+    subtract_mean = args.subtract_mean
+    approx_noise = args.approx_noise
+
     maskrms = args.maskrms
 
     # Define map object to process
@@ -101,7 +121,7 @@ def main():
 
     # Define PCA subtractor object
     pca_sub = PCA_SubTractor(
-        map=mymap, ncomps=ncomps, maskrms=maskrms, verbose=is_verbose
+        map=mymap, ncomps=ncomps, maskrms=maskrms, verbose=is_verbose, subtract_mean = subtract_mean, approx_noise = approx_noise
     )
 
     # PCA mode subtracted cleaned map object
