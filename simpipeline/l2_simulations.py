@@ -8,16 +8,75 @@ from dataclasses import dataclass, field
 from pixell import enmap, utils
 import os
 
+import limlam_mocker as llm
+from llm_mocker.extensions import llm_doppler as llmd
+
 @dataclass
 class SimGenerator:
     """class to make simulation cubes using the limlam_mocker package"""
 
-    path: str = field(default_factory=str)
-    _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+    def __init__(self, params):
 
-    def __init__(self, path):
-        self.path = path
-        self._data = {}
+        # keep only the arguments set to begin with 'sim' in a separate dict
+        # to pass them easily to the simulation functions
+        param_dict = vars(params)
+        simparams = llm.empty_table()
+        for key, val in param_dict.items():
+            if key[0:4] == 'sim_':
+                setattr(simparams, key[4:], val)
+
+        self.simparams = simparams
+
+    def generate_co_sims(self):
+        """
+        Generator function to get the simulated LIM cube, and an associated catalogue
+        of DM halos with simulated CO properties.
+        """
+
+        # pull the simulation parameters object out to make it easier to work with
+        simpars = self.simparams
+
+        # set up the output files to save to
+        llm.make_output_filenames(self.simparams, output_dir=simpars.output_dir)
+
+        # set up map objects to be output
+        mapinst = llm.params_to_mapinst(simpars)
+
+        # load halos from catalogue and trim to only the relevant ones
+        halos, cosmo = llm.load_peakpatch_catalogue(simpars.halo_catalogue_file,
+                                                    output=simpars.halo_output_file)
+        halos = llm.cull_peakpatch_catalogue(halos, simpars.min_mass, mapinst)
+
+        # calculate the luminosity of each halo
+        halos.Lco = llm.Mhalo_to_Lco(halos, simpars.model_name, simpars.model_coeffs)
+
+        # if broadening spectrally, find the velocity that the CO is assumed to be moving at
+        # in each halo
+        if simpars.freqbroaden:
+            halos = llmd.get_halo_velocities(halos, cosmo, simpars)
+
+        # make the maps, applying broadening in whichever axes were requested
+        if simpars.freqbroaden and simpars.spacebroaden:
+            mapinst.maps = llmd.Lco_to_map_doppler_synthbeam(halos, mapinst,
+                                                             bincount=simpars.velocity_bins,
+                                                             binattr=simpars.freq_attr,
+                                                             fwhmattr=simpars.freq_attr,
+                                                             freqrefine=simpars.freq_subpix,
+                                                             xrefine=simpars.x_subpix,
+                                                             beamfwhm=simpars.beam_fwhm)
+
+        elif simpars.freqbroaden:
+            mapinst.maps = llmd.Lco_to_map_doppler(halos, mapinst,
+                                                     bincount=simpars.velocity_bins,
+                                                     binattr=simpars.freq_attr,
+                                                     fwhmattr=simpars.freq_attr,
+                                                     freqrefine=simpars.freq_subpix)
+
+        else:
+            mapinst.maps = llm.Lco_to_map(halos, mapinst)
+
+        # if requested, save the map as a data cube
+
 
 
 

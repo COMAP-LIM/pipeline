@@ -430,6 +430,28 @@ parser.add_argument(
     help="File name (without path) to experimental parameters to use to make simulation cube.",
 )
 
+parser.add_argument(
+    "--sim_model_name",
+    type=str,
+    default="fiuducial",
+    help="Name of model to use for halo CO luminosities. By default 'fiuducial' is used."
+)
+
+parser.add_argument(
+    "--sim_model_coeffs",
+    type=list,
+    default=None,
+    help="Adjusted model coefficients. If 'None', default values for the model are used."
+)
+
+parser.add_argument(
+    "--sim_cosmology",
+    type=str,
+    default='comap',
+    help="The cosmological parameters to use in generating the simulations. Defaults to the values used in Li 2016."
+)
+
+
 ###### Signal Injection ######
 parser.add_argument(
     "--signal_path",
