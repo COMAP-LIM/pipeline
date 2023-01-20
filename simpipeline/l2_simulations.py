@@ -8,6 +8,19 @@ from dataclasses import dataclass, field
 from pixell import enmap, utils
 import os
 
+@dataclass
+class SimGenerator:
+    """class to make simulation cubes using the limlam_mocker package"""
+
+    path: str = field(default_factory=str)
+    _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+
+    def __init__(self, path):
+        self.path = path
+        self._data = {}
+
+
+
 
 @dataclass
 class SimCube:
@@ -141,7 +154,7 @@ class SimCube:
         # self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
 
         # muK to K
-        self.simdata *= 1e-6  
+        self.simdata *= 1e-6
         # Boost signal
         self.simdata *= boost
 
