@@ -104,7 +104,6 @@ class SimCube:
         #     for channel in range(simdata.shape[1])
         # ]
 
-        # print("hei", self.signal)
 
     def prepare_geometry(self, fieldname: str, boost: float = 1) -> None:
         """Method that defines the WCS geometry of the signal cube given the

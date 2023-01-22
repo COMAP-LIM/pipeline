@@ -2,19 +2,24 @@ from __future__ import annotations
 from typing import Optional
 import h5py
 import numpy as np
-import numpy.typing as ntyping
+import numpy.typing as npt
 from pixell import enmap
 from dataclasses import dataclass, field
 import re
 import os
 import argparse
 
+from astropy import units as u
+from astropy import constants
+from astropy.cosmology import FlatLambdaCDM
+
+
 @dataclass
 class COmap:
     """COMAP map data class"""
 
     path: str = field(default_factory=str)
-    _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+    _data: dict[str, npt.ArrayLike] = field(default_factory=dict)
 
     def read_map(self) -> None:
         """Function for reading map data from file and fill data dictionary of Map class"""
@@ -277,24 +282,24 @@ class COmap:
                         else:
                             outfile[f"params/{key}"] = getattr(params, key)
 
-    def __getitem__(self, key: str) -> ntyping.ArrayLike:
+    def __getitem__(self, key: str) -> npt.ArrayLike:
         """Method for indexing map data as dictionary
 
         Args:
             key (str): Dataset key, corresponds to HDF5 map data keys
 
         Returns:
-            dataset (ntyping.ArrayLike): Dataset from HDF5 map file
+            dataset (npt.ArrayLike): Dataset from HDF5 map file
         """
 
         return self._data[key]
 
-    def __setitem__(self, key: str, value: ntyping.ArrayLike) -> None:
+    def __setitem__(self, key: str, value: npt.ArrayLike) -> None:
         """Method for saving value corresponding to key
 
         Args:
             key (str): Key to new dataset
-            value (ntyping.ArrayLike): New dataset
+            value (npt.ArrayLike): New dataset
         """
         # Set new item
         self._data[key] = value
@@ -309,3 +314,7 @@ class COmap:
         """
         # Set new item
         del self._data[key]
+
+
+
+    
