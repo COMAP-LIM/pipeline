@@ -368,14 +368,14 @@ parser.add_argument(
 
 parser.add_argument(
     "--no_hdf5",
-    action="store_false",
-    help="(tod2comap) If flag is provided maps are saved as HDF5 file.",
+    action="store_true",
+    help="(tod2comap) If flag is provided no maps are saved as HDF5 file.",
 )
 
 parser.add_argument(
     "--no_fits",
-    action="store_false",
-    help="(tod2comap) If flag is provided maps are saved as fits files.",
+    action="store_true",
+    help="(tod2comap) If flag is provided no maps are saved as fits files.",
 )
 
 

@@ -430,14 +430,14 @@ class Mapmaker:
                 full_map.write_map(
                     primary_splits=self.primary_splits,
                     params=self.params,
-                    save_hdf5=self.params.save_hdf5,
-                    save_fits=self.params.save_fits,
+                    save_hdf5=(not self.params.no_hdf5),
+                    save_fits=(not self.params.no_fits),
                 )
             else:
                 full_map.write_map(
                     params=self.params,
-                    save_hdf5=self.params.save_hdf5,
-                    save_fits=self.params.save_fits,
+                    save_hdf5=(not self.params.no_hdf5),
+                    save_fits=(not self.params.no_fits),
                 )
             finish_time = time.perf_counter()
 
