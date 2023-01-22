@@ -1,4 +1,3 @@
-
 import argparse
 
 
@@ -24,7 +23,7 @@ def main():
     parser.add_argument("-i", "--inname", type=str, help="""Path to input map.""")
 
     parser.add_argument(
-        "-o", "--outname", type=str, help="""Name of output map.""", default=""
+        "-o", "--outname", type=str, help="""Name of output map.""", default=None
     )
 
     parser.add_argument(
@@ -42,8 +41,6 @@ def main():
         help="""Whether to approximate noise weights by PCA to conserve outer product""",
         action="store_true",
     )
-
-    
 
     parser.add_argument(
         "-m",
@@ -72,6 +69,12 @@ def main():
         "-s",
         "--subtract_mean",
         help="""Whether to subtract line-of-sight mean per pixel prior to PCA. Default is False""",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--save_reconstruction",
+        help="""Whether to save PCA reconstrucion in its own map file(s). Default is False""",
         action="store_true",
     )
 
@@ -113,6 +116,8 @@ def main():
 
     maskrms = args.maskrms
 
+    save_reconstruction = args.save_reconstruction
+
     # Define map object to process
     mymap = COmap(path=inpath)
 
@@ -121,14 +126,29 @@ def main():
 
     # Define PCA subtractor object
     pca_sub = PCA_SubTractor(
-        map=mymap, ncomps=ncomps, maskrms=maskrms, verbose=is_verbose, subtract_mean = subtract_mean, approx_noise = approx_noise
+        map=mymap,
+        ncomps=ncomps,
+        maskrms=maskrms,
+        verbose=is_verbose,
+        subtract_mean=subtract_mean,
+        approx_noise=approx_noise,
     )
 
     # PCA mode subtracted cleaned map object
     mymap_clean = pca_sub.compute_pca(norm=rmsnorm)
 
     # Writing cleaned map data to file
-    mymap_clean.write_map(outpath=outpath)
+    mymap_clean.write_map(outpath=outpath, save_fits=True, save_hdf5=True)
+
+    if save_reconstruction:
+        pca_sub.overwrite_maps_with_reconstruction()
+
+        if outpath is None or len(outpath) == 0:
+            outpath = mymap_clean.path.split(".h5")[0] + "_pca_reconstruction.h5"
+        else:
+            outpath = outpath.split(".h5")[0] + "_pca_reconstruction.h5"
+
+        mymap_clean.write_map(outpath=outpath, save_fits=True, save_hdf5=True)
 
 
 if __name__ == "__main__":

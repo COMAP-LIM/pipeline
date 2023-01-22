@@ -57,7 +57,6 @@ class PCA_SubTractor:
             key for key in map.keys if ("map" in key) and ("coadd" not in key)
         ]
 
-
     def get_svd_basis(
         self, data: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -205,16 +204,14 @@ class PCA_SubTractor:
         # Make key for rms dataset that corresponds to map dataset
         rms_key = re.sub(r"map", "sigma_wn", key)
 
-        
-        
         if self.approx_noise:
-            norm_data = self.map[key] * (self.weights ** self.norm_exponent)
+            norm_data = self.map[key] * (self.weights**self.norm_exponent)
         else:
             norm_data = self.map[key] / (self.map[rms_key] ** self.norm_exponent)
 
         if self.subtract_mean:
             print("Subtracting line-of-sign mean:")
-            norm_data -= np.nanmean(norm_data, axis = (1, 2))[:, None, None, :, :]
+            norm_data -= np.nanmean(norm_data, axis=(1, 2))[:, None, None, :, :]
 
         # Remove NaN values from indata
         norm_data = np.where(np.isfinite(norm_data), norm_data, 0)
@@ -262,16 +259,16 @@ class PCA_SubTractor:
 
         # Get back original units by undoing normalization
         if self.approx_noise:
-            map_reconstruction = map_reconstruction / self.weights 
+            map_reconstruction = map_reconstruction / self.weights
         else:
-            map_reconstruction = map_reconstruction * (inrms ** self.norm_exponent)
+            map_reconstruction = map_reconstruction * (inrms**self.norm_exponent)
 
-
-        map_reconstruction = np.where(map_reconstruction != 0, map_reconstruction, np.nan)
-
+        map_reconstruction = np.where(
+            map_reconstruction != 0, map_reconstruction, np.nan
+        )
 
         return map_reconstruction
-    
+
     def compute_pca(self, norm: str = "sigma_wn") -> COmap:
         """Method to compute PCA of map datasets
 
@@ -290,6 +287,9 @@ class PCA_SubTractor:
 
         self.define_normalization_exponent(norm)
 
+        # Empty dict to save pca reconstructions
+        self.map.pca_reconstruction = {}
+
         # Compute PCA of all feed-map datasets
         for key in self.keys_to_pca:
             if self.verbose:
@@ -298,9 +298,11 @@ class PCA_SubTractor:
             if self.maskrms is not None:
                 # Masking high-noise regions
                 maskrms = self.maskrms
-                
+
                 if self.verbose:
-                    print(f"Masking all sigma_wn > {maskrms} times the mean bottom 100 noise on each (feed, frequency):")
+                    print(
+                        f"Masking all sigma_wn > {maskrms} times the mean bottom 100 noise on each (feed, frequency):"
+                    )
 
                 # Make keys for rms and nhit datasets that corresponds to map dataset
                 rms_key = re.sub(r"map", "sigma_wn", key)
@@ -314,37 +316,43 @@ class PCA_SubTractor:
                 #     self.map[nhit_key] = np.where(
                 #         1e6 * self.map[rms_key] < maskrms, self.map[nhit_key], np.nan
                 #     )
-                
+
                 # self.map[rms_key] = np.where(
                 #     1e6 * self.map[rms_key] < maskrms, self.map[rms_key], np.nan
                 # )
 
                 nfeed, nsb, nchannel, nra, ndec = self.map[rms_key].shape
                 sorted_rms = self.map[rms_key].reshape(nfeed, nsb, nchannel, nra * ndec)
-                
-                bottom100_idx = np.argpartition(sorted_rms, 100, axis = -1)[..., :100]
-                bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis = -1)
 
-                mean_bottom100_rms = np.nanmean(bottom100, axis = -1)
+                bottom100_idx = np.argpartition(sorted_rms, 100, axis=-1)[..., :100]
+                bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis=-1)
+
+                mean_bottom100_rms = np.nanmean(bottom100, axis=-1)
 
                 noise_lim = mean_bottom100_rms * self.maskrms
 
                 self.map[key] = np.where(
-                    self.map[rms_key] < noise_lim[..., None, None], self.map[key], np.nan
+                    self.map[rms_key] < noise_lim[..., None, None],
+                    self.map[key],
+                    np.nan,
                 )
 
                 if nhit_key in self.map.keys:
                     self.map[nhit_key] = np.where(
-                        self.map[rms_key] < noise_lim[..., None, None], self.map[nhit_key], np.nan
+                        self.map[rms_key] < noise_lim[..., None, None],
+                        self.map[nhit_key],
+                        np.nan,
                     )
-                
+
                 self.map[rms_key] = np.where(
-                    self.map[rms_key] < noise_lim[..., None, None], self.map[rms_key], np.nan
+                    self.map[rms_key] < noise_lim[..., None, None],
+                    self.map[rms_key],
+                    np.nan,
                 )
-            
+
             if self.approx_noise:
                 self.weights = self.approximate_sigma_wn(self.map[rms_key])
-                self.weights = 1 / self.weights 
+                self.weights = 1 / self.weights
 
             # Normalize data
             indata = self.normalize_data(key, norm).astype(np.float64)
@@ -361,6 +369,7 @@ class PCA_SubTractor:
                 # Clean data
                 map_reconstruction = self.reconstruct_modes(key)
                 self.map[key] -= map_reconstruction
+                self.map.pca_reconstruction[f"{key}"] = map_reconstruction
 
         if self.clean:
             # Coadd feed map
@@ -385,7 +394,7 @@ class PCA_SubTractor:
 
             if "nhit" in self.map.keys:
                 self.map["nhit_coadd"] = nhit_coadd
-            
+
             self.map["sigma_wn_coadd"] = rms_coadd
 
         # Assigning parameter specifying that map object is PCA subtracted
@@ -398,19 +407,16 @@ class PCA_SubTractor:
         # Return copy of input map object
         return self.map
 
-
     def approximate_sigma_wn(self, rms):
-        """Method that computes a PCA approximation of the noise level use as weights on dataset when computing map PCA. 
-        """
+        """Method that computes a PCA approximation of the noise level use as weights on dataset when computing map PCA."""
 
-        rms = np.where(np.isfinite(rms), rms ** self.norm_exponent, 0)
+        rms = np.where(np.isfinite(rms), rms**self.norm_exponent, 0)
         freqvec, angvec, singular_values = self.get_svd_basis(rms)
 
         # We only want the dominant mode for this approximation
         freqvec = freqvec[:, 0, ...]
         angvec = angvec[:, 0, ...]
         singular_values = singular_values[:, 0, ...]
-
 
         # Perform outer product from basis vecotrs
         rms_reconstruction = angvec[:, None, None, :, :]
@@ -428,4 +434,13 @@ class PCA_SubTractor:
             rms_reconstruction * singular_values[:, None, None, None, None]
         )
 
-        return rms_reconstruction        
+        return rms_reconstruction
+
+    def overwrite_maps_with_reconstruction(self):
+        """Method that will overwrite, i.e. fill in, map data with PCA reconstruction"""
+
+        for key, value in self.map.pca_reconstruction.items():
+            self.map[key] = value
+
+        self.map["is_pca_subtr"] = False
+        self.map["is_pca_recon"] = True
