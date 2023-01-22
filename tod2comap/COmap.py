@@ -11,6 +11,8 @@ import argparse
 
 from astropy import units as u
 from astropy import constants
+from astropy import wcs
+from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
 
 
@@ -88,7 +90,7 @@ class COmap:
             maps_to_bin (optional, list): List of numerator map datasets to initialize.
             The same number of denominator maps will also be made. By default no splits are made
             and hence only one numerator and denominator map are made.
-        """        
+        """
 
         standard_geometry_path = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
@@ -189,12 +191,22 @@ class COmap:
         # Save World-Coordinate-System parameters (WCS) for
         # construction fits headers later.
         self._data["wcs"] = {
+            "CTYPE1": self.standard_geometry.wcs.wcs.ctype[0],
             "CDELT1": self.standard_geometry.wcs.wcs.cdelt[0],
-            "CDELT2": self.standard_geometry.wcs.wcs.cdelt[1],
             "CRPIX1": self.standard_geometry.wcs.wcs.crpix[0],
-            "CRPIX2": self.standard_geometry.wcs.wcs.crpix[1],
             "CRVAL1": self.standard_geometry.wcs.wcs.crval[0],
+            "NAXIS1": NSIDE_RA,
+            "CUNIT1": self.standard_geometry.wcs.wcs.cunit[
+                0
+            ].to_string(),  # Astropy unit to string
+            "CTYPE2": self.standard_geometry.wcs.wcs.ctype[1],
+            "CDELT2": self.standard_geometry.wcs.wcs.cdelt[1],
+            "CRPIX2": self.standard_geometry.wcs.wcs.crpix[1],
             "CRVAL2": self.standard_geometry.wcs.wcs.crval[1],
+            "NAXIS2": NSIDE_DEC,
+            "CUNIT2": self.standard_geometry.wcs.wcs.cunit[
+                1
+            ].to_string(),  # Astropy unit to string
         }
 
         # By default the map is not a simulation map and not a pure simulation cube map
@@ -202,9 +214,10 @@ class COmap:
         self._data["is_simcube"] = False
 
     def write_map(
-        self, outpath: Optional[str] = None, 
-        primary_splits: Optional[list] = None, 
-        params: Optional[argparse.Namespace] = None
+        self,
+        outpath: Optional[str] = None,
+        primary_splits: Optional[list] = None,
+        params: Optional[argparse.Namespace] = None,
     ) -> None:
         """Method for writing map data to file.
 
@@ -223,7 +236,9 @@ class COmap:
             outname = self.path.split("/")[-1]
             namelen = len(outname)
             if self._data["pca_approx_noise"]:
-                outname = re.sub(r".h5", rf"_n{ncomps}_subtr_approx_{norm_mode}.h5", outname)
+                outname = re.sub(
+                    r".h5", rf"_n{ncomps}_subtr_approx_{norm_mode}.h5", outname
+                )
             else:
                 outname = re.sub(r".h5", rf"_n{ncomps}_subtr_{norm_mode}.h5", outname)
             outpath = self.path[:-namelen]
@@ -234,8 +249,6 @@ class COmap:
             outname = re.sub(r".h5", rf"_simcube.h5", outname)
             outpath = self.path[:-namelen]
             outpath += outname
-            
-
 
         if len(self._data) == 0:
             raise ValueError("Cannot save map if data object is empty.")
@@ -267,17 +280,23 @@ class COmap:
                         outfile.create_dataset(
                             f"multisplits/{primary_split}{key}", data=self._data[key]
                         )
-                    elif "params" in key: 
+                    elif "params" in key:
                         print(len(self._data["params"].keys()))
                         for param_key in self._data["params"].keys():
                             # print(param_key)
-                            outfile[f"params/{param_key}"] = self._data["params"][param_key] 
+                            outfile[f"params/{param_key}"] = self._data["params"][
+                                param_key
+                            ]
                     else:
                         outfile.create_dataset(key, data=self._data[key])
-                
+
                 if params is not None and "params" not in self.keys:
-                    for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
-                        if getattr(params, key) == None:  # hdf5 didn't like the None type.
+                    for key in vars(
+                        params
+                    ):  # Writing entire parameter file to separate hdf5 group.
+                        if (
+                            getattr(params, key) == None
+                        ):  # hdf5 didn't like the None type.
                             outfile[f"params/{key}"] = "None"
                         else:
                             outfile[f"params/{key}"] = getattr(params, key)
@@ -315,6 +334,56 @@ class COmap:
         # Set new item
         del self._data[key]
 
+    def get_full_wcs(self) -> tuple[astropy.wcs.wcs.WCS]:
+        """Method that defines WCS with angular information from
+        standard geometry and adds the frequency axis.
 
+        Returns:
+            tuple[astropy.wcs.wcs.WCS]: The WCS of the feed coadded maps and the feed maps.
+        """
+        angular_wcs_params = self._data["wcs"]
 
-    
+        NFEED, NSIDEBAND, NCHANNEL, _, _ = self._data[
+            "map"
+        ].shape  # Change this later when we have access to frequency array
+
+        wcs_dict_coadd = {
+            "CTYPE1": angular_wcs_params["CTYPE1"],
+            "CUNIT1": angular_wcs_params["CUNIT1"],
+            "CRVAL1": angular_wcs_params["CRVAL1"],
+            "CDELT1": angular_wcs_params["CDELT1"],
+            "CRPIX1": angular_wcs_params["CRPIX1"],
+            "NAXIS1": angular_wcs_params["NAXIS1"],
+            "CTYPE2": angular_wcs_params["CTYPE2"],
+            "CUNIT2": angular_wcs_params["CUNIT2"],
+            "CRVAL2": angular_wcs_params["CRVAL2"],
+            "CDELT2": angular_wcs_params["CDELT2"],
+            "CRPIX2": angular_wcs_params["CRPIX2"],
+            "NAXIS2": angular_wcs_params["NAXIS2"],
+            "CTYPE3": "FREQ",
+            "CUNIT3": "Hz",
+            "CRVAL3": 26.015625
+            * 1e9,  # NOTE: CHANGE THIS LATER ONCE JONAS DEFINES STANDARD FREQ GRID IN L2GEN
+            "CDELT3": (31.25)
+            * 1e6,  # NOTE: CHANGE THIS LATER ONCE JONAS DEFINES STANDARD FREQ GRID IN L2GEN
+            "CRPIX3": 1,
+            "NAXIS3": NSIDEBAND * NCHANNEL,
+            "RESTFRQ": 115.27,  # For CO (J 1->0)
+        }
+
+        # Must use decode to convert from bytes type to string, after extracting string from HDF5. Can only save bytes string to HDF5.
+        for key, item in wcs_dict_coadd.items():
+            if isinstance(item, bytes):
+                wcs_dict_coadd[key] = item.decode()
+
+        wcs_dict_full = wcs_dict_coadd.copy()
+
+        # Add dimensionless feed axis
+        wcs_dict_full["CTYPE4"] = "FEED"
+        wcs_dict_full["CUNIT4"] = " "  # Feeds have no unit
+        wcs_dict_full["CRVAL4"] = 0
+        wcs_dict_full["CRPIX4"] = 0
+        wcs_dict_full["CDELT4"] = 1
+        wcs_dict_full["NAXIS4"] = "NFEED"
+
+        return wcs.WCS(wcs_dict_coadd), wcs.WCS(wcs_dict_full)
