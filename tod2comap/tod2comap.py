@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 import os
 import sys
+import git
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
@@ -46,7 +47,7 @@ class Mapmaker:
         if self.rank == 0:
             runID = str(datetime.datetime.now())[2:].replace(" ", "-").replace(":", "-")
         runID = self.comm.bcast(runID, root=0)
-        
+
         self.params.runID = int(runID.replace("-", "").replace(".", ""))
 
         # Define c-library used for binning maps
@@ -68,6 +69,15 @@ class Mapmaker:
             self.sample_time * self.frequency_resolution
         )
 
+        # Save git hash used
+        dir_path = os.path.dirname(
+            os.path.realpath(__file__)
+        )  # Path to current directory.
+        self.git_hash = git.Repo(
+            dir_path, search_parent_directories=True
+        ).head.object.hexsha  # Current git commit hash.
+        self.params.git_hash = self.git_hash
+
     def read_params(self):
         from l2gen_argparser import parser
 
@@ -87,7 +97,9 @@ class Mapmaker:
         self.accept_dir = params.accept_data_folder
 
         if not self.accept_data_id_string:
-            message = "Please specify a accept_data_id_string in parameter file or terminal."
+            message = (
+                "Please specify a accept_data_id_string in parameter file or terminal."
+            )
             raise ValueError(message)
 
         self.params = params
@@ -188,12 +200,12 @@ class Mapmaker:
         self.runlist = runlist
 
     def parse_accept_data(self):
-        
+
         if len(self.jk_data_string) >= 1:
             self.jk_data_string = f"_{self.jk_data_string}"
-        
-        scan_data_path =  f'scan_data_{self.accept_data_id_string}_{self.fieldname}.h5'
-        split_data_path = f'jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5'
+
+        scan_data_path = f"scan_data_{self.accept_data_id_string}_{self.fieldname}.h5"
+        split_data_path = f"jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5"
 
         scan_data_path = os.path.join(self.accept_dir, scan_data_path)
         with h5py.File(scan_data_path, "r") as scanfile:
@@ -415,11 +427,19 @@ class Mapmaker:
             self.postprocess_map(full_map)
             if self.perform_splits:
                 # Providing name of primary splits to make group names
-                full_map.write_map(primary_splits=self.primary_splits, params = self.params)
+                full_map.write_map(
+                    primary_splits=self.primary_splits,
+                    params=self.params,
+                    save_hdf5=self.params.save_hdf5,
+                    save_fits=self.params.save_fits,
+                )
             else:
-                full_map.write_map(params = self.params)
+                full_map.write_map(
+                    params=self.params,
+                    save_hdf5=self.params.save_hdf5,
+                    save_fits=self.params.save_fits,
+                )
             finish_time = time.perf_counter()
-
 
             # Check if last l2data object contained simualtion and assume all did and make map of cube data only:
             if l2data["is_sim"] and self.params.populate_cube:
@@ -755,11 +775,10 @@ class Mapmaker:
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
 
-
     def get_temporal_mask(self, l2data: L2file):
-        az_percentile = self.params.az_mask_percentile # Between 0 and 100
+        az_percentile = self.params.az_mask_percentile  # Between 0 and 100
 
-        el_cut = self.params.el_mask_cut    # Degrees
+        el_cut = self.params.el_mask_cut  # Degrees
 
         if az_percentile < 0 or az_percentile > 100:
             raise ValueError("Azimuth masking percentile must be between 0 and 100.")
@@ -785,8 +804,8 @@ class Mapmaker:
 
         temporal_mask = np.logical_and(az_mask, el_mask)
 
-        # Manually removing 0.5 seconds of the data at the scan edges 
-        # to avoid potential repointing leakage 
+        # Manually removing 0.5 seconds of the data at the scan edges
+        # to avoid potential repointing leakage
         temporal_mask[:25] = False
         temporal_mask[-25:] = False
 
@@ -994,11 +1013,10 @@ class Mapmaker:
         cube = {}
         with h5py.File(self.params.signal_path, "r") as infile:
             cube["simulation"] = infile["simulation"][()]
-        
+
         signal = cube["simulation"]
 
         _, NCHANNEL_sim, NDEC_sim, NRA_sim = signal.shape
-
 
         # Marking map object as simulation
         mapdata["is_sim"] = True
@@ -1010,18 +1028,23 @@ class Mapmaker:
         NDOWNSAMPLE_DEC = NDEC_sim // NDEC
         NDOWNSAMPLE_CHANNEL = NCHANNEL_sim // NCHANNEL
 
-
         # Adapting cube to map resolution
-        signal = signal.reshape(NSIDEBAND, NCHANNEL, NDOWNSAMPLE_CHANNEL, NDEC, NDOWNSAMPLE_DEC, NRA, NDOWNSAMPLE_RA).mean((2, 4, 6))
+        signal = signal.reshape(
+            NSIDEBAND,
+            NCHANNEL,
+            NDOWNSAMPLE_CHANNEL,
+            NDEC,
+            NDOWNSAMPLE_DEC,
+            NRA,
+            NDOWNSAMPLE_RA,
+        ).mean((2, 4, 6))
 
         # From muK to K and optional signal boost
         signal *= 1e-6 * self.params.boost_factor
 
-
         # Asigning map datasets
         mask = np.isfinite(mapdata["map_coadd"])
         mapdata["map_coadd"][mask] = signal[mask]
-
 
         for i in range(NFEED):
             mask = np.isfinite(mapdata["map"][i, ...])
@@ -1035,10 +1058,9 @@ class Mapmaker:
                         mapdata[key][i][mask] = signal[mask]
 
             # Providing name of primary splits to make group names
-            mapdata.write_map(primary_splits=self.primary_splits, params = self.params)
+            mapdata.write_map(primary_splits=self.primary_splits, params=self.params)
         else:
-            mapdata.write_map(params = self.params)
-
+            mapdata.write_map(params=self.params)
 
 
 def main():

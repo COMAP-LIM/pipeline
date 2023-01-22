@@ -280,7 +280,10 @@ parser.add_argument(
     "--min_tsys", type=float, default=25.0, help="(cal) Min tsys. Mask below this."
 )
 parser.add_argument(
-    "--median_tsys_cut", type=float, default=5.0, help="(cal) How many Kelvin above the running median Tsys value to mask."
+    "--median_tsys_cut",
+    type=float,
+    default=5.0,
+    help="(cal) How many Kelvin above the running median Tsys value to mask.",
 )
 
 
@@ -362,6 +365,18 @@ parser.add_argument(
     help="(tod2comap) Mask all points in time where elevation is larger og smaller respectively than median(elevation) ± el_mask_cut. Value must be in degrees.",
 )
 
+
+parser.add_argument(
+    "--save_hdf5",
+    action="store_false",
+    help="(tod2comap) If flag is provided maps are saved as HDF5 file.",
+)
+
+parser.add_argument(
+    "--save_fits",
+    action="store_false",
+    help="(tod2comap) If flag is provided maps are saved as fits files.",
+)
 
 
 #### Scan detect stuff ####
