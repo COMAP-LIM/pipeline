@@ -137,8 +137,12 @@ class Mapmaker:
             n_obsids = int(lines[i][1])
             i = i + 1
             for j in range(n_obsids):
+                obsid_int = int(lines[i][0])
                 obsid = "0" + lines[i][0]
                 n_scans = int(lines[i][3])
+                if obsid_int < self.params.obsid_start or obsid_int > self.params.obsid_stop:
+                    i = i + n_scans + 1
+                    continue  # Skip this loop iteration if obsid is outside parameter file specified obsid range.
                 l1_filename = lines[i][-1]
                 l1_filename = l1_filename.strip(
                     "/"
