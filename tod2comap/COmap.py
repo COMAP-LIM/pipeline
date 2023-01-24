@@ -307,6 +307,12 @@ class COmap:
             sigma_wn_data, header=sigma_wn_header, name="SIGMA_WN"
         )
 
+        significance_header = wcs.to_header()
+        significance_header["BTYPE"] = "Significance"
+        significance_hdu = fits.ImageHDU(
+            map_data / sigma_wn_data, header=significance_header, name="SIGNIFICANCE"
+        )
+
         primary_header["HDU1"] = "MAP"
         # HDU lists with primary (metadata) and one of map, hit map and white noise map
         map_hdu_list = [
@@ -326,7 +332,13 @@ class COmap:
             sigma_wn_hdu,
         ]
 
-        return map_hdu_list, nhit_hdu_list, sigma_wn_hdu_list
+        primary_header["HDU1"] = "SIGNIFICANCE"
+        significance_hdu_list = [
+            primary,
+            significance_hdu,
+        ]
+
+        return map_hdu_list, nhit_hdu_list, sigma_wn_hdu_list, significance_hdu_list
 
     def write_map(
         self,
@@ -391,32 +403,41 @@ class COmap:
                 full_map_hdu_list,
                 full_nhit_hdu_list,
                 full_sigma_wn_hdu_list,
+                full_significance_hdu_list,
             ) = self.get_hdu_list("map", wcs_full)
             full_map_hdul = fits.HDUList(full_map_hdu_list)
             full_nhit_hdul = fits.HDUList(full_nhit_hdu_list)
             full_sigma_wn_hdul = fits.HDUList(full_sigma_wn_hdu_list)
+            full_significance_hdul = fits.HDUList(full_significance_hdu_list)
 
             full_map_outname = os.path.join(outdir, f"{fits_dir}_temperature.fits")
             full_nhit_outname = os.path.join(outdir, f"{fits_dir}_nhit.fits")
             full_sigma_wn_outname = os.path.join(outdir, f"{fits_dir}_sigma_wn.fits")
+            full_significance_outname = os.path.join(
+                outdir, f"{fits_dir}_significance.fits"
+            )
 
             print("Saving feed map to: ", full_map_outname)
             print("Saving feed nhit to: ", full_nhit_outname)
             print("Saving feed sigma_wn to: ", full_sigma_wn_outname)
+            print("Saving feed significance to: ", full_significance_outname)
 
             full_map_hdul.writeto(full_map_outname, overwrite=True)
             full_nhit_hdul.writeto(full_nhit_outname, overwrite=True)
             full_sigma_wn_hdul.writeto(full_sigma_wn_outname, overwrite=True)
+            full_significance_hdul.writeto(full_significance_outname, overwrite=True)
 
             ######## Save feed-coadded map ########
             (
                 coadd_map_hdu_list,
                 coadd_nhit_hdu_list,
                 coadd_sigma_wn_hdu_list,
+                coadd_significance_hdu_list,
             ) = self.get_hdu_list("map_coadd", wcs_coadd)
             coadd_map_hdul = fits.HDUList(coadd_map_hdu_list)
             coadd_nhit_hdul = fits.HDUList(coadd_nhit_hdu_list)
             coadd_sigma_wn_hdul = fits.HDUList(coadd_sigma_wn_hdu_list)
+            coadd_significance_hdul = fits.HDUList(coadd_significance_hdu_list)
 
             coadd_map_outname = os.path.join(
                 outdir, f"{fits_dir}_coadd_temperature.fits"
@@ -425,65 +446,96 @@ class COmap:
             coadd_sigma_wn_outname = os.path.join(
                 outdir, f"{fits_dir}_coadd_sigma_wn.fits"
             )
+            coadd_significance_outname = os.path.join(
+                outdir, f"{fits_dir}_coadd_significance.fits"
+            )
 
             print("Saving feed-coadded map to: ", coadd_map_outname)
             print("Saving feed-coadded nhit to: ", coadd_nhit_outname)
             print("Saving feed-coadded sigma_wn to: ", coadd_sigma_wn_outname)
+            print("Saving feed-coadded significance to: ", coadd_significance_outname)
 
             coadd_map_hdul.writeto(coadd_map_outname, overwrite=True)
             coadd_nhit_hdul.writeto(coadd_nhit_outname, overwrite=True)
             coadd_sigma_wn_hdul.writeto(coadd_sigma_wn_outname, overwrite=True)
+            coadd_significance_hdul.writeto(coadd_significance_outname, overwrite=True)
 
-            # Make sure split output directories exist, make them if not
-            if primary_splits is not None:
-                # Create all needed groups for multisplits
-                split_basedir = os.path.join(outdir, "multisplits")
-                # Make output directry if it does not exist
-                if not os.path.exists(split_basedir):
-                    os.mkdir(split_basedir)
-                for primary_split in primary_splits:
-                    split_dir = os.path.join(split_basedir, f"{primary_split}")
-                    if not os.path.exists(split_dir):
-                        os.mkdir(split_dir)
+            splits = False
+            for key in self.keys:
+                if "pca" in key:
+                    continue
 
-                    ######## Save feed-coadded split map ########
-                    for key in self.keys:
-                        if primary_split in key and "map" in key:
-                            which_split = key.split("_")[
-                                1
-                            ]  # e.g. want "elev0ambt1" of key name "map_elev0ambt1"
+                if "map" in key:
+                    if "multisplits" in key:
+                        # outfile.create_dataset(f"{key}", data=self._data[key])
+                        splits = True
 
-                            (
-                                split_map_hdu_list,
-                                split_nhit_hdu_list,
-                                split_sigma_wn_hdu_list,
-                            ) = self.get_hdu_list(key, wcs_full)
-                            split_map_hdul = fits.HDUList(split_map_hdu_list)
-                            split_nhit_hdul = fits.HDUList(split_nhit_hdu_list)
-                            split_sigma_wn_hdul = fits.HDUList(split_sigma_wn_hdu_list)
+                    elif "/" in key and "wcs" not in key:
+                        splits = True
 
-                            split_map_outname = os.path.join(
-                                split_dir, f"{fits_dir}_{which_split}_temperature.fits"
-                            )
-                            split_nhit_outname = os.path.join(
-                                split_dir, f"{fits_dir}_{which_split}_nhit.fits"
-                            )
-                            split_sigma_wn_outname = os.path.join(
-                                split_dir, f"{fits_dir}_{which_split}_sigma_wn.fits"
-                            )
+                    if splits:
+                        # Create all needed groups for multisplits
+                        split_basedir = os.path.join(outdir, "multisplits")
+                        # Make output directry if it does not exist
+                        if not os.path.exists(split_basedir):
+                            os.mkdir(split_basedir)
+                        which_split = key.split("_")[
+                            1
+                        ]  # e.g. want "elev0ambt1" of key name "map_elev0ambt1"
+                        primary_split = which_split[:4]
 
-                            print("Saving split map to: ", split_map_outname)
-                            print("Saving split nhit to: ", split_nhit_outname)
-                            print(
-                                "Saving split sigma_wn to: ",
-                                split_sigma_wn_outname,
-                            )
+                        split_dir = os.path.join(split_basedir, f"{primary_split}")
+                        if not os.path.exists(split_dir):
+                            os.mkdir(split_dir)
 
-                            split_map_hdul.writeto(split_map_outname, overwrite=True)
-                            split_nhit_hdul.writeto(split_nhit_outname, overwrite=True)
-                            split_sigma_wn_hdul.writeto(
-                                split_sigma_wn_outname, overwrite=True
-                            )
+                        split_dir = os.path.join(split_basedir, f"{primary_split}")
+                        if not os.path.exists(split_dir):
+                            os.mkdir(split_dir)
+
+                        (
+                            split_map_hdu_list,
+                            split_nhit_hdu_list,
+                            split_sigma_wn_hdu_list,
+                            split_significance_hdu_list,
+                        ) = self.get_hdu_list(key, wcs_full)
+                        split_map_hdul = fits.HDUList(split_map_hdu_list)
+                        split_nhit_hdul = fits.HDUList(split_nhit_hdu_list)
+                        split_sigma_wn_hdul = fits.HDUList(split_sigma_wn_hdu_list)
+                        split_significance_hdul = fits.HDUList(
+                            split_significance_hdu_list
+                        )
+
+                        split_map_outname = os.path.join(
+                            split_dir, f"{fits_dir}_{which_split}_temperature.fits"
+                        )
+                        split_nhit_outname = os.path.join(
+                            split_dir, f"{fits_dir}_{which_split}_nhit.fits"
+                        )
+                        split_sigma_wn_outname = os.path.join(
+                            split_dir, f"{fits_dir}_{which_split}_sigma_wn.fits"
+                        )
+                        split_significance_outname = os.path.join(
+                            split_dir, f"{fits_dir}_{which_split}_significance.fits"
+                        )
+
+                        # print("Saving split map to: ", split_map_outname)
+                        # print("Saving split nhit to: ", split_nhit_outname)
+                        # print(
+                        #     "Saving split sigma_wn to: ",
+                        #     split_sigma_wn_outname,
+                        # )
+                        # print(
+                        #     "Saving split significance to: ",
+                        #     split_significance_outname,
+                        # )
+                        split_map_hdul.writeto(split_map_outname, overwrite=True)
+                        split_nhit_hdul.writeto(split_nhit_outname, overwrite=True)
+                        split_sigma_wn_hdul.writeto(
+                            split_sigma_wn_outname, overwrite=True
+                        )
+                        split_significance_hdul.writeto(
+                            split_significance_outname, overwrite=True
+                        )
 
         if save_hdf5:
             if len(self._data) == 0:
