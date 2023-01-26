@@ -27,6 +27,20 @@ class Filter:
         pass
 
 
+class Normalize_Gain_Mean(Filter):
+    name = "norm2"
+    name_long = "normalization2"
+    
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        pass
+    
+    def run(self, l2):
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                l2.tod[ifeed,isb] /= np.mean(l2.tod[ifeed,isb], axis=-1)[:,None]
+                l2.tod[ifeed,isb] -= 1
+
+
 class Normalize_Gain(Filter):
     name = "norm"
     name_long = "normalization"
