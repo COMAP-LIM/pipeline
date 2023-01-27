@@ -75,7 +75,26 @@ class SimGenerator:
         else:
             mapinst.maps = llm.Lco_to_map(halos, mapinst)
 
-        # if requested, save the map as a data cube
+        # if requested, save the map to file as a data cube
+        if simpars.savecube:
+            llm.save_maps(mapinst)
+
+        # store the catalogue and resulting map in the class
+        self.halos = halos
+        self.maps = mapinst
+
+    def generate_galaxy_catalog(self):
+        """
+        Generator function to get a simulated traditional galaxy catalogue (based
+        on some passed tracer) for the same ensemble of galaxies as in the CO map
+        """
+
+        # pull the simulation parameters object out to make it easier to work with
+        simpars = self.simparams
+
+
+
+
 
 
 
