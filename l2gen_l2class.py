@@ -64,17 +64,24 @@ class level2_file:
             self.freqmask_reason_string = []
             self.freqmask_counter = 0
             self.freqmask[self.feeds==20] = False
-            self.freqmask_reason[self.feeds==20] += 2**self.freqmask_counter; self.freqmask_counter += 1
+            self.freqmask_reason[self.feeds==20] += 2**self.freqmask_counter
+            self.freqmask_counter += 1
             self.freqmask_reason_string.append("Feed 20")
             self.n_nans = np.sum(~np.isfinite(self.tod), axis=-1)
             self.freqmask[self.n_nans > 0] = False
-            self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_counter; self.freqmask_counter += 1
+            self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_counter
+            self.freqmask_counter += 1
             self.freqmask_reason_string.append("NaN or inf in TOD")
             self.freqmask[:,:,:2] = False
             self.freqmask[:,:,512] = False
+            self.freqmask[:,(0,1),845:] = False
             self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
-            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter; self.freqmask_counter += 1
+            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
+            self.freqmask_reason[:,(0,1),845:] += 2**self.freqmask_counter
+            self.freqmask_counter += 1
             self.freqmask_reason_string.append("Marked channels")
+            
+            
 
             self.tod[~self.freqmask] = np.nan
             self.acceptrate = np.mean(self.freqmask, axis=-1)

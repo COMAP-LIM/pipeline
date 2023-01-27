@@ -27,6 +27,20 @@ class Filter:
         pass
 
 
+class Normalize_Gain_Mean(Filter):
+    name = "norm2"
+    name_long = "normalization2"
+    
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        pass
+    
+    def run(self, l2):
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                l2.tod[ifeed,isb] /= np.mean(l2.tod[ifeed,isb], axis=-1)[:,None]
+                l2.tod[ifeed,isb] -= 1
+
+
 class Normalize_Gain(Filter):
     name = "norm"
     name_long = "normalization"
@@ -1044,14 +1058,33 @@ class Masking(Filter):
                 freqmask = f["freqmask_full_aftermasking"][()]
             l2.freqmask[~freqmask] = False
             l2.freqmask_reason[freqmask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-            l2.freqmask_reason_string.append("Imported freqmask).")
+            l2.freqmask_reason_string.append("Imported freqmask")
         else:
+            ### Aliasing masking ###
+            if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
+                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+                    AB_mask = f["/AB_mask"][()]
+                    leak_mask = f["/leak_mask"][()]
+                for isb in l2.flipped_sidebands:
+                    AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
+                    leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
+                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
+                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
+                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
+                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+                l2.tofile_dict["AB_aliasing"] = AB_mask
+                l2.tofile_dict["leak_aliasing"] = leak_mask
+
+
+
             l2_local = copy.deepcopy(l2)
             Nfreqs = l2_local.Nfreqs
             Ntod = l2_local.Ntod
             premask_tofile_dict_keys = list(l2_local.tofile_dict.keys())  # Store what keys where in the "tofile_dict" prior to premask filters.
             
-            
+
             for masking_filter in l2.filter_list:  # Look through filter list and see if any filter needs to be run prior to masking.
                 if masking_filter.run_when_masking:
                     if masking_filter.name == "freq":  # TODO: Needs to done differently.
@@ -1070,22 +1103,22 @@ class Masking(Filter):
                     l2.tofile_dict[f"premask_{key}"] = l2_local.tofile_dict[key]
 
 
-            ### Aliasing masking ###
-            if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
-                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
-                    AB_mask = f["/AB_mask"][()]
-                    leak_mask = f["/leak_mask"][()]
-                for isb in l2.flipped_sidebands:
-                    AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
-                    leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
-                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
-                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
-                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-                l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
-                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
-                l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
-                l2.tofile_dict["AB_aliasing"] = AB_mask
-                l2.tofile_dict["leak_aliasing"] = leak_mask
+            # ### Aliasing masking ###
+            # if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
+            #     with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+            #         AB_mask = f["/AB_mask"][()]
+            #         leak_mask = f["/leak_mask"][()]
+            #     for isb in l2.flipped_sidebands:
+            #         AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
+            #         leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
+            #     l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
+            #     l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
+            #     l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            #     l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
+            #     l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            #     l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
+            #     l2.tofile_dict["AB_aliasing"] = AB_mask
+            #     l2.tofile_dict["leak_aliasing"] = leak_mask
 
 
 
@@ -1384,6 +1417,7 @@ class Tsys_calc(Filter):
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.cal_database_file = params.cal_database_file
+        self.params = params
 
     def run(self, l2):
         Tcmb = 2.725
@@ -1442,6 +1476,9 @@ class Tsys_calc(Filter):
 
 
 
+
+
+
 class Calibration(Filter):
     name = "calib"
     name_long = "calibrations"
@@ -1457,19 +1494,19 @@ class Calibration(Filter):
         l2.freqmask_reason[~np.isfinite(l2.Tsys)] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys NaN or inf")
 
-        l2.freqmask[l2.Tsys < self.min_tsys] = False
-        l2.freqmask_reason[l2.Tsys < self.min_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask[l2.Tsys < self.params.min_tsys] = False
+        l2.freqmask_reason[l2.Tsys < self.params.min_tsys] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys < min_tsys")
         
         ### Running median tsys cuts ###
         kernel_size1 = 400
         kernel_size2 = 150
-        median_cut1 = self.median_cut+10
-        median_cut2 = self.median_cut
+        median_cut1 = self.params.median_tsys_cut+10
+        median_cut2 = self.params.median_tsys_cut
 
         tsys_temp = l2.Tsys.copy()
-        tsys_temp[tsys_temp < self.min_tsys] = np.nan
-        tsys_temp[tsys_temp > self.max_tsys] = np.nan
+        tsys_temp[tsys_temp < self.params.min_tsys] = np.nan
+        tsys_temp[tsys_temp > self.params.max_tsys] = np.nan
         running_median1 = np.zeros_like(tsys_temp)
         running_median2 = np.zeros_like(tsys_temp)
         for ifeed in range(l2.Nfeeds):
@@ -1499,3 +1536,4 @@ class Calibration(Filter):
         l2.freqmask[~tsys_median_mask] = False
         l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys > running median max")
+        
