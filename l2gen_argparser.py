@@ -365,7 +365,6 @@ parser.add_argument(
     help="(tod2comap) Mask all points in time where elevation is larger og smaller respectively than median(elevation) ± el_mask_cut. Value must be in degrees.",
 )
 
-
 parser.add_argument(
     "--no_hdf5",
     action="store_true",
@@ -378,6 +377,29 @@ parser.add_argument(
     help="(tod2comap) If flag is provided no maps are saved as fits files.",
 )
 
+parser.add_argument(
+    "--horizontal",
+    action="store_true",
+    help="(tod2comap) If flag is provided, maps in horizontal coordinates are made.",
+)
+
+parser.add_argument(
+    "--directional",
+    action="store_true",
+    help="(tod2comap) If flag is provided, maps for right and left moving azimuth.",
+)
+
+parser.add_argument(
+    "--override_accept",
+    action="store_true",
+    help="(tod2comap) If flag is provided, accept list masking is ignored.",
+)
+
+parser.add_argument(
+    "--drop_first_scans",
+    action="store_true",
+    help="(tod2comap) If flag is provided, all scans with id ...02 are discarded.",
+)
 
 #### Scan detect stuff ####
 parser.add_argument(

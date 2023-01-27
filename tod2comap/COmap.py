@@ -82,6 +82,7 @@ class COmap:
         resolution_factor: float = 1,
         make_nhit: bool = False,
         maps_to_bin: list = ["numerator_map"],
+        horizontal: bool = False,
     ) -> None:
         """Methode used to set up empty maps and field grid for given field.
         Both an empty numerator and denominator map are generated to acumulate
@@ -97,11 +98,16 @@ class COmap:
             The same number of denominator maps will also be made. By default no splits are made
             and hence only one numerator and denominator map are made.
         """
-
-        standard_geometry_path = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            f"standard_geometries/{fieldname}_standard_geometry.fits",
-        )
+        if horizontal:
+            standard_geometry_path = os.path.join(
+                os.path.dirname(os.path.realpath(__file__)),
+                f"standard_geometries/{fieldname}_horizontal_high_res_geometry.fits",  # NOTE: change this later to something more general
+            )
+        else:
+            standard_geometry_path = os.path.join(
+                os.path.dirname(os.path.realpath(__file__)),
+                f"standard_geometries/{fieldname}_standard_geometry.fits",
+            )
 
         self.standard_geometry = enmap.read_map(standard_geometry_path).copy()
 
