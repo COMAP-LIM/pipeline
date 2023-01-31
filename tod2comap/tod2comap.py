@@ -140,7 +140,10 @@ class Mapmaker:
                 obsid_int = int(lines[i][0])
                 obsid = "0" + lines[i][0]
                 n_scans = int(lines[i][3])
-                if obsid_int < self.params.obsid_start or obsid_int > self.params.obsid_stop:
+                if (
+                    obsid_int < self.params.obsid_start
+                    or obsid_int > self.params.obsid_stop
+                ):
                     i = i + n_scans + 1
                     continue  # Skip this loop iteration if obsid is outside parameter file specified obsid range.
                 l1_filename = lines[i][-1]
@@ -329,6 +332,7 @@ class Mapmaker:
             self.params.res_factor,
             self.params.make_no_nhit,
             self.maps_to_bin,
+            self.params.horizontal,
         )
 
         self.RA_min = full_map.ra_min
@@ -350,7 +354,18 @@ class Mapmaker:
             if i % self.Nranks == self.rank:
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0][0]
-                if np.all(~self.splitdata["accept_list"][scan_idx]):
+                if (
+                    np.all(~self.splitdata["accept_list"][scan_idx])
+                    and not self.params.override_accept
+                ):
+                    # Print in red forground color
+                    print(
+                        f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
+                    )
+                    rejection_number += 1
+                    continue
+
+                if self.params.drop_first_scans and str(scanid)[-2:] == "02":
                     # Print in red forground color
                     print(
                         f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
@@ -568,12 +583,13 @@ class Mapmaker:
         # freqmask[:, (0, 2), :] = freqmask[:, (0, 2), ::-1]
         # freqs[(0, 2), :] = freqs[(0, 2), ::-1]
 
-        # Masking accept mod rejected feeds and sidebands
-        scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
-        rejected_feed, rejected_sideband = np.where(
-            ~self.splitdata["accept_list"][scan_idx]
-        )
-        freqmask[rejected_feed, rejected_sideband, :] = 0
+        if not self.params.override_accept:
+            # Masking accept mod rejected feeds and sidebands
+            scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
+            rejected_feed, rejected_sideband = np.where(
+                ~self.splitdata["accept_list"][scan_idx]
+            )
+            freqmask[rejected_feed, rejected_sideband, :] = 0
 
         # Ordering TOD axis so that fast freuquency axis is last
         tod = tod.transpose(
@@ -753,8 +769,13 @@ class Mapmaker:
             to compute the pixel-feed index.
             mapdata (COmap): Map object from which to get grid parameters.
         """
+
         # Get pointing from level 2 object
-        pointing = l2data["point_cel"]
+        if self.params.horizontal:
+            pointing = l2data["point_tel"]
+        else:
+            pointing = l2data["point_cel"]
+
         ra = pointing[:, :, 0].astype(np.float64)
         dec = pointing[:, :, 1].astype(np.float64)
 
@@ -782,36 +803,47 @@ class Mapmaker:
     def get_temporal_mask(self, l2data: L2file):
         az_percentile = self.params.az_mask_percentile  # Between 0 and 100
 
-        el_cut = self.params.el_mask_cut  # Degrees
+        if az_percentile > 0.0:
 
-        if az_percentile < 0 or az_percentile > 100:
-            raise ValueError("Azimuth masking percentile must be between 0 and 100.")
+            el_cut = self.params.el_mask_cut  # Degrees
 
-        # Since the time of turn around should be the same for all detectors,
-        # only the azimuth of feed index 0 is used.
-        az = l2data["point_tel"][0, :, 0]
-        el = l2data["point_tel"][0, :, 1]
+            if az_percentile < 0 or az_percentile > 100:
+                raise ValueError(
+                    "Azimuth masking percentile must be between 0 and 100."
+                )
 
-        # Define aximuth and elevation limits
-        az_lims = [
-            np.percentile(az, 100 - az_percentile),
-            np.percentile(az, az_percentile),
-        ]
+            # Since the time of turn around should be the same for all detectors,
+            # only the azimuth of feed index 0 is used.
+            az = l2data["point_tel"][0, :, 0]
+            el = l2data["point_tel"][0, :, 1]
 
-        el_lims = [
-            np.median(el) - el_cut,
-            np.median(el) + el_cut,
-        ]
+            # Define aximuth and elevation limits
+            az_lims = [
+                np.percentile(az, 100 - az_percentile),
+                np.percentile(az, az_percentile),
+            ]
 
-        az_mask = np.logical_and(az > az_lims[0], az < az_lims[1])
-        el_mask = np.logical_and(el > el_lims[0], el < el_lims[1])
+            el_lims = [
+                np.median(el) - el_cut,
+                np.median(el) + el_cut,
+            ]
 
-        temporal_mask = np.logical_and(az_mask, el_mask)
+            az_mask = np.logical_and(az > az_lims[0], az < az_lims[1])
+            el_mask = np.logical_and(el > el_lims[0], el < el_lims[1])
+
+            temporal_mask = np.logical_and(az_mask, el_mask)
+
+        if self.params.directional:
+            az_grad = np.gradient(l2data["point_tel"][0, :, 0])
+            temporal_mask = np.sign(az_grad) == self.which_az_direction
 
         # Manually removing 0.5 seconds of the data at the scan edges
-        # to avoid potential repointing leakage
-        temporal_mask[:25] = False
-        temporal_mask[-25:] = False
+        # # to avoid potential repointing leakage
+        # sample_time = 3600 * 24 * (l2data["time"][1] - l2data["time"][0])
+        # Ncut = np.round(30 / sample_time).astype(np.int32)
+
+        # temporal_mask[:Ncut] = False
+        # temporal_mask[-Ncut:] = False
 
         return temporal_mask
 
@@ -1075,7 +1107,18 @@ def main():
 
     tod2comap = Mapmaker(omp_num_threads=omp_num_threads)
     tod2comap.parse_accept_data()
-    tod2comap.run()
+
+    if not tod2comap.params.directional:
+        tod2comap.run()
+    else:
+        tod2comap.which_az_direction = 1
+        base_name = tod2comap.params.map_name
+        tod2comap.params.map_name = base_name + "_positive"
+        tod2comap.run()
+
+        tod2comap.which_az_direction = -1
+        tod2comap.params.map_name = base_name + "_negative"
+        tod2comap.run()
 
 
 if __name__ == "__main__":

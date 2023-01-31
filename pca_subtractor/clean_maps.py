@@ -148,7 +148,7 @@ def main():
         else:
             outpath = outpath.split(".h5")[0] + "_pca_reconstruction.h5"
 
-        mymap_clean.write_map(outpath=outpath, save_fits=True, save_hdf5=True)
+        mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True)
 
 
 if __name__ == "__main__":
