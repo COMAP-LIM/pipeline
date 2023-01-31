@@ -11,9 +11,12 @@ import time
 import logging
 import matplotlib.pyplot as plt
 import os
+import math
+from scipy.ndimage import gaussian_filter1d
 from mpi4py import MPI
 from sklearn.decomposition import PCA
 from simpipeline.l2gen_simulation_filters import Cube2TOD
+from scipy.interpolate import interp1d
 
 
 class Filter:
@@ -25,6 +28,46 @@ class Filter:
         # return np.zeros_like(C)
     def run(self, l2):
         pass
+
+
+
+class Normalize_Gain_Gaussian(Filter):
+    name = "norm3"
+    name_long = "normalization_gaussian"
+    
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        self.deci_factor = 20
+        self.gauss_width_lowres = 40
+    
+    def run(self, l2):
+        N_lowres = math.ceil(l2.Ntod/self.deci_factor)
+        weight_on_final_point = (l2.Ntod%self.deci_factor)/self.deci_factor
+
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                tod_lowres = np.zeros((l2.Nfreqs, N_lowres))
+                mask_lowres = np.zeros((N_lowres))
+                for i in range(N_lowres):
+                    tod_lowres[:,i] = np.nanmean(l2.tod[ifeed,isb,:,i*self.deci_factor:(i+1)*self.deci_factor], axis=-1)
+                    mask_lowres[i] = np.nanmean(l2.mask_temporal[ifeed,i*self.deci_factor:(i+1)*self.deci_factor])
+                mask_lowres[-1] *= weight_on_final_point
+                tod_lowres[~np.isfinite(tod_lowres)] = 0.0
+
+                lowpass_lowres = gaussian_filter1d(tod_lowres*mask_lowres, self.gauss_width_lowres)
+                lowpass_mask_lowres = gaussian_filter1d(mask_lowres, self.gauss_width_lowres)
+                lowpass_lowres /= lowpass_mask_lowres
+                lowpass = np.zeros((l2.Nfreqs, l2.Ntod))
+                # for i in range(N_lowres):
+                #     lowpass[:,i*self.deci_factor:(i+1)*self.deci_factor] = lowpass_lowres[:,i][:,None]
+                idx_lowres = np.linspace(0, l2.Ntod-1, N_lowres)
+                idx_highres = np.linspace(0, l2.Ntod-1, l2.Ntod)
+                lowpass_interp = interp1d(idx_lowres, lowpass_lowres)
+                lowpass = lowpass_interp(idx_highres)
+                
+                l2.tod[ifeed,isb] /= lowpass
+                l2.tod[ifeed,isb] /= np.nanmean(l2.tod[ifeed,isb], axis=-1)[:,None]
+                l2.tod[ifeed,isb] -= 1.0
+
 
 
 class Normalize_Gain_Mean(Filter):
@@ -39,6 +82,7 @@ class Normalize_Gain_Mean(Filter):
             for isb in range(l2.Nsb):
                 l2.tod[ifeed,isb] /= np.mean(l2.tod[ifeed,isb], axis=-1)[:,None]
                 l2.tod[ifeed,isb] -= 1
+
 
 
 class Normalize_Gain(Filter):
@@ -174,7 +218,7 @@ class Pointing_Template_Subtraction(Filter):
     name = "point"
     name_long = "pointing template subtraction"
 
-    def __init__(self, params, use_ctypes=True, omp_num_threads=2):
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
     
@@ -194,12 +238,14 @@ class Pointing_Template_Subtraction(Filter):
                     for freq in range(l2.Nfreqs):
                         if l2.scantype == "ces":
                             if np.isfinite(l2.tod[feed, sb, freq]).all():
-                                (d, c), _ = curve_fit(az_func, l2.az[feed], l2.tod[feed, sb, freq], (d, c))
+                                _az = l2.az[feed][l2.mask_temporal[feed]]
+                                _tod = l2.tod[feed, sb, freq][l2.mask_temporal[feed]]
+                                (d, c), _ = curve_fit(az_func, _az, _tod, (d, c))
                             else:
                                 d, c = 0, 0
                         else:
                             if np.isfinite(l2.tod[feed, sb, freq]).all():
-                                (g, d, c), _ = curve_fit(az_el_func, (1.0/np.sin(l2.el[feed]*np.pi/180.0), l2.az[feed]), l2.tod[feed, sb, freq], (g, d, c))
+                                (g, d, c), _ = curve_fit(az_el_func, (1.0/np.sin(l2.el[feed]*np.pi/180.0), l2.az[feed]), l2.tod[feed, sb, freq], (g, d, c), sigma=l2.mask_temporal[feed])
                             else:
                                 g, d, c = 0, 0, 0
                         l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
@@ -284,14 +330,15 @@ class Polynomial_filter(Filter):
             for ifeed in range(l2.Nfeeds):
                 for sb in range(4):
                     for idx in range(l2.Ntod):
-                        # if np.isfinite(l2.tod[feed,sb,:,idx]).all():
-                        tod_local = l2.tod[ifeed,sb,:,idx].copy()
-                        tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
-                        try:
-                            c1[ifeed,sb,idx], c0[ifeed,sb,idx] = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[ifeed,sb])
-                            l2.tod[ifeed, sb, :, idx] = l2.tod[ifeed, sb, :, idx] - c1[ifeed,sb,idx]*sb_freqs - c0[ifeed,sb,idx]
-                        except:
-                            pass
+                        if l2.mask_temporal[ifeed,idx]:
+                            # if np.isfinite(l2.tod[feed,sb,:,idx]).all():
+                            tod_local = l2.tod[ifeed,sb,:,idx].copy()
+                            tod_local[~np.isfinite(tod_local)] = 0  # polyfit doesn't allow nans.
+                            try:
+                                c1[ifeed,sb,idx], c0[ifeed,sb,idx] = np.polyfit(sb_freqs, tod_local, 1, w=l2.freqmask[ifeed,sb])
+                                l2.tod[ifeed, sb, :, idx] = l2.tod[ifeed, sb, :, idx] - c1[ifeed,sb,idx]*sb_freqs - c0[ifeed,sb,idx]
+                            except:
+                                pass
 
         else:
             C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/polyfit/polyfit.so.1"
@@ -759,8 +806,8 @@ class PCA_filter(Filter):
             for i in range(self.max_pca_comp):
                 comps[:,i] /= np.linalg.norm(comps[:,i])
             for ifeed in range(l2.Nfeeds):
-                ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
-                l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
+                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
                 pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
             l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
             l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
@@ -909,8 +956,8 @@ class PCA_feed_filter(Filter):
                 del(M, pca)
                 for i in range(self.max_pca_comp):
                     comps[:,i] /= np.linalg.norm(comps[:,i])
-                ak = np.sum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
-                l2.tod[ifeed] = l2.tod[ifeed] - np.sum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
+                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
                 pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
                 pca_comp[:,ifeed] = np.transpose(comps, (1,0))
         else:
@@ -1081,7 +1128,6 @@ class Masking(Filter):
 
             l2_local = copy.deepcopy(l2)
             Nfreqs = l2_local.Nfreqs
-            Ntod = l2_local.Ntod
             premask_tofile_dict_keys = list(l2_local.tofile_dict.keys())  # Store what keys where in the "tofile_dict" prior to premask filters.
             
 
@@ -1129,8 +1175,10 @@ class Masking(Filter):
             max_corr = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             for ifeed in range(l2.tod.shape[0]):
                 for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
-                    tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:]
+                    tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:].copy()
                     tod = tod.reshape((2*tod.shape[1], tod.shape[2]))  # Merge sb dim and freq dim.
+                    tod = tod[:,l2_local.mask_temporal[ifeed]]
+                    Ntod = tod.shape[-1]
                     # Start from the already existing freqmasks.
                     freqmask = l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2].flatten()
                     freqmask_reason = l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
@@ -1487,6 +1535,7 @@ class Calibration(Filter):
         self.max_tsys = params.max_tsys
         self.min_tsys = params.min_tsys
         self.median_cut = params.median_tsys_cut
+        self.params = params
 
     def run(self, l2):
         l2.tod *= l2.Tsys[:,:,:,None]
@@ -1537,3 +1586,58 @@ class Calibration(Filter):
         l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys > running median max")
         
+
+
+class Mask_Az_Edges(Filter):
+    name = "az-cut"
+    name_long = "Azimuth edge cut"
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+
+    def run(self, l2):
+        # az_mask = np.ones_like(l2.az, dtype=bool)
+        for ifeed in range(l2.Nfeeds):
+            # sigma0 = np.std(l2.tod[ifeed,:,:,1:] - l2.tod[ifeed,:,:,:-1], axis=-1)/np.sqrt(2)
+
+            az_median = np.median(l2.az[ifeed])
+            az_diff = np.abs(l2.az[ifeed] - az_median)
+            initial_cut = np.percentile(az_diff, 80)
+            edges = np.array(initial_cut < az_diff, dtype=int)
+            diff = edges[1:] - edges[:-1]
+            if edges[0]:
+                diff[0] = 1
+            if edges[-1]:
+                diff[-1] = -1
+            i = 0
+            starts = []
+            stops = []
+            while i < diff.shape[0]:
+                if diff[i] == 1:
+                    start = i
+                    while diff[i] != -1:
+                        i += 1
+                    stop = i
+                    starts.append(start)
+                    stops.append(stop)
+                i += 1
+            for i in range(len(starts)):
+                extreme_idx = np.argmax(az_diff[starts[i]:stops[i]])
+                cut_start = extreme_idx - 25 + starts[i]
+                cut_stop = extreme_idx + 25 + starts[i]
+                cut_start = max(0, cut_start)
+                cut_stop = min(l2.Ntod, cut_stop)
+                # cut_length = cut_stop - cut_start
+                
+                l2.mask_temporal[ifeed, cut_start:cut_stop] = False
+                
+            l2.tod[ifeed,:,:,~l2.mask_temporal[ifeed]] = np.nan
+                # mean_start = np.mean(l2.tod[ifeed,:,:,cut_start-15:cut_start], axis=-1)
+                # mean_stop = np.mean(l2.tod[ifeed,:,:,cut_stop:cut_stop+15], axis=-1)
+                # mean = (mean_start + mean_stop)/2.0
+                
+                # for isb in range(l2.Nsb):
+                #     for ifreq in range(l2.Nfreqs):
+                #         l2.tod[ifeed,isb,ifreq,cut_start:cut_stop] = mean[isb,ifreq] + np.random.normal(0, sigma0[isb,ifreq], (cut_length,))
+                # az_mask[ifeed,cut_start:cut_stop] = False
+        # l2.tofile_dict["az_edge_mask"] = az_mask
+        # l2.az_mask = az_mask
