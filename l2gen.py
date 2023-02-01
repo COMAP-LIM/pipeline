@@ -144,8 +144,8 @@ class l2gen_runner:
                         n_scans_tot += 1
                         if self.params.obsid_start <= int(obsid) <= self.params.obsid_stop:
                             scanid = int(lines[i+k+1][0])
-                            mjd_start = float(lines[i+k+1][1])
-                            mjd_stop = float(lines[i+k+1][2])
+                            mjd_start = float(lines[i+k+1][1]) + self.params.time_start_cut/(60*60*24)  # seconds -> MJD
+                            mjd_stop = float(lines[i+k+1][2]) - self.params.time_stop_cut/(60*60*24)
                             if not scanid in existing_scans:
                                 runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
                             else:
