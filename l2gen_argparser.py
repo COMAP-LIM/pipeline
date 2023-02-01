@@ -401,6 +401,13 @@ parser.add_argument(
     help="(tod2comap) If flag is provided, all scans with id ...02 are discarded.",
 )
 
+parser.add_argument(
+    "--temporal_chunking",
+    type=int,
+    default=0,
+    help="(tod2comap) Number of obsIDs to chunck in temporal chunking runs. If default 0 is used, no temporal chunking is performed.",
+)
+
 #### Scan detect stuff ####
 parser.add_argument(
     "--scandetect_cut_start",
@@ -422,6 +429,7 @@ parser.add_argument(
     default=2.0,
     help="(scan_detect) Minimum allowed length of scans, in minutes, when creating runlist.",
 )
+
 
 parser.add_argument(
     "--ces_only",

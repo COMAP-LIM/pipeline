@@ -128,6 +128,8 @@ class Mapmaker:
         runlist = []
         n_fields = int(lines[i][0])
         i = i + 1
+
+        self.obsid_list = []
         for i_field in range(n_fields):
             runlist = []
             n_scans_tot = 0
@@ -138,8 +140,10 @@ class Mapmaker:
             i = i + 1
             for j in range(n_obsids):
                 obsid_int = int(lines[i][0])
+                self.obsid_list.append(obsid_int)
                 obsid = "0" + lines[i][0]
                 n_scans = int(lines[i][3])
+
                 if (
                     obsid_int < self.params.obsid_start
                     or obsid_int > self.params.obsid_stop
@@ -205,6 +209,7 @@ class Mapmaker:
 
         self.fieldname = fieldname
         self.runlist = runlist
+        self.n_obsids = n_obsids
 
     def parse_accept_data(self):
 
@@ -838,12 +843,12 @@ class Mapmaker:
             temporal_mask = np.sign(az_grad) == self.which_az_direction
 
         # Manually removing 0.5 seconds of the data at the scan edges
-        # # to avoid potential repointing leakage
-        # sample_time = 3600 * 24 * (l2data["time"][1] - l2data["time"][0])
-        # Ncut = np.round(30 / sample_time).astype(np.int32)
+        # to avoid potential repointing leakage
+        sample_time = 3600 * 24 * (l2data["time"][1] - l2data["time"][0])
+        Ncut = np.round(30 / sample_time).astype(np.int32)
 
-        # temporal_mask[:Ncut] = False
-        # temporal_mask[-Ncut:] = False
+        temporal_mask[:Ncut] = False
+        temporal_mask[-Ncut:] = False
 
         return temporal_mask
 
@@ -1108,9 +1113,7 @@ def main():
     tod2comap = Mapmaker(omp_num_threads=omp_num_threads)
     tod2comap.parse_accept_data()
 
-    if not tod2comap.params.directional:
-        tod2comap.run()
-    else:
+    if tod2comap.params.directional:
         tod2comap.which_az_direction = 1
         base_name = tod2comap.params.map_name
         tod2comap.params.map_name = base_name + "_positive"
@@ -1118,6 +1121,30 @@ def main():
 
         tod2comap.which_az_direction = -1
         tod2comap.params.map_name = base_name + "_negative"
+        tod2comap.run()
+    if tod2comap.params.temporal_chunking > 0:
+        obsids = np.sort(tod2comap.obsid_list)
+        n_obsids = tod2comap.n_obsids
+        tod2comap.params.obsid_start = obsids[0]
+        tod2comap.params.obsid_stop = obsids[tod2comap.params.temporal_chunking]
+
+        base_name = tod2comap.params.map_name
+        tod2comap.params.map_dir = os.path.join(
+            tod2comap.params.map_dir, "temporal_chunking"
+        )
+        for chunk, i in enumerate(
+            range(
+                tod2comap.params.temporal_chunking + 1,
+                n_obsids,
+                tod2comap.params.temporal_chunking,
+            )
+        ):
+            tod2comap.params.obsid_stop = obsids[i]
+            tod2comap.read_runlist()
+            tod2comap.params.map_name = base_name + f"_t{chunk}"
+            tod2comap.run()
+            tod2comap.params.obsid_start = obsids[i + 1]
+    else:
         tod2comap.run()
 
 

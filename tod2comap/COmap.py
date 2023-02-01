@@ -351,7 +351,7 @@ class COmap:
         outpath: Optional[str] = None,
         primary_splits: Optional[list] = None,
         params: Optional[argparse.Namespace] = None,
-        save_hdf5=False,
+        save_hdf5=True,
         save_fits=False,
     ) -> None:
         """Method for writing map data to file.
@@ -681,97 +681,3 @@ class COmap:
         wcs_dict_full["NAXIS4"] = "NFEED"
 
         return wcs.WCS(wcs_dict_coadd), wcs.WCS(wcs_dict_full)
-
-    def define_cosmology(self):
-        cosmo = FlatLambdaCDM(Om0=0.286, Ob0=0.047, H0=0.7 * 100 * u.km / u.s / u.Mpc)
-        self.cosmology = {}
-
-        NSIDEBAND, NCHANNEL, NDEC, NRA = self._data["map_coadd"].shape
-
-        Z_MID = 2.9  # Middle of the redshift range of map
-        NU_REST = 115.27 * u.GHz
-
-        N_FREQ = NSIDEBAND * NCHANNEL
-        nu = np.linspace(26, 34, N_FREQ) * u.GHz  # NOTE: GENERALIZE LATER
-
-        dnu = nu[1] - nu[0]
-
-        redshift = NU_REST / nu - 1
-        dredshift = (1 + Z_MID) ** 2 * dnu / NU_REST
-
-        angle2Mpc = cosmo.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
-
-        NRA, NDEC = self._data["ra_centers"].size, self._data["dec_centers"].size
-        x = (
-            (
-                (self._data["ra_centers"] - self._data["ra_edges"][NDEC // 2])
-                * np.abs(np.cos(np.radians(self._data["dec_edges"][NDEC // 2])))
-            )
-            * u.deg
-            * angle2Mpc
-        ).to(u.Mpc)
-        y = (
-            (self._data["dec_centers"] - self._data["dec_edges"][NDEC // 2])
-            * u.deg
-            * angle2Mpc
-        ).to(u.Mpc)
-
-        dz = cosmo.comoving_distance(Z_MID + dredshift / 2) - cosmo.comoving_distance(
-            Z_MID - dredshift / 2
-        )
-
-        z = np.arange(0, N_FREQ) * dz
-
-        dx = np.abs(x[1] - x[0])
-        dy = np.abs(y[1] - y[0])
-        dz = np.abs(z[1] - z[0])
-
-        nx = len(x)
-        ny = len(y)
-        nz = len(z)
-
-        voxel_volume = dx * dy * dz
-
-
-@dataclass
-class cosmology:
-    # Cosmological comoving coordinates relative to center pixel of first frequency
-    x: npt.NDArray[np.float64] = field(default_factory=npt.NDArray[np.float64])
-    y: npt.NDArray[np.float64] = field(default_factory=npt.NDArray[np.float64])
-    z: npt.NDArray[np.float64] = field(default_factory=npt.NDArray[np.float64])
-
-    # Comoving resolution of voxel
-    dx: float = field(default_factory=float)
-    dy: float = field(default_factory=float)
-    dz: float = field(default_factory=float)
-
-    # Comoving volume of voxel
-    voxel_volume: float = field(default_factory=float)
-
-    # Number of elements along each axis
-    nx: float = field(default_factory=float)
-    ny: float = field(default_factory=float)
-    nz: float = field(default_factory=float)
-
-    # Map in muK
-    map: npt.NDArray[np.float64] = field(default_factory=npt.NDArray[np.float64])
-
-    # noise level map in muK
-    sigma_wn: npt.NDArray[np.float64] = field(default_factory=npt.NDArray[np.float64])
-
-    # inverse variance map in muK^{-2}
-    w: npt.NDArray[np.float64] = field(default_factory=npt.NDArray[np.float64])
-
-    # No-hit mask
-    mask: npt.NDArray[np.bool] = field(default_factory=npt.NDArray[np.bool])
-
-
-if __name__ == "__main__":
-    # path = "/mn/stornext/d22/cmbco/comap/protodir/maps/co7_python_poly_april2022_n5_subtr_approx_sigma_wn.h5"
-    path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/data/maps/co7_test3_python_map.h5"
-    mymap = COmap(path)
-    mymap.read_map()
-
-    mymap.get_full_wcs()
-
-    # mymap.define_cosmology()
