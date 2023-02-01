@@ -57,6 +57,13 @@ parser.add_argument(
     "--obsid_stop", type=int, default=9999999, help="Last obsid to include."
 )
 
+parser.add_argument(
+    "--time_start_cut", type=int, default=0, help="Time, in seconds, to cut at the beginning of each scan."
+)
+parser.add_argument(
+    "--time_stop_cut", type=int, default=0, help="Time, in seconds, to cut at the beginning of each scan."
+)
+
 ### Paths and files
 parser.add_argument(
     "--level1_dir",
