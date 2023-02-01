@@ -59,6 +59,7 @@ class level2_file:
             self.git_hash = git.Repo(dir_path, search_parent_directories=True).head.object.hexsha  # Current git commit hash.
 
             ### Preliminary Masking ###
+            self.mask_temporal = np.ones((self.Nfeeds, self.Ntod), dtype=bool)
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
             self.freqmask_reason_string = []
@@ -127,6 +128,7 @@ class level2_file:
             f["freq_bin_edges"] = self.freq_bin_edges
             f["freq_bin_centers"] = self.freq_bin_centers
             f["acceptrate"] = self.acceptrate
+            f["mask_temporal"] = self.mask_temporal
             f["freqmask_full"] = self.freqmask
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")

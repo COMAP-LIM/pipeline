@@ -33,6 +33,7 @@ class l2gen_runner:
         self.comm = MPI.COMM_WORLD
         self.Nranks = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
+        self.node_name = MPI.Get_processor_name()
         if self.rank == 0:
             print("######## Initializing l2gen ########")
 
@@ -50,8 +51,8 @@ class l2gen_runner:
         if self.params.distributed_starting:
             time.sleep((self.rank%16)*60.0)
         time.sleep(self.rank*0.01)
-        print(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks}.")
-        logging.info(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks}.")
+        print(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks} on {self.node_name}.")
+        logging.info(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks} on {self.node_name}.")
 
         Nscans = len(self.runlist)
         for i_scan in range(Nscans):
