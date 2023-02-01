@@ -1,7 +1,6 @@
 import numpy as np
-import h5py
-import tools
 
+import re
 import os
 import sys
 from typing import Optional
@@ -27,7 +26,7 @@ class MapCosmo:
         mappath: str,
         feed: Optional[int] = None,
         jk: Optional[int] = None,
-        split: Optional[int] = None,
+        split: Optional[str] = None,
     ):
         self.feed = feed
         self.interpret_mapname(mappath)
@@ -60,14 +59,34 @@ class MapCosmo:
         #                 self.rms = np.array(my_file["rms_beam"][:])
 
         mapdata = COmap(mappath)
+
         mapdata.read_map()
+
         self.x = mapdata["ra_centers"]
         self.y = mapdata["dec_centers"]
 
         x_edges = mapdata["ra_edges"]
         y_edges = mapdata["dec_edges"]
 
-        if feed is not None:
+        if split is not None:
+            if feed is None:
+                raise ValueError(
+                    "Can only make cosmological map if both split and feed are specified."
+                )
+
+            if "map" not in split:
+                raise ValueError(
+                    "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
+                )
+            self.map = np.array(mapdata[split][feed - 1])
+            sigma_key = re.sub(
+                r"map",
+                "sigma_wn",
+                split,
+            )
+            self.rms = np.array(mapdata[sigma_key][feed - 1])
+
+        elif feed is not None:
             self.map = np.array(mapdata["map"][feed - 1])
             self.rms = np.array(mapdata["sigma_wn"][feed - 1])
 
@@ -87,7 +106,6 @@ class MapCosmo:
 
         dnu = nu[1] - nu[0]
 
-        redshift = NU_REST / nu - 1
         dredshift = (1 + Z_MID) ** 2 * dnu / NU_REST
 
         angle2Mpc = cosmo.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
@@ -184,14 +202,3 @@ class MapCosmo:
 
         if self.feed is not None:
             self.save_string = self.save_string + "_%02i" % self.feed
-
-
-if __name__ == "__main__":
-    # path = "/mn/stornext/d22/cmbco/comap/protodir/maps/co7_python_poly_april2022_n5_subtr_approx_sigma_wn.h5"
-    path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/data/maps/co7_test3_python_map.h5"
-
-    map_cosmo = MapCosmo(path)
-
-    print(np.any(~np.isfinite(map_cosmo.map)))
-    print(np.any(~np.isfinite(map_cosmo.rms)))
-    print(np.any(~np.isfinite(map_cosmo.w)))
