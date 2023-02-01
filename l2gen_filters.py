@@ -1380,7 +1380,7 @@ class Masking(Filter):
                         i += 1
                         if l2.freqmask[ifeed,isb,i]:
                             stretch_start.append(i)
-                            while i < Nfreqs:
+                            while i < Nfreqs-1:
                                 i += 1
                                 if not l2.freqmask[ifeed,isb,i]:
                                     stretch_len.append(i - stretch_start[-1])
