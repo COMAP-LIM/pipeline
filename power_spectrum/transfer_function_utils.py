@@ -5,8 +5,17 @@ from matplotlib import cm
 import matplotlib.colors as colors
 import matplotlib as mpl
 
-import map_cosmo
-import power_spectrum
+import os
+import sys
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+
+sys.path.append(parent_directory)
+sys.path.append(os.path.join(parent_directory, "power_spectrum"))
+
+import map_cosmo as map_cosmo
+import power_spectrum as power_spectrum
 
 from sklearn.decomposition import PCA
 

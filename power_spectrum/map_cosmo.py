@@ -21,6 +21,8 @@ from COmap import COmap
 
 @dataclass
 class MapCosmo:
+    """Cosmological map class which assigns cosmological units to map."""
+
     def __init__(
         self,
         mappath: str,
@@ -28,35 +30,22 @@ class MapCosmo:
         jk: Optional[int] = None,
         split: Optional[str] = None,
     ):
+        """Init method to set up needed class attributes.
+
+        Args:
+            mappath (str): Path to COmap file from which to set up cosmological map.
+            feed (Optional[int], optional): Index of feed to use. Defaults to None results in feed-coadded map.
+            jk (Optional[int], optional): DEPRICATED. Jackknife index. Defaults to None.
+            split (Optional[str], optional): Key of split map to use.
+            Defaults to None results in feed or feed-coadded map being used.
+
+        Raises:
+            ValueError: If no feed is specified and split key is provided.
+            ValueError: If split key does not contain 'map'.
+        """
+
         self.feed = feed
         self.interpret_mapname(mappath)
-        # with h5py.File(mappath, mode="r") as my_file:
-        #     self.x = np.array(my_file["x"][:])
-        #     self.y = np.array(my_file["y"][:])
-        #     if jk is not None:
-        #         if feed is not None:
-        #             self.map = np.array(
-        #                 my_file["jackknives/map_" + jk][split, feed - 1]
-        #             )
-        #             self.rms = np.array(
-        #                 my_file["jackknives/rms_" + jk][split, feed - 1]
-        #             )
-
-        #         else:
-        #             self.map = np.array(my_file["jackknives/map_" + jk][split])
-        #             self.rms = np.array(my_file["jackknives/rms_" + jk][split])
-        #     else:
-        #         if feed is not None:
-        #             self.map = np.array(my_file["map"][feed - 1])
-        #             self.rms = np.array(my_file["rms"][feed - 1])
-
-        #         else:
-        #             try:
-        #                 self.map = np.array(my_file["map_coadd"][:])
-        #                 self.rms = np.array(my_file["rms_coadd"][:])
-        #             except:
-        #                 self.map = np.array(my_file["map_beam"][:])
-        #                 self.rms = np.array(my_file["rms_beam"][:])
 
         mapdata = COmap(mappath)
 
@@ -78,17 +67,17 @@ class MapCosmo:
                 raise ValueError(
                     "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                 )
-            self.map = np.array(mapdata[split][feed - 1])
+            self.map = np.array(mapdata[split][feed])
             sigma_key = re.sub(
                 r"map",
                 "sigma_wn",
                 split,
             )
-            self.rms = np.array(mapdata[sigma_key][feed - 1])
+            self.rms = np.array(mapdata[sigma_key][feed])
 
         elif feed is not None:
-            self.map = np.array(mapdata["map"][feed - 1])
-            self.rms = np.array(mapdata["sigma_wn"][feed - 1])
+            self.map = np.array(mapdata["map"][feed])
+            self.rms = np.array(mapdata["sigma_wn"][feed])
 
         else:
             self.map = np.array(mapdata["map_coadd"][:])

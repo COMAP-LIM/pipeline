@@ -1,6 +1,6 @@
 import numpy as np
 import h5py
-import tools
+import tools as tools
 
 
 class PowerSpectrum:

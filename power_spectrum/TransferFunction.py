@@ -5,13 +5,6 @@ import numpy as np
 import numpy.typing as npt
 from pixell import enmap
 from dataclasses import dataclass, field
-import os
-import sys
-
-current = os.path.dirname(os.path.realpath(__file__))
-parent_directory = os.path.dirname(current)
-
-sys.path.append(parent_directory)
 from power_spectrum import PowerSpectrum
 from map_cosmo import MapCosmo
 
@@ -31,9 +24,6 @@ class TransferFunction:
 
     # Internal data dictionary used to store private data
     _data: dict[str, npt.ArrayLike] = field(default_factory=dict)
-
-    _is_2d: bool = field(default=False)
-    _is_1d: bool = field(default=False)
 
     def compute_transfer_function(
         self,
@@ -61,7 +51,7 @@ class TransferFunction:
                 "Make sure to specify either cylindrically or spherically averaged transfer function."
             )
 
-        if len(mappaths) != 3:
+        if len(self.mappaths) != 3:
             raise ValueError("Make sure to only provide three map paths. ")
 
         signal_map_path, injected_signal_map_path, noise_map_path = self.mappaths
@@ -103,9 +93,9 @@ class TransferFunction:
 
             # Transfer function computed by using the power spectra
             transfer_function = (ps_injected_signal - ps_pure_noise) / ps_pure_signal
+
             # Save as class attributes
             if avg:
-                self._is_2d = True
                 self.ps_pure_signal_2D = ps_pure_signal
                 self.ps_injected_signal_2D = ps_injected_signal
                 self.ps_pure_noise_2D = ps_pure_noise
@@ -115,7 +105,6 @@ class TransferFunction:
                 self.k_bin_edges_par_2D = P_signal.k_bin_edges_par
                 self.k_bin_edges_perp_2D = P_signal.k_bin_edges_perp
             else:
-                self._is_1d = True
                 self.ps_pure_signal_1D = ps_pure_signal
                 self.ps_injected_signal_1D = ps_injected_signal
                 self.ps_pure_noise_1D = ps_pure_noise
@@ -134,58 +123,50 @@ class TransferFunction:
         if outpath is None:
             outpath = self.path
 
+        print("Saving transfer function at: ", outpath)
+
         with h5py.File(outpath, "w") as outfile:
-            if self._is_2d:
+            if "transfer_function_2D" in self.__dict__.keys():
+                cyl_avg = "cylindrically_averaged"
                 # Save transfer function from cylindrically averaged power spectrum
-                outfile[
-                    "cylindrically_averaged/transfer_function_2D"
-                ] = self.transfer_function_2D
+                outfile[f"{cyl_avg}/transfer_function_2D"] = self.transfer_function_2D
 
-                outfile[
-                    "cylindrically_averaged/k_bin_edges_par_2D"
-                ] = self.k_bin_edges_par_2D
-                outfile[
-                    "cylindrically_averaged/k_bin_edges_perp_2D"
-                ] = self.k_bin_edges_perp_2D
+                outfile[f"{cyl_avg}/k_bin_edges_par_2D"] = self.k_bin_edges_par_2D
+                outfile[f"{cyl_avg}/k_bin_edges_perp_2D"] = self.k_bin_edges_perp_2D
 
-                outfile[
-                    "cylindrically_averaged/k_bin_centers_par_2D"
-                ] = self.k_bin_centers_par_2D
-                outfile[
-                    "cylindrically_averaged/k_bin_centers_perp_2D"
-                ] = self.k_bin_centers_perp_2D
+                outfile[f"{cyl_avg}/k_bin_centers_par_2D"] = self.k_bin_centers_par_2D
+                outfile[f"{cyl_avg}/k_bin_centers_perp_2D"] = self.k_bin_centers_perp_2D
 
                 # Save power spectra going in to the transfer functions
                 # Cylindrically averaged power spectra
                 outfile[
-                    "cylindrically_averaged/power_spectrum/pure_signal_2D"
+                    f"{cyl_avg}/power_spectrum/pure_signal_2D"
                 ] = self.ps_pure_signal_2D
                 outfile[
-                    "cylindrically_averaged/power_spectrum/pure_noise_2D"
+                    f"{cyl_avg}/power_spectrum/pure_noise_2D"
                 ] = self.ps_pure_noise_2D
                 outfile[
-                    "cylindrically_averaged/power_spectrum/injected_signal_2D"
+                    f"{cyl_avg}/power_spectrum/injected_signal_2D"
                 ] = self.ps_injected_signal_2D
 
-            if self._is_1d:
+            if "transfer_function_1D" in self.__dict__.keys():
+                sph_avg = "spherically_averaged"
                 # Save transfer function from spherically averaged power spectrum
-                outfile[
-                    "spherically_averaged/transfer_function_1D"
-                ] = self.transfer_function_1D
-                outfile["spherically_averaged/k_bin_edges_1D"] = self.k_bin_edges_1D
+                outfile[f"{sph_avg}/transfer_function_1D"] = self.transfer_function_1D
+                outfile[f"{sph_avg}/k_bin_edges_1D"] = self.k_bin_edges_1D
 
-                outfile["spherically_averaged/k_bin_centers_1D"] = self.k_bin_centers_1D
+                outfile[f"{sph_avg}/k_bin_centers_1D"] = self.k_bin_centers_1D
 
                 # Save power spectra going in to the transfer functions
                 # Spherically averaged power spectra
                 outfile[
-                    "spherically_averaged/power_spectrum/pure_signal_1D"
+                    f"{sph_avg}/power_spectrum/pure_signal_1D"
                 ] = self.ps_pure_signal_1D
                 outfile[
-                    "spherically_averaged/power_spectrum/pure_noise_1D"
+                    f"{sph_avg}/power_spectrum/pure_noise_1D"
                 ] = self.ps_pure_noise_1D
                 outfile[
-                    "spherically_averaged/power_spectrum/injected_signal_1D"
+                    f"{sph_avg}/power_spectrum/injected_signal_1D"
                 ] = self.ps_injected_signal_1D
 
     def read(self, inpath: Optional[str] = None):
@@ -199,58 +180,156 @@ class TransferFunction:
             inpath = self.path
 
         with h5py.File(inpath, "r") as infile:
-            if self._is_2d:
+            if "transfer_function_2D" in self.__dict__.keys():
+                cyl_avg = "cylindrically_averaged"
                 # Read transfer function from cylindrically averaged power spectrum
-                self.transfer_function_2D = infile[
-                    "cylindrically_averaged/transfer_function_2D"
+                self.transfer_function_2D = infile[f"{cyl_avg}/transfer_function_2D"][
+                    ()
                 ]
 
-                self.k_bin_edges_par_2D = infile[
-                    "cylindrically_averaged/k_bin_edges_par_2D"
-                ]
-                self.k_bin_edges_perp_2D = infile[
-                    "cylindrically_averaged/k_bin_edges_perp_2D"
-                ]
+                self.k_bin_edges_par_2D = infile[f"{cyl_avg}/k_bin_edges_par_2D"][()]
+                self.k_bin_edges_perp_2D = infile[f"{cyl_avg}/k_bin_edges_perp_2D"][()]
 
-                self.k_bin_centers_par_2D = infile[
-                    "cylindrically_averaged/k_bin_centers_par_2D"
+                self.k_bin_centers_par_2D = infile[f"{cyl_avg}/k_bin_centers_par_2D"][
+                    ()
                 ]
-                self.k_bin_centers_perp_2D = infile[
-                    "cylindrically_averaged/k_bin_centers_perp_2D"
+                self.k_bin_centers_perp_2D = infile[f"{cyl_avg}/k_bin_centers_perp_2D"][
+                    ()
                 ]
                 # Read power spectra going in to the transfer functions
 
                 # Cylindrically averaged power spectra
                 self.ps_pure_signal_2D = infile[
-                    "cylindrically_averaged/power_spectrum/pure_signal_2D"
-                ]
+                    f"{cyl_avg}/power_spectrum/pure_signal_2D"
+                ][()]
                 self.ps_pure_noise_2D = infile[
-                    "cylindrically_averaged/power_spectrum/pure_noise_2D"
-                ]
+                    f"{cyl_avg}/power_spectrum/pure_noise_2D"
+                ][()]
                 self.ps_injected_signal_2D = infile[
-                    "cylindrically_averaged/power_spectrum/injected_signal_2D"
-                ]
+                    f"{cyl_avg}/power_spectrum/injected_signal_2D"
+                ][()]
 
-            if self._is_1d:
+            if "transfer_function_1D" in self.__dict__.keys():
+                sph_avg = "spherically_averaged"
+
                 # Read transfer function from spherically averaged power spectrum
-                self.transfer_function_1D = infile[
-                    "spherically_averaged/transfer_function_1D"
+                self.transfer_function_1D = infile[f"{sph_avg}/transfer_function_1D"][
+                    ()
                 ]
-                self.k_bin_edges_1D = infile["spherically_averaged/k_bin_edges_1D"]
+                self.k_bin_edges_1D = infile[f"{sph_avg}/k_bin_edges_1D"][()]
 
-                self.k_bin_centers_1D = infile["spherically_averaged/k_bin_centers_1D"]
+                self.k_bin_centers_1D = infile[f"{sph_avg}/k_bin_centers_1D"][()]
 
                 # Read power spectra going in to the transfer functions
                 # Spherically averaged power spectra
                 self.ps_pure_signal_1D = infile[
-                    "spherically_averaged/power_spectrum/pure_signal_1D"
-                ]
+                    f"{sph_avg}/power_spectrum/pure_signal_1D"
+                ][()]
                 self.ps_pure_noise_1D = infile[
-                    "spherically_averaged/power_spectrum/pure_noise_1D"
-                ]
+                    f"{sph_avg}/power_spectrum/pure_noise_1D"
+                ][()]
                 self.ps_injected_signal_1D = infile[
-                    "spherically_averaged/power_spectrum/injected_signal_1D"
-                ]
+                    f"{sph_avg}/power_spectrum/injected_signal_1D"
+                ][()]
+
+    def __sub__(self, other: TransferFunction):
+        """Magic method to compute arithmetic difference between two transfer function objects.
+
+        NOTE: that the power spectra from self will be kept
+        and that difference is only computed between transfer function attributes.
+
+        Args:
+            other (TransferFunction): Transfer function object that is subtracted from self
+
+        Returns:
+            _type_: Returning new instance of TransferFunction class
+            containing difference between transfer functions
+        """
+        difference = self.__class__()
+
+        if (
+            "transfer_function_1D" in self.__dict__.keys()
+            and "transfer_function_1D" in other.__dict__.keys()
+        ):
+            difference.transfer_function_1D = (
+                self.transfer_function_1D - other.transfer_function_1D
+            )
+
+        if (
+            "transfer_function_2D" in self.__dict__.keys()
+            and "transfer_function_2D" in other.__dict__.keys()
+        ):
+            difference.transfer_function_2D = (
+                self.transfer_function_2D - other.transfer_function_2D
+            )
+
+        return difference
+
+    def __mul__(self, other: TransferFunction):
+        """Magic method to compute product between two transfer function objects.
+
+        NOTE: that the power spectra from self will be kept
+        and that product is only computed between transfer function attributes.
+
+        Args:
+            other (TransferFunction): Transfer function object that is subtracted from self
+
+        Returns:
+            _type_: Returning new instance of TransferFunction class
+            containing product of transfer functions
+        """
+        product = self.__class__()
+
+        if (
+            "transfer_function_1D" in self.__dict__.keys()
+            and "transfer_function_1D" in other.__dict__.keys()
+        ):
+            product.transfer_function_1D = (
+                self.transfer_function_1D * other.transfer_function_1D
+            )
+
+        if (
+            "transfer_function_2D" in self.__dict__.keys()
+            and "transfer_function_2D" in other.__dict__.keys()
+        ):
+            product.transfer_function_2D = (
+                self.transfer_function_2D * other.transfer_function_2D
+            )
+
+        return product
+
+    def __truediv__(self, other: TransferFunction):
+        """Magic method to compute divition between two transfer function objects.
+
+        NOTE: that the power spectra from self will be kept
+        and that divition is only computed between transfer function attributes.
+
+        Args:
+            other (TransferFunction): Transfer function object that is subtracted from self
+
+        Returns:
+            _type_: Returning new instance of TransferFunction class
+            containing divition of transfer functions
+        """
+        divition = self.__class__()
+
+        if (
+            "transfer_function_1D" in self.__dict__.keys()
+            and "transfer_function_1D" in other.__dict__.keys()
+        ):
+            divition.transfer_function_1D = (
+                self.transfer_function_1D / other.transfer_function_1D
+            )
+
+        if (
+            "transfer_function_2D" in self.__dict__.keys()
+            and "transfer_function_2D" in other.__dict__.keys()
+        ):
+            divition.transfer_function_2D = (
+                self.transfer_function_2D / other.transfer_function_2D
+            )
+
+        return divition
 
 
 if __name__ == "__main__":
@@ -270,9 +349,46 @@ if __name__ == "__main__":
     tf = TransferFunction(path=outname, mappaths=mappaths)
     tf.compute_transfer_function()
 
-    tf.write("test_tf.h5")
+    simpath = "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_poly_april2022_small_sim_simcube.h5"
+    mappath = "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_poly_april2022_small_sim.h5"
+    noisepath = (
+        "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_poly_april2022_small.h5"
+    )
+    mappaths = [simpath, mappath, noisepath]
 
-    print("saved tf")
+    tf2 = TransferFunction(path=outname, mappaths=mappaths)
+    tf2.compute_transfer_function()
 
-    tf.read("test_tf.h5")
-    print("read tf")
+    # tf.write("test_tf.h5")
+
+    # print("saved tf")
+
+    # tf.read("test_tf.h5")
+    # print("read tf")
+
+    tf3 = tf2 - tf
+    tf4 = tf2 * tf
+    tf5 = tf2 / tf
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(2, 3, figsize=(10, 10))
+
+    ax[0, 0].imshow(
+        tf.transfer_function_2D, cmap="CMRmap", vmin=0, vmax=1, origin="lower"
+    )
+    ax[0, 1].imshow(
+        tf2.transfer_function_2D, cmap="CMRmap", vmin=0, vmax=1, origin="lower"
+    )
+
+    ax[1, 0].imshow(
+        tf3.transfer_function_2D, cmap="RdBu_r", vmin=-1, vmax=1, origin="lower"
+    )
+    ax[1, 1].imshow(
+        tf4.transfer_function_2D, cmap="CMRmap", vmin=0, vmax=1, origin="lower"
+    )
+    ax[1, 2].imshow(
+        tf5.transfer_function_2D, cmap="CMRmap", vmin=0, vmax=1, origin="lower"
+    )
+
+    plt.show()

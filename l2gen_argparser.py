@@ -58,10 +58,16 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--time_start_cut", type=int, default=0, help="Time, in seconds, to cut at the beginning of each scan."
+    "--time_start_cut",
+    type=int,
+    default=0,
+    help="Time, in seconds, to cut at the beginning of each scan.",
 )
 parser.add_argument(
-    "--time_stop_cut", type=int, default=0, help="Time, in seconds, to cut at the beginning of each scan."
+    "--time_stop_cut",
+    type=int,
+    default=0,
+    help="Time, in seconds, to cut at the beginning of each scan.",
 )
 
 ### Paths and files
@@ -503,10 +509,45 @@ parser.add_argument(
     help="(tod2comap/signal injection) If flag is provided the simulation (only) cube needed to compute TF, with same sigma_wn and footprint as map with signal injected data, is produced.",
 )
 
-
-###### Signal Injection ######
 parser.add_argument(
-    "--Make new data",
-    action="store_true",
-    help="(comap2tf) If flag is provided a new raw data only run of l2gen is started to produce new level2 files for computiong noise power spectrum needed in transfer function.",
+    "--transfer_function_dir",
+    type=str,
+    default=None,
+    help="Path transfer function directory.",
+)
+
+parser.add_argument(
+    "--transfer_function_name",
+    type=str,
+    default=None,
+    help="(run_tod2tf) Specific name of transfer function file made by run_tod2tf. Full name will be '[FIELDNAME]_[transfer_function_name].h5'",
+)
+
+
+parser.add_argument(
+    "--main_dir_l2",
+    type=str,
+    default="",
+    help="(run_tod2tf) Complete path to pure data level 2 files. By default string is empty. If default is used a new level 2 set is generated.",
+)
+
+parser.add_argument(
+    "--sim_dir_l2",
+    type=str,
+    default="",
+    help="(run_tod2tf) Complete path to signal injected data level 2 files. By default string is empty. If default is used a new signal injected level 2 set is generated.",
+)
+
+parser.add_argument(
+    "--main_dir_map",
+    type=str,
+    default="",
+    help="(run_tod2tf) Complete path to pure data map file. By default string is empty. If default is used a new pure data map is generated.",
+)
+
+parser.add_argument(
+    "--sim_dir_map",
+    type=str,
+    default="",
+    help="(run_tod2tf) Complete path to signal injected data map file. By default string is empty. If default is used a new signal injected map and populated cube are generated.",
 )
