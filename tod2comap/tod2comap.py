@@ -467,7 +467,7 @@ class Mapmaker:
 
             # Check if last l2data object contained simualtion and assume all did and make map of cube data only:
             if l2data["is_sim"] and self.params.populate_cube:
-                self.populate_simulation_ccube(full_map)
+                self.populate_simulation_cube(full_map)
 
             print("=" * 80)
             print("=" * 80)
@@ -1049,7 +1049,7 @@ class Mapmaker:
                     self.OMP_NUM_THREADS,
                 )
 
-    def populate_simulation_ccube(self, mapdata: COmap):
+    def populate_simulation_cube(self, mapdata: COmap):
 
         cube = {}
         with h5py.File(self.params.signal_path, "r") as infile:
