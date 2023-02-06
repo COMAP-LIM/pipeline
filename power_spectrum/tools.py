@@ -1,5 +1,5 @@
 import numpy as np
-import numpy.fft as fft
+import scipy.fft as fft
 import os
 import errno
 

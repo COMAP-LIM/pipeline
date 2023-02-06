@@ -1,7 +1,6 @@
 import numpy as np
-import h5py
-import tools
 
+import re
 import os
 import sys
 from typing import Optional
@@ -22,54 +21,63 @@ from COmap import COmap
 
 @dataclass
 class MapCosmo:
+    """Cosmological map class which assigns cosmological units to map."""
+
     def __init__(
         self,
         mappath: str,
         feed: Optional[int] = None,
         jk: Optional[int] = None,
-        split: Optional[int] = None,
+        split: Optional[str] = None,
     ):
+        """Init method to set up needed class attributes.
+
+        Args:
+            mappath (str): Path to COmap file from which to set up cosmological map.
+            feed (Optional[int], optional): Index of feed to use. Defaults to None results in feed-coadded map.
+            jk (Optional[int], optional): DEPRICATED. Jackknife index. Defaults to None.
+            split (Optional[str], optional): Key of split map to use.
+            Defaults to None results in feed or feed-coadded map being used.
+
+        Raises:
+            ValueError: If no feed is specified and split key is provided.
+            ValueError: If split key does not contain 'map'.
+        """
+
         self.feed = feed
         self.interpret_mapname(mappath)
-        # with h5py.File(mappath, mode="r") as my_file:
-        #     self.x = np.array(my_file["x"][:])
-        #     self.y = np.array(my_file["y"][:])
-        #     if jk is not None:
-        #         if feed is not None:
-        #             self.map = np.array(
-        #                 my_file["jackknives/map_" + jk][split, feed - 1]
-        #             )
-        #             self.rms = np.array(
-        #                 my_file["jackknives/rms_" + jk][split, feed - 1]
-        #             )
-
-        #         else:
-        #             self.map = np.array(my_file["jackknives/map_" + jk][split])
-        #             self.rms = np.array(my_file["jackknives/rms_" + jk][split])
-        #     else:
-        #         if feed is not None:
-        #             self.map = np.array(my_file["map"][feed - 1])
-        #             self.rms = np.array(my_file["rms"][feed - 1])
-
-        #         else:
-        #             try:
-        #                 self.map = np.array(my_file["map_coadd"][:])
-        #                 self.rms = np.array(my_file["rms_coadd"][:])
-        #             except:
-        #                 self.map = np.array(my_file["map_beam"][:])
-        #                 self.rms = np.array(my_file["rms_beam"][:])
 
         mapdata = COmap(mappath)
+
         mapdata.read_map()
+
         self.x = mapdata["ra_centers"]
         self.y = mapdata["dec_centers"]
 
         x_edges = mapdata["ra_edges"]
         y_edges = mapdata["dec_edges"]
 
-        if feed is not None:
-            self.map = np.array(mapdata["map"][feed - 1])
-            self.rms = np.array(mapdata["sigma_wn"][feed - 1])
+        if split is not None:
+            if feed is None:
+                raise ValueError(
+                    "Can only make cosmological map if both split and feed are specified."
+                )
+
+            if "map" not in split:
+                raise ValueError(
+                    "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
+                )
+            self.map = np.array(mapdata[split][feed])
+            sigma_key = re.sub(
+                r"map",
+                "sigma_wn",
+                split,
+            )
+            self.rms = np.array(mapdata[sigma_key][feed])
+
+        elif feed is not None:
+            self.map = np.array(mapdata["map"][feed])
+            self.rms = np.array(mapdata["sigma_wn"][feed])
 
         else:
             self.map = np.array(mapdata["map_coadd"][:])
@@ -87,7 +95,6 @@ class MapCosmo:
 
         dnu = nu[1] - nu[0]
 
-        redshift = NU_REST / nu - 1
         dredshift = (1 + Z_MID) ** 2 * dnu / NU_REST
 
         angle2Mpc = cosmo.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
@@ -184,14 +191,3 @@ class MapCosmo:
 
         if self.feed is not None:
             self.save_string = self.save_string + "_%02i" % self.feed
-
-
-if __name__ == "__main__":
-    # path = "/mn/stornext/d22/cmbco/comap/protodir/maps/co7_python_poly_april2022_n5_subtr_approx_sigma_wn.h5"
-    path = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/data/maps/co7_test3_python_map.h5"
-
-    map_cosmo = MapCosmo(path)
-
-    print(np.any(~np.isfinite(map_cosmo.map)))
-    print(np.any(~np.isfinite(map_cosmo.rms)))
-    print(np.any(~np.isfinite(map_cosmo.w)))

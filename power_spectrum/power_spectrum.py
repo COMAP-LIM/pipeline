@@ -1,7 +1,6 @@
 import numpy as np
 import h5py
-import tools
-import map_cosmo
+import tools as tools
 
 
 class PowerSpectrum:
