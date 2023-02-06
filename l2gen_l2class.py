@@ -126,8 +126,11 @@ class level2_file:
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
         with h5py.File(temp_outfilename, "w") as f:
             # Hardcoded level2 parameters:
+            if self.params.use_l2_compression:
+                f.create_dataset("tod", (self.Nfeeds, self.Nsb, self.Nfreqs, self.Ntod), chunks=(1,1,1,self.Ntod), data=self.tod, compression="gzip", compression_opts=1, shuffle=True)
+            else:
+                f["tod"] = self.tod
             f["feeds"] = self.feeds
-            f["tod"] = self.tod
             f["time"] = self.tod_times
             f["mjd_start"] = self.tod_times[0]
             f["samprate"] = self.samprate
