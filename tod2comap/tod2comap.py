@@ -548,12 +548,15 @@ class Mapmaker:
             l2data (L2file): Level 2 file object to perform preprocessing on.
         """
 
-        if self.params.temporal_mask:
-            temporal_mask = self.get_temporal_mask(l2data)
+        temporal_mask = l2data["mask_temporal"]
 
-            l2data["tod"] = l2data["tod"][..., temporal_mask]
-            l2data["point_tel"] = l2data["point_tel"][:, temporal_mask, :]
-            l2data["point_cel"] = l2data["point_cel"][:, temporal_mask, :]
+        if self.params.temporal_mask:
+            temporal_mask *= self.get_temporal_mask(l2data)[None, :]
+
+        feeds_to_mask, times_to_mask = np.where(temporal_mask)
+        l2data["tod"] = l2data["tod"][feeds_to_mask, :, :, times_to_mask]
+        l2data["point_tel"] = l2data["point_tel"][feeds_to_mask, times_to_mask, :]
+        l2data["point_cel"] = l2data["point_cel"][feeds_to_mask, times_to_mask, :]
 
         _, NSB, NFREQ, NSAMP = l2data["tod"].shape
 
