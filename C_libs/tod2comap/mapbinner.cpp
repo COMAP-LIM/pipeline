@@ -15,6 +15,7 @@ extern "C" void bin_map(
     int *idx_dec_pix,
     float *numerator,
     float *denominator,
+    bool *mask_temporal,
     int nfreq,
     int nfeed,
     int nsamp,
@@ -33,7 +34,12 @@ extern "C" void bin_map(
         {
             int ra = idx_ra_pix[nfeed * t + d];
             int dec = idx_dec_pix[nfeed * t + d];
-            if (ra < 0 || ra >= nside_ra)
+
+            if (!mask_temporal[nfeed * t + d])
+            {
+                continue;
+            }
+            else if (ra < 0 || ra >= nside_ra)
             {
                 continue;
             }
@@ -72,6 +78,7 @@ extern "C" void bin_nhit_and_map(
     int *nhit,
     float *numerator,
     float *denominator,
+    bool *mask_temporal,
     int nfreq,
     int nfeed,
     int nsamp,
@@ -93,7 +100,12 @@ extern "C" void bin_nhit_and_map(
         {
             int ra = idx_ra_pix[nfeed * t + d];
             int dec = idx_dec_pix[nfeed * t + d];
-            if (ra < 0 || ra >= nside_ra)
+
+            if (!mask_temporal[nfeed * t + d])
+            {
+                continue;
+            }
+            else if (ra < 0 || ra >= nside_ra)
             {
                 continue;
             }

@@ -548,15 +548,11 @@ class Mapmaker:
             l2data (L2file): Level 2 file object to perform preprocessing on.
         """
 
-        # NOTE: for now only feed 0 mask is used. Will propagate this to C binner in future
-        temporal_mask = l2data["mask_temporal"][0, :]
-
+        # NOTE: The level2 files will always contain a temporal mask.
+        # The following if block is only there to add to this mask if temporal mask
+        # keyword is provided in parameter file.
         if self.params.temporal_mask:
-            temporal_mask *= self.get_temporal_mask(l2data)[None, :]
-
-        l2data["tod"] = l2data["tod"][..., temporal_mask]
-        l2data["point_tel"] = l2data["point_tel"][:, temporal_mask, :]
-        l2data["point_cel"] = l2data["point_cel"][:, temporal_mask, :]
+            l2data["mask_temporal"] *= self.get_temporal_mask(l2data)[None, :]
 
         _, NSB, NFREQ, NSAMP = l2data["tod"].shape
 
@@ -874,16 +870,12 @@ class Mapmaker:
             dtype=ctypes.c_float, ndim=2, flags="contiguous"
         )  # 4D array 32-bit float pointer object.
 
-        # float64_array3 = np.ctypeslib.ndpointer(
-        #     dtype=ctypes.c_double, ndim=3, flags="contiguous"
-        # )  # 4D array 32-bit float pointer object.
-
-        # float64_array2 = np.ctypeslib.ndpointer(
-        #     dtype=ctypes.c_double, ndim=2, flags="contiguous"
-        # )  # 4D array 32-bit float pointer object.
-
         int32_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_int, ndim=2, flags="contiguous"
+        )  # 4D array 32-bit integer pointer object.
+
+        bool_array2 = np.ctypeslib.ndpointer(
+            dtype=ctypes.c_bool, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
 
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
@@ -899,6 +891,7 @@ class Mapmaker:
                 int32_array2,  # freqmask
                 int32_array2,  # idx_ra_pix
                 int32_array2,  # idx_dec_pix
+                bool_array2,  # temporal_mask
                 int32_array4,  # hit map
                 float32_array4,  # numerator map
                 float32_array4,  # denominator map
@@ -951,25 +944,13 @@ class Mapmaker:
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
-                    # print(np.unique(split_list))
-                    # print(split_list)
-                    # print(~np.isin(split_list, self.split_key_mapping[split_key]))
-
-                    # print(
-                    #     "hallo",
-                    #     numerator_key,
-                    #     np.all(freqmask == 0),
-                    #     np.all(mapdata[hit_key] == 0),
-                    #     freqmask.dtype,
-                    # )
-                    # sys.exit()
-
                 self.mapbinner.bin_nhit_and_map(
                     l2data["tod"],
                     l2data["inv_var"],
                     freqmask,
                     l2data["pointing_ra_index"],
                     l2data["pointing_dec_index"],
+                    l2data["mask_temporal"],
                     mapdata[hit_key],
                     mapdata[numerator_key],
                     mapdata[denominator_key],
@@ -981,7 +962,6 @@ class Mapmaker:
                     self.OMP_NUM_THREADS,
                     l2data.id,
                 )
-
         else:
             self.mapbinner.bin_map.argtypes = [
                 float32_array3,  # tod
@@ -989,6 +969,7 @@ class Mapmaker:
                 int32_array2,  # freqmask
                 int32_array2,  # idx_ra_pix
                 int32_array2,  # idx_dec_pix
+                bool_array2,  # temporal_mask
                 float32_array4,  # numerator map
                 float32_array4,  # denominator map
                 ctypes.c_int,  # nfreq
@@ -1043,6 +1024,7 @@ class Mapmaker:
                     freqmask,
                     l2data["pointing_ra_index"],
                     l2data["pointing_dec_index"],
+                    l2data["mask_temporal"],
                     mapdata[numerator_key],
                     mapdata[denominator_key],
                     NFREQ,
