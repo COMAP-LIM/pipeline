@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+import numpy.typing as npt
 import h5py
 import scipy.interpolate as interp
 import numpy.typing as ntyping
@@ -39,7 +40,7 @@ class SimCube:
 
         return self._data[key]
 
-    def get_bin_centers(self, ra_edges: np.ndarray, dec_edges: np.ndarray) -> tuple:
+    def get_bin_centers(self, ra_edges: npt.NDArray, dec_edges: npt.NDArray) -> tuple:
         dra = ra_edges[1] - ra_edges[0]
         ddec = dec_edges[1] - dec_edges[0]
 
@@ -52,58 +53,46 @@ class SimCube:
         import os
         from pixell import enmap
 
-        standard_geometry_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-            f"tod2comap/standard_geometries/{fieldname}_standard_geometry.fits",
-        )
-
-        standard_geometry = enmap.read_map(standard_geometry_path).copy()
-
-        standard_geometry = enmap.upgrade(standard_geometry, 4)
-
-        # Number of pixels in {DEC, RA}
-        NSIDE_DEC, NSIDE_RA = standard_geometry.shape
-        FIELD_CENTER = np.degrees(
-            enmap.pix2sky(
-                (NSIDE_DEC, NSIDE_RA),
-                standard_geometry.wcs,
-                ((NSIDE_DEC - 1) / 2, (NSIDE_RA - 1) / 2),
-            )
-        )[::-1]
-
-        ra = self._data["x"] + FIELD_CENTER[0]
-        dec = self._data["y"] + FIELD_CENTER[1]
+        ra = self._data["x"]  # + self.FIELD_CENTER[0]
+        dec = self._data["y"]  # + self.FIELD_CENTER[1]
 
         ra, dec = self.get_bin_centers(ra, dec)
 
         simdata = self._data["simulation"]
 
-        # channels = np.arange(simdata.shape[0], dtype=np.int32)
-        # sidebands = np.arange(simdata.shape[1], dtype=np.int32)
-
-        # self.signal = interp.RegularGridInterpolator(
-        #     (sidebands, channels, ra, dec), simdata
-        # )
-
         self.signal = [[] for _ in range(simdata.shape[0])]
-
-        import time
-
-        t0 = time.perf_counter()
 
         for sb in range(simdata.shape[0]):
             for channel in range(simdata.shape[1]):
-                interpolation = interp.RectBivariateSpline(
-                    ra, dec, simdata[sb, channel, :, :]
-                )
-                self.signal[sb].append(interpolation)
-        print("Time iterpolation", time.perf_counter() - t0, "s")
-        # self.signal = [
-        #     interp.RectBivariateSpline(ra, dec, simdata[sb, channel, :, :])
-        #     for sb in range(simdata.shape[0])
-        #     for channel in range(simdata.shape[1])
-        # ]
 
+                interpolation = interp.RectBivariateSpline(
+                    dec, ra, simdata[sb, channel, :, :]
+                )
+
+                self.signal[sb].append(interpolation)
+
+    def rotate_pointing_to_equator(
+        self, ra: npt.NDArray, dec: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+
+        # A cartesian vector from ra, dec pointing
+        vector = utils.ang2rect((np.deg2rad(ra), np.deg2rad(dec)))
+
+        # Rotation matrix to rotate from field pointing to equator region around {ra, dec} = {0, 0}
+        center_ra, center_dec = self.FIELD_CENTER
+        # Rotation matrix in right ascention
+        rotation_ra = utils.rotmatrix(-np.deg2rad(center_ra), raxis="z")
+        # Rotation matrix in declination
+        rotation_dec = utils.rotmatrix(np.deg2rad(center_dec), raxis="y")
+
+        # Complete rotation matrix
+        rotation_matrix = rotation_dec @ rotation_ra
+
+        # Rotate pointing
+        new_pointing = np.rad2deg(utils.rect2ang(rotation_matrix @ vector))
+        new_ra, new_dec = new_pointing
+
+        return new_ra, new_dec
 
     def prepare_geometry(self, fieldname: str, boost: float = 1) -> None:
         """Method that defines the WCS geometry of the signal cube given the
@@ -135,26 +124,36 @@ class SimCube:
             self._data["simulation"], standard_geometry.wcs, copy=False
         )
 
+        # Number of pixels in {DEC, RA}
+        NSIDE_DEC, NSIDE_RA = standard_geometry.shape
+        self.FIELD_CENTER = np.degrees(
+            enmap.pix2sky(
+                (NSIDE_DEC, NSIDE_RA),
+                standard_geometry.wcs,
+                ((NSIDE_DEC - 1) / 2, (NSIDE_RA - 1) / 2),
+            )
+        )[::-1]
+
         # NOTE: this will change in future due to the changed clock frequency in early 2022
         # Flipping frequencies
         # self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
 
         # muK to K
-        self.simdata *= 1e-6  
+        self.simdata *= 1e-6
         # Boost signal
         self.simdata *= boost
 
-    def sim2tod(self, ra: np.ndarray, dec: np.ndarray) -> np.ndarray:
+    def sim2tod(self, ra: npt.NDArray, dec: npt.NDArray) -> npt.NDArray:
         """Method that, given the telescope pointing in RA and Dec, projects
         the signal from the singal cube into time-stream space for all feeds
         frequencies at the same time.
 
         Args:
-            ra (np.ndarray): Right Acention from telescope pointing.
-            dec (np.ndarray): Declination from telescope pointing.
+            ra (npt.NDArray): Right Acention from telescope pointing.
+            dec (npt.NDArray): Declination from telescope pointing.
 
         Returns:
-            np.ndarray: Simulation signal in time-stream space along
+            npt.NDArray: Simulation signal in time-stream space along
             telescope pointing for all feeds and frequencies.
         """
 

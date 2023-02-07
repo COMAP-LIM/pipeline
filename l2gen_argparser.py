@@ -510,6 +510,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--seed",
+    type=int,
+    default=None,
+    help="Seed to use when producing simulation cubes.",
+)
+
+
+parser.add_argument(
     "--transfer_function_dir",
     type=str,
     default=None,

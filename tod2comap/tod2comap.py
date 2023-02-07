@@ -24,6 +24,7 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
 
 sys.path.append(parent_directory)
+sys.path.append(os.path.join(parent_directory, "simpipeline/"))
 
 
 class Mapmaker:
@@ -1051,37 +1052,76 @@ class Mapmaker:
 
     def populate_simulation_cube(self, mapdata: COmap):
 
-        cube = {}
-        with h5py.File(self.params.signal_path, "r") as infile:
-            cube["simulation"] = infile["simulation"][()]
+        from l2_simulations import SimCube
 
-        signal = cube["simulation"]
+        NFEED, NSIDEBAND, NCHANNEL, NDEC, NRA = mapdata["map"].shape
 
-        _, NCHANNEL_sim, NDEC_sim, NRA_sim = signal.shape
+        simdata = SimCube(self.params.signal_path)
+        # Reading simulation cube data from file
+        simdata.read()
+
+        # Defining simulation cube geometry using standard geometies and boost signal
+        simdata.prepare_geometry(self.fieldname, self.params.boost_factor)
+
+        # Get pixel center meshgrid from target standard geometry
+        dec_grid, ra_grid = np.rad2deg(mapdata.standard_geometry.posmap())
+
+        # Euler rotaion of telescope pointing to equatorial origin
+        ra_grid_rotated, dec_grid_rotated = simdata.rotate_pointing_to_equator(
+            ra_grid.flatten(),
+            dec_grid.flatten(),
+        )
+
+        simdata.interpolate_cube(self.fieldname)
+
+        NCHANNEL_sim = simdata.simdata.shape[1]
+
+        signal = np.zeros((NSIDEBAND, NCHANNEL_sim, NDEC, NRA))
+
+        for sb in range(NSIDEBAND):
+            for channel in range(NCHANNEL_sim):
+                signal[sb, channel, :, :] = simdata.signal[sb][channel](
+                    dec_grid_rotated, ra_grid_rotated, grid=False
+                ).reshape(NDEC, NRA)
+
+        # cube = {}
+        # with h5py.File(self.params.signal_path, "r") as infile:
+        #     cube["simulation"] = infile["simulation"][()]
+
+        # signal = cube["simulation"]
+
+        # _, NCHANNEL_sim, NDEC_sim, NRA_sim = signal.shape
 
         # Marking map object as simulation
         mapdata["is_sim"] = True
         mapdata["is_simcube"] = True
 
-        NFEED, NSIDEBAND, NCHANNEL, NDEC, NRA = mapdata["map"].shape
+        # NDOWNSAMPLE_RA = NRA_sim // NRA
+        # NDOWNSAMPLE_DEC = NDEC_sim // NDEC
+        # NDOWNSAMPLE_CHANNEL = NCHANNEL_sim // NCHANNEL
 
-        NDOWNSAMPLE_RA = NRA_sim // NRA
-        NDOWNSAMPLE_DEC = NDEC_sim // NDEC
-        NDOWNSAMPLE_CHANNEL = NCHANNEL_sim // NCHANNEL
+        # # Adapting cube to map resolution
+        # signal = signal.reshape(
+        #     NSIDEBAND,
+        #     NCHANNEL,
+        #     NDOWNSAMPLE_CHANNEL,
+        #     NDEC,
+        #     NDOWNSAMPLE_DEC,
+        #     NRA,
+        #     NDOWNSAMPLE_RA,
+        # ).mean((2, 4, 6))
 
-        # Adapting cube to map resolution
+        # Adapting cube to map frequency resolution
         signal = signal.reshape(
             NSIDEBAND,
-            NCHANNEL,
-            NDOWNSAMPLE_CHANNEL,
+            self.params.decimation_freqs,
+            NCHANNEL_sim // self.params.decimation_freqs,
             NDEC,
-            NDOWNSAMPLE_DEC,
             NRA,
-            NDOWNSAMPLE_RA,
-        ).mean((2, 4, 6))
+        ).mean((2))
 
         # From muK to K and optional signal boost
-        signal *= 1e-6 * self.params.boost_factor
+        # signal *= 1e-6 * self.params.boost_factor
 
         # Asigning map datasets
         mask = np.isfinite(mapdata["map_coadd"])

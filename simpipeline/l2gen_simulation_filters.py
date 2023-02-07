@@ -63,8 +63,27 @@ class Cube2TOD:
         # Defining simulation cube geometry using standard geometies and boost signal
         simdata.prepare_geometry(l2file.fieldname, self.boost)
 
-        # Reading off signal from cube given telescope pointing.
-        signal = simdata.sim2tod(l2file.ra, l2file.dec)
+        # Euler rotaion of telescope pointing to equatorial origin
+        rotated_ra, rotated_dec = simdata.rotate_pointing_to_equator(
+            l2file.ra.flatten(), l2file.dec.flatten()
+        )
 
-        # Injecting signal to TOD
-        l2file.tod *= 1 + signal / l2file.Tsys[..., None]
+        rotated_ra = rotated_ra.reshape(l2file.ra.shape)
+        rotated_dec = rotated_dec.reshape(l2file.dec.shape)
+
+        simdata.interpolate_cube(l2file.fieldname)
+
+        for sb in range(l2file.Nsb):
+            for freq in range(l2file.Nfreqs):
+
+                # signal = simdata.signal[sb][freq](l2file.dec, l2file.ra, grid=False)
+                signal = simdata.signal[sb][freq](rotated_dec, rotated_ra, grid=False)
+                l2file.tod[:, sb, freq, :] *= (
+                    1 + signal / l2file.Tsys[:, sb, freq, None]
+                )
+
+        # Reading off signal from cube given telescope pointing.
+        # signal = simdata.sim2tod(l2file.ra, l2file.dec)
+
+        # # Injecting signal to TOD
+        # l2file.tod *= 1 + signal / l2file.Tsys[..., None]
