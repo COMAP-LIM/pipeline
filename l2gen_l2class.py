@@ -110,6 +110,14 @@ class level2_file:
 
     def write_level2_data(self, name_extension=""):
         self.acceptrate = np.mean(self.freqmask, axis=(-1))
+        self.sigma0 = np.zeros((self.Nfeeds, self.Nsb, self.Nfreqs))
+        self.chi2 = np.zeros((self.Nfeeds, self.Nsb, self.Nfreqs))
+        self.Ntod_effective = np.zeros((self.Nfeeds))
+        for ifeed in range(self.Nfeeds):
+            self.Ntod_effective[ifeed] = int(np.sum(self.mask_temporal[ifeed]))
+            tod_local = self.tod[ifeed][:,:,self.mask_temporal[ifeed]]
+            self.sigma0[ifeed] = np.std(tod_local[:,:,1:] - tod_local[:,:,:-1], axis=-1)/np.sqrt(2)
+            self.chi2[ifeed] = (np.sum(tod_local**2, axis=-1)/self.sigma0[ifeed]**2 - self.Ntod_effective[ifeed])/np.sqrt(2*self.Ntod_effective[ifeed])
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
@@ -118,8 +126,11 @@ class level2_file:
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
         with h5py.File(temp_outfilename, "w") as f:
             # Hardcoded level2 parameters:
+            if self.params.use_l2_compression:
+                f.create_dataset("tod", (self.Nfeeds, self.Nsb, self.Nfreqs, self.Ntod), chunks=(1,1,1,self.Ntod), data=self.tod, compression="gzip", compression_opts=1, shuffle=True)
+            else:
+                f["tod"] = self.tod
             f["feeds"] = self.feeds
-            f["tod"] = self.tod
             f["time"] = self.tod_times
             f["mjd_start"] = self.tod_times[0]
             f["samprate"] = self.samprate
@@ -136,9 +147,9 @@ class level2_file:
             f["feature"] = self.feature_bit
             f["scanid"] = self.scanid
             f["obsid"] = self.obsid
-            f["sigma0"] = np.std(self.tod[:,:,:,1:] - self.tod[:,:,:,:-1], axis=-1)/np.sqrt(2)
+            f["sigma0"] = self.sigma0
             f["n_nan"] = self.n_nans
-            f["chi2"] = (np.sum(self.tod**2, axis=-1)/f["sigma0"][()]**2 - self.Ntod)/np.sqrt(2*self.Ntod)
+            f["chi2"] = self.chi2
             f["point_cel"] = np.zeros((self.Nfeeds, self.Ntod, 2))
             f["point_cel"][:,:,0] = self.ra
             f["point_cel"][:,:,1] = self.dec
@@ -146,7 +157,6 @@ class level2_file:
             f["point_tel"][:,:,0] = self.az
             f["point_tel"][:,:,1] = self.el
             f["decimation_time"] = 1
-
             f["is_sim"] = self.is_sim
             f["git_hash"] = self.git_hash
 

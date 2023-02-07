@@ -134,6 +134,13 @@ parser.add_argument(
     help="Include a 30 seconds delay in between starting mpi processes, for better initial workload distribution.",
 )
 
+parser.add_argument(
+    "--use_l2_compression",
+    type=str2bool,
+    default=True,
+    help="Use hdf5 GZIP compression when writing the level2 tod data to file."
+)
+
 
 ###### FILTER SETTINGS ######
 ### Gain normalization filter

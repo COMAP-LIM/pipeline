@@ -218,7 +218,7 @@ class Pointing_Template_Subtraction(Filter):
     name = "point"
     name_long = "pointing template subtraction"
 
-    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+    def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
     
@@ -237,9 +237,9 @@ class Pointing_Template_Subtraction(Filter):
                 for sb in range(l2.Nsb):
                     for freq in range(l2.Nfreqs):
                         if l2.scantype == "ces":
-                            if np.isfinite(l2.tod[feed, sb, freq]).all():
-                                _az = l2.az[feed][l2.mask_temporal[feed]]
-                                _tod = l2.tod[feed, sb, freq][l2.mask_temporal[feed]]
+                            _az = l2.az[feed][l2.mask_temporal[feed]]
+                            _tod = l2.tod[feed, sb, freq][l2.mask_temporal[feed]]
+                            if np.isfinite(_tod).all():
                                 (d, c), _ = curve_fit(az_func, _az, _tod, (d, c))
                             else:
                                 d, c = 0, 0
@@ -260,9 +260,12 @@ class Pointing_Template_Subtraction(Filter):
             pointinglib.az_el_fit.argtypes = [float64_array1, float64_array1, float32_array3, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1, float64_array1]
             if l2.scantype == "ces":
                 for ifeed in range(l2.Nfeeds):
+                    _az = np.ascontiguousarray(l2.az[ifeed][l2.mask_temporal[ifeed]])
+                    _tod = np.ascontiguousarray(l2.tod[ifeed][:,:,l2.mask_temporal[ifeed]])
+                    Ntod_effective = _tod.shape[-1]
                     c_est = np.zeros(l2.Nfreqs*l2.Nsb)
                     d_est = np.zeros(l2.Nfreqs*l2.Nsb)
-                    pointinglib.az_fit(l2.az[ifeed], l2.tod[ifeed], l2.Nfreqs*l2.Nsb, l2.Ntod, c_est, d_est)
+                    pointinglib.az_fit(_az, _tod, l2.Nfreqs*l2.Nsb, Ntod_effective, c_est, d_est)
                     c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
                     d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
                     l2.tod[ifeed] -= l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
