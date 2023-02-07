@@ -547,7 +547,6 @@ class Mapmaker:
         Args:
             l2data (L2file): Level 2 file object to perform preprocessing on.
         """
-
         # NOTE: The level2 files will always contain a temporal mask.
         # The following if block is only there to add to this mask if temporal mask
         # keyword is provided in parameter file.
@@ -561,6 +560,7 @@ class Mapmaker:
         sigma0 = np.zeros((20, NSB, NFREQ), dtype=np.float32)
         freqmask = np.zeros((20, NSB, NFREQ), dtype=np.int32)
         pointing = np.zeros((20, NSAMP, 2), dtype=np.float32)
+        temporal_mask = np.zeros((NSAMP, 20), dtype=bool)
 
         # Get index to pixel mapping
         try:
@@ -573,6 +573,7 @@ class Mapmaker:
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
+        temporal_mask[:, pixels] = l2data["mask_temporal"].T
 
         # Check if noise level is above allowed limit
         if np.any(sigma0[sigma0 > 0] < self.radiometer_limits[0]):
@@ -639,6 +640,7 @@ class Mapmaker:
         l2data["tod"] = tod
         l2data["inv_var"] = inv_var
         l2data["freqmask"] = freqmask
+        l2data["mask_temporal"] = temporal_mask
 
         # Found that transposing the pixels here makes the binning
         # faster for some reason

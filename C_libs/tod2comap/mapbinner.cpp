@@ -13,9 +13,9 @@ extern "C" void bin_map(
     int *freqmask,
     int *idx_ra_pix,
     int *idx_dec_pix,
+    bool *mask_temporal,
     float *numerator,
     float *denominator,
-    bool *mask_temporal,
     int nfreq,
     int nfeed,
     int nsamp,
@@ -75,10 +75,10 @@ extern "C" void bin_nhit_and_map(
     int *freqmask,
     int *idx_ra_pix,
     int *idx_dec_pix,
+    bool *mask_temporal,
     int *nhit,
     float *numerator,
     float *denominator,
-    bool *mask_temporal,
     int nfreq,
     int nfeed,
     int nsamp,
@@ -113,6 +113,7 @@ extern "C" void bin_nhit_and_map(
             {
                 continue;
             }
+
             int pixel_index = idx_dec_pix[nfeed * t + d] * nside_ra + idx_ra_pix[nfeed * t + d];
             int feed_px_idx = npix * d + pixel_index;
             int time_det_idx = nsamp * d + t;
