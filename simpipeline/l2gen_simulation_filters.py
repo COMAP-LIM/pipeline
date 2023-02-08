@@ -43,8 +43,6 @@ class Cube2TOD:
         Args:
             l2file (level2_file): Level 2 file object into which signal is injected.
         """
-        # if self.verbose:
-        #     print(f"Scan {l2file.scanid} -- Injecting cube signal into TOD")
 
         # Marking l2file as simulation by setting;
         l2file.is_sim = True
@@ -68,22 +66,18 @@ class Cube2TOD:
             l2file.ra.flatten(), l2file.dec.flatten()
         )
 
+        # Back to original shape {feed, time samples}
         rotated_ra = rotated_ra.reshape(l2file.ra.shape)
         rotated_dec = rotated_dec.reshape(l2file.dec.shape)
 
-        simdata.interpolate_cube(l2file.fieldname)
+        # Interpolating signal cube over equatorial origin grid
+        simdata.interpolate_cube()
 
+        # Evaluating signal at rotated pointing and injecting signal into TOD
         for sb in range(l2file.Nsb):
             for freq in range(l2file.Nfreqs):
 
-                # signal = simdata.signal[sb][freq](l2file.dec, l2file.ra, grid=False)
                 signal = simdata.signal[sb][freq](rotated_dec, rotated_ra, grid=False)
                 l2file.tod[:, sb, freq, :] *= (
                     1 + signal / l2file.Tsys[:, sb, freq, None]
                 )
-
-        # Reading off signal from cube given telescope pointing.
-        # signal = simdata.sim2tod(l2file.ra, l2file.dec)
-
-        # # Injecting signal to TOD
-        # l2file.tod *= 1 + signal / l2file.Tsys[..., None]

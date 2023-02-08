@@ -1,5 +1,5 @@
 import numpy as np
-import numpy.typing as ntyping
+import numpy.typing as npt
 import ctypes
 import time
 import h5py
@@ -807,7 +807,18 @@ class Mapmaker:
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
 
-    def get_temporal_mask(self, l2data: L2file):
+    def get_temporal_mask(self, l2data: L2file) -> npt.NDArray:
+        """Method to use to extend defualt level 2 file mask with for example
+        a directional scan mask or to cut the beginning and end of scans.
+
+        NOTE: This function is not yet finished and thus under construction
+
+        Raises:
+            ValueError: When provided percentile is outside allowed range.
+
+        Returns:
+            npt.NDArray: Additonal temporal mask array.
+        """
         az_percentile = self.params.az_mask_percentile  # Between 0 and 100
 
         if az_percentile > 0.0:
@@ -859,7 +870,14 @@ class Mapmaker:
         mapdata: COmap,
         l2data: L2file,
     ):
+        """Method that takes in a level 2 file object and binned its TOD up into feed maps inside COmap object
 
+        Args:
+            mapdata (COmap): Map object to fill with binned maps.
+            l2data (L2file): Level 2 file object to bin up.
+        """
+
+        # Defining pointers for arrays to send to C++ modules
         float32_array4 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_float, ndim=4, flags="contiguous"
         )  # 4D array 32-bit float pointer object.
@@ -879,14 +897,17 @@ class Mapmaker:
         bool_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_bool, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
-
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
 
+        # If no hit map is needed:
         if self.params.make_no_nhit:
+
             int32_array4 = np.ctypeslib.ndpointer(
                 dtype=ctypes.c_int, ndim=4, flags="contiguous"
             )  # 4D array 32-bit integer pointer object.
             # self.mapbinner.bin_map.argtypes = [
+
+            # Specifying input types and shapes for C++ shared library
             self.mapbinner.bin_nhit_and_map.argtypes = [
                 float32_array3,  # tod
                 float32_array2,  # sigma
@@ -908,11 +929,13 @@ class Mapmaker:
 
             NFEED, NSAMP, NFREQ = l2data["tod"].shape
 
+            # For all split maps to bin:
             for numerator_key in self.maps_to_bin:
                 # Generating map keys
                 denominator_key = re.sub(r"numerator", "denominator", numerator_key)
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
+                # Generating feed-frequency mask for split maps
                 if numerator_key == "numerator_map":
                     freqmask = l2data["freqmask"].copy()
                 else:
@@ -946,6 +969,7 @@ class Mapmaker:
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
+                # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_nhit_and_map(
                     l2data["tod"],
                     l2data["inv_var"],
@@ -965,6 +989,9 @@ class Mapmaker:
                     l2data.id,
                 )
         else:
+            # If we want to make maps and hit maps
+
+            # Specifying input types and shapes for C++ shared library
             self.mapbinner.bin_map.argtypes = [
                 float32_array3,  # tod
                 float32_array2,  # sigma
@@ -988,6 +1015,7 @@ class Mapmaker:
                 # Generating map keys
                 denominator_key = re.sub(r"numerator", "denominator", numerator_key)
 
+                # Generating feed-frequency mask for split maps
                 if numerator_key == "numerator_map":
                     freqmask = l2data["freqmask"].copy()
                 else:
@@ -1020,6 +1048,7 @@ class Mapmaker:
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
+                # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_map(
                     l2data["tod"],
                     l2data["inv_var"],
@@ -1038,65 +1067,34 @@ class Mapmaker:
                 )
 
     def populate_simulation_cube(self, mapdata: COmap):
+        """Method that generates a map file object from a simulation cube object defined by
+        self.params.signal_path
+
+        Args:
+            mapdata (COmap): Map file object to fill with data from simulation cube.
+        """
+
+        # Marking map object as simulation
+        mapdata["is_sim"] = True
+        mapdata["is_simcube"] = True
 
         from l2_simulations import SimCube
 
-        NFEED, NSIDEBAND, NCHANNEL, NDEC, NRA = mapdata["map"].shape
+        NFEED, NSIDEBAND, _, NDEC, NRA = mapdata["map"].shape
 
+        # Simulation cube object to fill map object with
         simdata = SimCube(self.params.signal_path)
+
         # Reading simulation cube data from file
         simdata.read()
 
         # Defining simulation cube geometry using standard geometies and boost signal
         simdata.prepare_geometry(self.fieldname, self.params.boost_factor)
 
-        # Get pixel center meshgrid from target standard geometry
-        dec_grid, ra_grid = np.rad2deg(mapdata.standard_geometry.posmap())
-
-        # Euler rotaion of telescope pointing to equatorial origin
-        ra_grid_rotated, dec_grid_rotated = simdata.rotate_pointing_to_equator(
-            ra_grid.flatten(),
-            dec_grid.flatten(),
-        )
-
-        simdata.interpolate_cube(self.fieldname)
-
         NCHANNEL_sim = simdata.simdata.shape[1]
 
-        signal = np.zeros((NSIDEBAND, NCHANNEL_sim, NDEC, NRA))
-
-        for sb in range(NSIDEBAND):
-            for channel in range(NCHANNEL_sim):
-                signal[sb, channel, :, :] = simdata.signal[sb][channel](
-                    dec_grid_rotated, ra_grid_rotated, grid=False
-                ).reshape(NDEC, NRA)
-
-        # cube = {}
-        # with h5py.File(self.params.signal_path, "r") as infile:
-        #     cube["simulation"] = infile["simulation"][()]
-
-        # signal = cube["simulation"]
-
-        # _, NCHANNEL_sim, NDEC_sim, NRA_sim = signal.shape
-
-        # Marking map object as simulation
-        mapdata["is_sim"] = True
-        mapdata["is_simcube"] = True
-
-        # NDOWNSAMPLE_RA = NRA_sim // NRA
-        # NDOWNSAMPLE_DEC = NDEC_sim // NDEC
-        # NDOWNSAMPLE_CHANNEL = NCHANNEL_sim // NCHANNEL
-
-        # # Adapting cube to map resolution
-        # signal = signal.reshape(
-        #     NSIDEBAND,
-        #     NCHANNEL,
-        #     NDOWNSAMPLE_CHANNEL,
-        #     NDEC,
-        #     NDOWNSAMPLE_DEC,
-        #     NRA,
-        #     NDOWNSAMPLE_RA,
-        # ).mean((2, 4, 6))
+        # Rotate and bin up simulation cube data to target map geometry
+        signal = simdata.bin_cube2field_geometry(mapdata.standard_geometry)
 
         # Adapting cube to map frequency resolution
         signal = signal.reshape(
@@ -1107,17 +1105,16 @@ class Mapmaker:
             NRA,
         ).mean((2))
 
-        # From muK to K and optional signal boost
-        # signal *= 1e-6 * self.params.boost_factor
-
         # Asigning map datasets
         mask = np.isfinite(mapdata["map_coadd"])
         mapdata["map_coadd"][mask] = signal[mask]
 
+        # Filling feed maps with simulation data
         for i in range(NFEED):
             mask = np.isfinite(mapdata["map"][i, ...])
             mapdata["map"][i][mask] = signal[mask]
 
+        # Fillinf split maps with simulation data
         if self.perform_splits:
             for key in mapdata.keys:
                 if "multisplits" in key and "map" in key:
