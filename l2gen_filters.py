@@ -1596,6 +1596,7 @@ class Mask_Az_Edges(Filter):
     name_long = "Azimuth edge cut"
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
+        self.params = params
 
     def run(self, l2):
         # az_mask = np.ones_like(l2.az, dtype=bool)
@@ -1625,8 +1626,8 @@ class Mask_Az_Edges(Filter):
                 i += 1
             for i in range(len(starts)):
                 extreme_idx = np.argmax(az_diff[starts[i]:stops[i]])
-                cut_start = extreme_idx - 25 + starts[i]
-                cut_stop = extreme_idx + 25 + starts[i]
+                cut_start = extreme_idx - self.params.az_edges_mask_size + starts[i]
+                cut_stop = extreme_idx + self.params.az_edges_mask_size + starts[i]
                 cut_start = max(0, cut_start)
                 cut_stop = min(l2.Ntod, cut_stop)
                 # cut_length = cut_stop - cut_start
