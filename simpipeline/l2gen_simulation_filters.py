@@ -65,8 +65,6 @@ class Cube2TOD:
         # Setting up simulation cube object
         simdata = SimCube(self.simpath)
 
-        import time 
-
         # Reading simulation cube data from file
         simdata.read()
         # print("Time read cube:", time.perf_counter() - t0, "s")
