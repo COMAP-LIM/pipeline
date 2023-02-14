@@ -36,8 +36,9 @@ class Normalize_Gain_Gaussian(Filter):
     name_long = "normalization_gaussian"
     
     def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        self.params = params
         self.deci_factor = 20
-        self.gauss_width_lowres = 40
+        self.gauss_width_lowres = (self.params.gain_norm_gauss_sigma_seconds*50)//self.deci_factor
     
     def run(self, l2):
         N_lowres = math.ceil(l2.Ntod/self.deci_factor)
@@ -88,6 +89,49 @@ class Normalize_Gain_Mean(Filter):
 class Normalize_Gain(Filter):
     name = "norm"
     name_long = "normalization"
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        self.use_ctypes = use_ctypes
+        self.omp_num_threads = omp_num_threads
+        self.fknee = params.gain_norm_fknee
+        self.alpha = params.gain_norm_alpha
+    
+    def lowpass_filter(self, signal, mask, fknee=0.01, alpha=4.0, samprate=50, num_threads=2):
+        """ Applies a lowpass filter to a signal, and returns the low-frequency result (same shape as input).
+            Assumes signal is of shape [freq, time]. Frequencies are calculated entirely independently.
+            Uses weighting at the edges to deal with periodicity requirements.
+        """
+        Ntod = signal.shape[-1]
+        Nfreq = signal.shape[0]
+        fastlen = next_fast_len(int(1.5*Ntod))
+
+        center_slice = slice(int(0.25*Ntod), int(1.25*Ntod))
+        signal_padded = np.zeros((Nfreq, fastlen))
+        mask_padded = np.zeros((fastlen))
+        signal_padded[:,center_slice] = signal
+        mask_padded[center_slice][mask] = 1.0
+
+        freq_padded = rfftfreq(fastlen)*samprate
+        W = 1.0/(1 + (freq_padded/fknee)**alpha)
+
+        signal_padded = irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads)
+        mask_padded = irfft(rfft(mask_padded, workers=num_threads)*W, workers=num_threads)
+        signal_padded /= mask_padded[None,:]
+        return signal_padded[:,center_slice]
+        
+
+    def run(self, l2):
+        if not self.use_ctypes:
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    tod_lowpass = self.lowpass_filter(l2.tod[ifeed, isb], l2.mask_temporal[ifeed], num_threads=self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    l2.tod[ifeed,isb] = l2.tod[ifeed,isb]/tod_lowpass - 1
+            del(tod_lowpass)
+
+
+
+class Normalize_Gain_Old(Filter):
+    name = "norm_old"
+    name_long = "normalization_old"
 
     def __init__(self, params, use_ctypes=False, omp_num_threads=2):
         self.use_ctypes = use_ctypes

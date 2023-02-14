@@ -165,6 +165,13 @@ parser.add_argument(
     help="(norm) PS slope of gain normalization.",
 )
 
+parser.add_argument(
+    "--gain_norm_gauss_sigma_seconds",
+    type=int,
+    default=16,
+    
+)
+
 ### Polynomial filter
 # parser.add_argument("--polyorder",          type=int,   default=1,      help="(unused)(poly) Order of the frequency polynomial to be subtracted.")
 
