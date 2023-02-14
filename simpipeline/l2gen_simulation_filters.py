@@ -84,18 +84,18 @@ class Cube2TOD:
         # Defining pointers for arrays to send to C++ modules
         float32_array4 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_float, ndim=4, flags="contiguous"
-        )  # 4D array 32-bit float pointer object.
+        )  
         float64_array4 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_double, ndim=4, flags="contiguous"
-        )  # 3D array 32-bit float pointer object.
+        )  
 
         float64_array3 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_double, ndim=3, flags="contiguous"
-        )  # 2D array 32-bit float pointer object.
+        )  
 
         float64_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_double, ndim=2, flags="contiguous"
-        )  # 2D array 32-bit float pointer object.
+        )  
 
         self.injector.cube2tod.argtypes = [
                         float32_array4,  # tod
