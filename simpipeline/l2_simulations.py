@@ -62,29 +62,6 @@ class SimCube:
 
         return ra_centers, dec_centers
 
-    def interpolate_cube(self):
-        """Methode that computes a cubic spline of the rectangular simulation grid."""
-
-        # Right ascention and declination bin edges to bin centers
-        ra = self._data["x"]
-        dec = self._data["y"]
-        ra, dec = self.get_bin_centers(ra, dec)
-
-        simdata = self._data["simulation"]
-
-        # Empty array to fill up with callable interpolation functions for each frequency
-        self.signal = [[] for _ in range(simdata.shape[0])]
-
-        # Generating all interpolation slices
-        for sb in range(simdata.shape[0]):
-            for channel in range(simdata.shape[1]):
-
-                interpolation = interp.RectBivariateSpline(
-                    dec, ra, simdata[sb, channel, :, :]
-                )
-
-                self.signal[sb].append(interpolation)
-
     def rotate_pointing_to_equator(
         self, ra: npt.NDArray, dec: npt.NDArray
     ) -> tuple[npt.NDArray, npt.NDArray]:
