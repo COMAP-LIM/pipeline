@@ -560,7 +560,7 @@ class Mapmaker:
         sigma0 = np.zeros((20, NSB, NFREQ), dtype=np.float32)
         freqmask = np.zeros((20, NSB, NFREQ), dtype=np.int32)
         pointing = np.zeros((20, NSAMP, 2), dtype=np.float32)
-        temporal_mask = np.zeros((NSAMP, 20), dtype=bool)
+        temporal_mask = np.ones((NSAMP, 20), dtype=bool)
 
         # Get index to pixel mapping
         try:
@@ -573,7 +573,10 @@ class Mapmaker:
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
-        temporal_mask[:, pixels] = l2data["mask_temporal"].T
+        try:
+            temporal_mask[:, pixels] = l2data["mask_temporal"].T
+        except:
+            pass
 
         # Check if noise level is above allowed limit
         if np.any(sigma0[sigma0 > 0] < self.radiometer_limits[0]):
