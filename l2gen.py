@@ -49,7 +49,7 @@ class l2gen_runner:
     def run(self):
         self.comm.Barrier()
         Nscans = len(self.runlist)
-        if len(Nscans) == 0:
+        if Nscans == 0:
             if self.rank == 0:
                 print(f"No unprocessed scans in runlist. Exiting.")
             return
