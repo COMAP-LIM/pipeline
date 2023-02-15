@@ -1,67 +1,76 @@
-from transfer_function_utils import (
-    get_1D_TF,
-    get_2D_TF,
-    PS_plotter,
-    plot_two_TFs_and_diff,
-)
+import argparse
+from TransferFunction import TransferFunction
+import warnings
+
+# Ignore RuntimeWarning
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+import os
+import sys
+import git
+from copy import deepcopy
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+
+sys.path.append(parent_directory)
 
 
-# simpath = "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_freq_april2022_small_sim_simcube.h5"
-# mappath = (
-#     "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_freq_april2022_small_sim.h5"
-# )
-# noisepath = (
-#     "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_freq_april2022_small.h5"
-# )
-
-# # Plot PS and TF:
-# outputplot = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/figs/tf_python_freqfilter_april2022_small.pdf"
+class COmap2TF():
+    def __init__(self):
+        self.read_params()
 
 
-# PS_plotter(simpath, mappath, noisepath, outname=outputplot)
+    def read_params(self):
+        from l2gen_argparser import parser, LoadFromFile
+        
+        params, _ = parser.parse_known_args()
 
-simpath_1 = "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_poly_april2022_small_sim_simcube.h5"
-mappath_1 = (
-    "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_poly_april2022_small_sim.h5"
-)
-noisepath_1 = (
-    "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_poly_april2022_small.h5"
-)
+        parser_sim = deepcopy(parser)
 
-simpath_2 = "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_freq_april2022_small_sim_simcube.h5"
-mappath_2 = (
-    "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_freq_april2022_small_sim.h5"
-)
-noisepath_2 = (
-    "/mn/stornext/d22/cmbco/comap/protodir/maps/co2_python_freq_april2022_small.h5"
-)
+        parser_sim.add_argument(
+        "-P"
+        "--params_sim",
+        type=open,
+        action=LoadFromFile,
+        help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.",
+        )
 
-# Plot PS and TF:
-outputplot = "/mn/stornext/d22/cmbco/comap/nils/COMAP_general/figs/tf_python_poly_freqfilter_diff_april2022_small.pdf"
+        params_sim = parser_sim.parse_args()
+        
+        if not params.map_name or not params_sim.map_name:
+            raise ValueError(
+                "A map file name must be specified in parameter file or terminal."
+            )
 
 
-plot_two_TFs_and_diff(
-    simpath_1, mappath_1, noisepath_1, simpath_2, mappath_2, noisepath_2, outputplot
-)
+        self.params = params
+        self.params_sim = params_sim
+    
+    def run(self):
+        with open(self.params.runlist) as runlist:
+            fieldname = runlist.readlines()[1].split()[0]
 
-"""
-# Generate HDF5 file with TF(k) in 1D:
+        with open(self.params_sim.runlist) as runlist:
+            fieldname_sim = runlist.readlines()[1].split()[0]
 
-TF, k = get_1D_TF(simpath, mappath, noisepath)
+        if fieldname != fieldname_sim:
+            raise ValueError("Cannot compute transfer function from two maps of different fields.")
 
-dfile = h5py.File("TF_1d.h5", "a")
+        simpath = os.path.join(self.params_sim.map_dir, f"{fieldname}_{self.params_sim.map_name}_simcube.h5")
+        mappath = os.path.join(self.params_sim.map_dir, f"{fieldname}_{self.params_sim.map_name}.h5")
+        noisepath = os.path.join(self.params.map_dir, f"{fieldname}_{self.params.map_name}.h5")
 
-dfile.create_dataset("TF", data = TF)
-dfile.create_dataset("k", data = k)
-dfile.close()
+        mappaths = [simpath, mappath, noisepath]
 
-# Generate HDF5 file with TF(k) in 1D:
+        tf = TransferFunction(mappaths=mappaths)
+        tf.compute_transfer_function()
 
-TF, k = get_2D_TF(simpath, mappath, noisepath)
 
-dfile = h5py.File("TF_2d.h5", "a")
+        
+def main():
+    comap2tf = COmap2TF()
+    comap2tf.run()
 
-dfile.create_dataset("TF", data = TF)
-dfile.create_dataset("k", data = k)
-dfile.close()
-"""
+if __name__ == "__main__":
+    main()

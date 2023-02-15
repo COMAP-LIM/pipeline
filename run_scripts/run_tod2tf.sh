@@ -24,7 +24,10 @@ Help()
 pipeline_root_dir="$(cd ../;pwd)"
 
 # Path to accept_mod.py 
-accept_mod_path="/mn/stornext/d22/cmbco/comap/protodir/accept_mod/"
+accept_mod_path="/mn/stornext/d22/cmbco/comap/protodir/accept_mod"
+
+# Path to cross-spectrum code
+fpxs_path="/mn/stornext/d22/cmbco/comap/nils/COMAP_XS"
 
 # Defualt use ony 1 process
 MPI_NUM_PROC_L2GEN=1 
@@ -36,8 +39,11 @@ OMP_NUM_PROC_TOD2COMAP=1
 # By default no new level 2 dataset will be produces as we usually have these laying around
 new_l2_data=false
 
+# Whether to run end-to-end test or not
+run_end2end=false
+
 # Process command line input
-ARGS=$(getopt -a --options N:n:M:m:p:P:h --long "MPIl2gen:,MPItod2comap:,OMPl2gen:,OMPtod2comap:,paramsl2:,params:,help" -- "$@")
+ARGS=$(getopt -a --options N:n:M:m:p:P:eh --long "MPIl2gen:,MPItod2comap:,OMPl2gen:,OMPtod2comap:,paramsl2:,params:,e2e,help" -- "$@")
 eval set -- "$ARGS"
 
 while true; do
@@ -67,6 +73,10 @@ while true; do
         new_l2_data=true
         shift;;
 
+        -e|--e2e) 
+        run_end2end=true
+        shift;;
+
         -h|--help) 
         Help
         shift;;
@@ -82,12 +92,23 @@ done
 # If to produce new level 2 dataset to use as base for simulation run. NOTE: this needs seperate parameter file input.
 if [[ "$new_l2_data" == "true" ]]; then
     export OMP_NUM_THREADS=$OMP_NUM_PROC_L2GEN;mpirun -bind-to none -n $MPI_NUM_PROC_L2GEN  python $pipeline_root_dir/l2gen.py -p $PARAMSL2
-    export OMP_NUM_THREADS=$OMP_NUM_PROC_TOD2COMAP;mpirun -bind-to none -n $MPI_NUM_PROC_TOD2COMAP  python $pipeline_root_dir/tod2comap/tod2comap.py -p $PARAMSL2
+    
     python $accept_mod_path/accept_mod_python_old.py -p $PARAMSL2
+    
+    export OMP_NUM_THREADS=$OMP_NUM_PROC_TOD2COMAP;mpirun -bind-to none -n $MPI_NUM_PROC_TOD2COMAP  python $pipeline_root_dir/tod2comap/tod2comap.py -p $PARAMSL2
+    
+    if [[ "$run_e2e" == "true" ]]; then
+        python $fpxs_path/xs_script.py -p $PARAMSL2
+    fi
 fi
 
 # Perform simulation run
 export OMP_NUM_THREADS=$OMP_NUM_PROC_L2GEN;mpirun -bind-to none -n $MPI_NUM_PROC_L2GEN  python $pipeline_root_dir/l2gen.py -p $PARAMS
 export OMP_NUM_THREADS=$OMP_NUM_PROC_TOD2COMAP;mpirun -bind-to none -n $MPI_NUM_PROC_TOD2COMAP  python $pipeline_root_dir/tod2comap/tod2comap.py -p $PARAMS
+
+if [[ "$run_e2e" == "true" ]]; then
+    python $fpxs_path/xs_script.py -p $PARAMS
+fi
+
     
 
