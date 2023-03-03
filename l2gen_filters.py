@@ -1742,3 +1742,29 @@ class Mask_Az_Edges(Filter):
                 # az_mask[ifeed,cut_start:cut_stop] = False
         # l2.tofile_dict["az_edge_mask"] = az_mask
         # l2.az_mask = az_mask
+
+
+
+class Highpass(Filter):
+    name = "highpass"
+    name_long = "Highpass"
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.params = params
+        self.highpass_fknee = 0.1  # Hz
+        self.highpass_alpha = 8.0
+
+    def run(self, l2):
+        data_padded = np.zeros((l2.Nfreqs,3*l2.Ntod))
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                data_padded[:,l2.Ntod:2*l2.Ntod] = l2.tod[ifeed,isb]
+                weights = np.linspace(1, 0, 100)
+                data_padded[:,:l2.Ntod] = -l2.tod[ifeed,isb,:,::-1] + 2*np.average(l2.tod[ifeed,isb,:,:100], weights=weights, axis=-1)[:,None]
+                data_padded[:,2*l2.Ntod:] = -l2.tod[ifeed,isb,:,::-1] + 2*np.average(l2.tod[ifeed,isb,:,-100:], weights=weights[::-1], axis=-1)[:,None]
+                
+                freq_padded = rfftfreq(3*l2.Ntod)*l2.samprate
+                W = 1.0/(1 + (freq_padded/self.highpass_fknee)**self.highpass_alpha)
+                lowpass = irfft(rfft(data_padded)*W)[:,l2.Ntod:2*l2.Ntod]
+                
+                l2.tod[ifeed,isb] -= lowpass
