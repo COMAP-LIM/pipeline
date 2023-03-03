@@ -30,6 +30,59 @@ class Filter:
         pass
 
 
+class Subtract_Start_Exponential(Filter):
+    name = "start_exp"
+    name_long ="subtract_start_exponential"
+    
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        self.params = params
+        
+    def run(self, l2):
+        def exp_func(time, amp, offset):
+            decay_time = self.params.start_exponential_decay_time  # Seconds
+            return amp/np.exp(time/decay_time) + offset
+
+        if True:
+            l2.tofile_dict["start_exp_solutions"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 4))
+            time = np.linspace(0, (l2.Ntod-1)/l2.samprate, l2.Ntod)
+            B = np.zeros((l2.Ntod, 4))
+            B[:,0] = np.ones(l2.Ntod)
+            B[:,1] = np.linspace(0, 1, l2.Ntod)
+            B[:,2] = exp_func(time, 1.0, 0.0)
+            B[:,3] = B[:,2]*time
+            B /= np.linalg.norm(B, axis=0)
+            N_inv = 1.0/np.ones((l2.Ntod))
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    for ifreq in range(l2.Nfreqs):
+                        if l2.freqmask[ifeed,isb,ifreq]:
+                            d = l2.tod[ifeed,isb,ifreq,:]
+                            N_inv_d = ifft(N_inv*fft(d)).real
+                            BT_N_inv_d = B.T.dot(N_inv_d)
+                            BT_N_inv_B_inv = np.linalg.inv(B.T.dot(fft(N_inv[:,None]*ifft(B))).real)
+                            a = BT_N_inv_B_inv.dot(BT_N_inv_d)
+                            l2.tod[ifeed,isb,ifreq] -= B[:,2]*a[2] + B[:,3]*a[3]  # Subtract exponential part only.
+                            l2.tofile_dict["start_exp_solutions"][ifeed,isb,ifreq] = a
+
+        else:
+            self.start_exp_amp = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            self.start_exp_offset = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            time = np.linspace(0, 4999/50, 5000)
+            time_long = np.linspace(0, 9999/50, 10000)
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    for ifreq in range(l2.Nfreqs):
+                        if l2.freqmask[ifeed,isb,ifreq]:
+                            try:
+                                (amp, offset), pcov = curve_fit(exp_func, time, l2.tod[ifeed,isb,ifreq,:5000], maxfev=20000, p0=(0, np.nanmean(l2.tod[ifeed,isb,ifreq,:5000])))
+                                l2.tod[ifeed,isb,ifreq,:10000] -= exp_func(time_long, amp, 0)
+                                self.start_exp_amp[ifeed,isb,ifreq] = amp
+                                self.start_exp_offset[ifeed,isb,ifreq] = offset
+                            except:
+                                pass  # curve_fit throws an error if it doesn't converge.
+            l2.tofile_dict["start_exp_amp"] = self.start_exp_amp
+            l2.tofile_dict["start_exp_offset"] = self.start_exp_offset
+
 
 class Normalize_Gain_Gaussian(Filter):
     name = "norm3"

@@ -143,6 +143,15 @@ parser.add_argument(
 
 
 ###### FILTER SETTINGS ######
+### Start-of-scan exponential subtraction filter
+parser.add_argument(
+    "--start_exponential_decay_time",
+    type=float,
+    default=19.2,
+    help="(start_exp) Decay time ('mean lifetime') of exponential fitted and subtracted at the start of scans."
+)
+
+
 ### Azimuth edge masking filter
 parser.add_argument(
     "--az_edges_mask_size",
