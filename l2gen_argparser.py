@@ -154,10 +154,16 @@ parser.add_argument(
 
 ### Azimuth edge masking filter
 parser.add_argument(
-    "--az_edges_mask_size",
+    "--az_edges_mask_size_before",
     type=int,
     default=25,
-    help="(az-mask) How many TOD time samples to mask at the azimuth extremes."
+    help="(az-mask) How many TOD time samples to mask at the azimuth extremes, before turnaround."
+)
+parser.add_argument(
+    "--az_edges_mask_size_after",
+    type=int,
+    default=25,
+    help="(az-mask) How many TOD time samples to mask at the azimuth extremes, after turnaround."
 )
 
 ### Gain normalization filter

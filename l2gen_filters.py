@@ -166,8 +166,8 @@ class Normalize_Gain(Filter):
         freq_padded = rfftfreq(fastlen)*samprate
         W = 1.0/(1 + (freq_padded/fknee)**alpha)
 
-        signal_padded = irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads)
-        mask_padded = irfft(rfft(mask_padded, workers=num_threads)*W, workers=num_threads)
+        signal_padded = irfft(rfft(signal_padded)*W)
+        mask_padded = irfft(rfft(mask_padded)*W)            
         signal_padded /= mask_padded[None,:]
         return signal_padded[:,center_slice]
         
@@ -1723,8 +1723,8 @@ class Mask_Az_Edges(Filter):
                 i += 1
             for i in range(len(starts)):
                 extreme_idx = np.argmax(az_diff[starts[i]:stops[i]])
-                cut_start = extreme_idx - self.params.az_edges_mask_size + starts[i]
-                cut_stop = extreme_idx + self.params.az_edges_mask_size + starts[i]
+                cut_start = extreme_idx - self.params.az_edges_mask_size_before + starts[i]
+                cut_stop = extreme_idx + self.params.az_edges_mask_size_after + starts[i]
                 cut_start = max(0, cut_start)
                 cut_stop = min(l2.Ntod, cut_stop)
                 # cut_length = cut_stop - cut_start
