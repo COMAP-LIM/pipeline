@@ -223,7 +223,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_pca_comp",
     type=int,
-    default=8,
+    default=12,
     help="(pca) Number of feed-global PCA components to be subtracted.",
 )
 
