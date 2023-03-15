@@ -138,7 +138,7 @@ def main():
     mymap_clean = pca_sub.compute_pca(norm=rmsnorm)
 
     # Writing cleaned map data to file
-    mymap_clean.write_map(outpath=outpath, save_fits=True, save_hdf5=True)
+    mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True)
 
     if save_reconstruction:
         pca_sub.overwrite_maps_with_reconstruction()

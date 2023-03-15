@@ -330,6 +330,11 @@ class Mapmaker:
         # File name of full coadded output map
         full_map_name = f"{self.fieldname}_{self.params.map_name}.h5"
         full_map_name = os.path.join(self.params.map_dir, full_map_name)
+        
+        if os.path.exists(full_map_name):
+            if self.rank == 0:
+                print("Map already exists. Please delete or rename existing map to make new one.")
+            sys.exit() 
 
         # Define and initialize empty map object to acumulate data
         full_map = COmap(full_map_name)
@@ -1118,10 +1123,10 @@ class Mapmaker:
             mask = np.isfinite(mapdata["map"][i, ...])
             mapdata["map"][i][mask] = signal[mask]
 
-        # Fillinf split maps with simulation data
+        # Fill in split maps with simulation data
         if self.perform_splits:
             for key in mapdata.keys:
-                if "multisplits" in key and "map" in key:
+                if "/" in key and "map" in key:
                     for i in range(NFEED):
                         mask = np.isfinite(mapdata[key][i, ...])
                         mapdata[key][i][mask] = signal[mask]
