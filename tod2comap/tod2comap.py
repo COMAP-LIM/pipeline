@@ -120,8 +120,9 @@ class Mapmaker:
                     if file[-3:] == ".h5" or file[-4:] == ".hd5":
                         if (
                             len(file) == 16 or len(file) == 17
-                        ):  # In order to not catch the intermediate debug files.
-                            existing_scans.append(int(file.split(".")[0].split("_")[1]))
+                        ):
+                            if file[0] != ".":  # In order to not catch the intermediate debug files.
+                                existing_scans.append(int(file.split(".")[0].split("_")[1]))
 
         with open(self.params.runlist) as my_file:
             lines = [line.split() for line in my_file]
