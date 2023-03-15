@@ -30,6 +30,59 @@ class Filter:
         pass
 
 
+class Subtract_Start_Exponential(Filter):
+    name = "start_exp"
+    name_long ="subtract_start_exponential"
+    
+    def __init__(self, params, use_ctypes=False, omp_num_threads=2):
+        self.params = params
+        
+    def run(self, l2):
+        def exp_func(time, amp, offset):
+            decay_time = self.params.start_exponential_decay_time  # Seconds
+            return amp/np.exp(time/decay_time) + offset
+
+        if True:
+            l2.tofile_dict["start_exp_solutions"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 4))
+            time = np.linspace(0, (l2.Ntod-1)/l2.samprate, l2.Ntod)
+            B = np.zeros((l2.Ntod, 4))
+            B[:,0] = np.ones(l2.Ntod)
+            B[:,1] = np.linspace(0, 1, l2.Ntod)
+            B[:,2] = exp_func(time, 1.0, 0.0)
+            B[:,3] = B[:,2]*time
+            B /= np.linalg.norm(B, axis=0)
+            N_inv = 1.0/np.ones((l2.Ntod))
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    for ifreq in range(l2.Nfreqs):
+                        if l2.freqmask[ifeed,isb,ifreq]:
+                            d = l2.tod[ifeed,isb,ifreq,:]
+                            N_inv_d = ifft(N_inv*fft(d)).real
+                            BT_N_inv_d = B.T.dot(N_inv_d)
+                            BT_N_inv_B_inv = np.linalg.inv(B.T.dot(fft(N_inv[:,None]*ifft(B))).real)
+                            a = BT_N_inv_B_inv.dot(BT_N_inv_d)
+                            l2.tod[ifeed,isb,ifreq] -= B[:,2]*a[2] + B[:,3]*a[3]  # Subtract exponential part only.
+                            l2.tofile_dict["start_exp_solutions"][ifeed,isb,ifreq] = a
+
+        else:
+            self.start_exp_amp = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            self.start_exp_offset = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            time = np.linspace(0, 4999/50, 5000)
+            time_long = np.linspace(0, 9999/50, 10000)
+            for ifeed in range(l2.Nfeeds):
+                for isb in range(l2.Nsb):
+                    for ifreq in range(l2.Nfreqs):
+                        if l2.freqmask[ifeed,isb,ifreq]:
+                            try:
+                                (amp, offset), pcov = curve_fit(exp_func, time, l2.tod[ifeed,isb,ifreq,:5000], maxfev=20000, p0=(0, np.nanmean(l2.tod[ifeed,isb,ifreq,:5000])))
+                                l2.tod[ifeed,isb,ifreq,:10000] -= exp_func(time_long, amp, 0)
+                                self.start_exp_amp[ifeed,isb,ifreq] = amp
+                                self.start_exp_offset[ifeed,isb,ifreq] = offset
+                            except:
+                                pass  # curve_fit throws an error if it doesn't converge.
+            l2.tofile_dict["start_exp_amp"] = self.start_exp_amp
+            l2.tofile_dict["start_exp_offset"] = self.start_exp_offset
+
 
 class Normalize_Gain_Gaussian(Filter):
     name = "norm3"
@@ -113,8 +166,8 @@ class Normalize_Gain(Filter):
         freq_padded = rfftfreq(fastlen)*samprate
         W = 1.0/(1 + (freq_padded/fknee)**alpha)
 
-        signal_padded = irfft(rfft(signal_padded, workers=num_threads)*W, workers=num_threads)
-        mask_padded = irfft(rfft(mask_padded, workers=num_threads)*W, workers=num_threads)
+        signal_padded = irfft(rfft(signal_padded)*W)
+        mask_padded = irfft(rfft(mask_padded)*W)            
         signal_padded /= mask_padded[None,:]
         return signal_padded[:,center_slice]
         
@@ -835,29 +888,39 @@ class PCA_filter(Filter):
     
     def run(self, l2, masking_run=False):
         if not self.use_ctypes:
-            self.max_pca_comp = 4
             pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
-            # pca_comp = np.zeros((self.N_pca_modes, l2.Ntod))
             N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
-            M = l2.tod.reshape(N, l2.Ntod)
-            M = M[l2.freqmask.reshape(N), :]
+            P = l2.Ntod
+            M = l2.tod.reshape(N, P)
+            M = M[l2.freqmask.flatten(), :]
             M[~np.isfinite(M)] = 0
             M = M[np.sum(M != 0, axis=-1) != 0]
-            if M.shape[0] > 4:
-                pca = PCA(n_components=4, random_state=49)
+            if M.shape[0] > 20:
+                pca = PCA(n_components=self.max_pca_comp, random_state=49)
                 comps = pca.fit_transform(M.T)
+                singular_values = pca.singular_values_
                 del(pca)
             else:
-                comps = np.zeros((l2.Ntod, self.max_pca_comp))
-            del(M)
+                comps = np.zeros((P, self.max_pca_comp))
+                singular_values = np.zeros((self.max_pca_comp))
             for i in range(self.max_pca_comp):
                 comps[:,i] /= np.linalg.norm(comps[:,i])
+
+            N_actual = np.sum(M.shape[0])
+            sigma0 = 1.0/np.sqrt(1.0/50*(2e9/1024))
+            lambda_threshold = (np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
+            self.n_pca_comp = np.sum(singular_values**2 > lambda_threshold)
+            comps = comps[:,:self.n_pca_comp]
+            del(M)
+
             for ifeed in range(l2.Nfeeds):
                 ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
-                pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-            l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+                pca_ampl[:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
+            l2.tofile_dict["pca_ampl"] = pca_ampl[:self.n_pca_comp]#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
             l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
+            l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
+            l2.tofile_dict["pca_eigvals"] = singular_values[:self.n_pca_comp]**2
         else:
             pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             pca_comp = np.zeros((self.max_pca_comp, l2.Ntod))
@@ -970,12 +1033,14 @@ class PCA_feed_filter(Filter):
     
     def run(self, l2, masking_run=False):
         self.N_deci_freqs = l2.Nfreqs//self.deci_factor
-        self.max_pca_comp = 4
 
-        pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
-        pca_comp = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Ntod))
-
+        l2.tofile_dict["pca_feed_ampl"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+        l2.tofile_dict["pca_feed_comp"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Ntod))
+        l2.tofile_dict["n_pca_feed_comp"] = np.zeros((l2.Nfeeds), dtype=int)
+        l2.tofile_dict["pca_feed_eigvals"] = np.zeros((l2.Nfeeds, self.max_pca_comp))
+        
         N = l2.Nsb*self.N_deci_freqs
+        P = l2.Ntod
         
         if masking_run and self.params.write_C_matrix:
             l2.tofile_dict["C_template_pcaf"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs, 2*l2.Nfreqs))
@@ -986,27 +1051,37 @@ class PCA_feed_filter(Filter):
             weight = 1.0/l2.Tsys
             weight[~l2.freqmask] = 0.0
             for ifeed in range(l2.Nfeeds):
-                M = np.zeros((N, l2.Ntod))
+                M = np.zeros((N, P))
                 for isb in range(l2.Nsb):
                     for ifreq in range(self.N_deci_freqs):
                         i = isb*self.N_deci_freqs + ifreq
                         M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
                         w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                         M[i,:] /= w
-                        M[i,:] /= (16.0/np.sqrt(w))
+                        M[i,:] /= (self.deci_factor/np.sqrt(w))
                 M[~np.isfinite(M)] = 0
-                M = M[np.sum(M != 0, axis=-1) != 0]
-                if M.shape[0] < 4:
+                M = M[(M != 0).any(axis=1)]
+                if M.shape[0] < 10:  # Very few channels remaining
                     continue
-                pca = PCA(n_components=4, random_state=21)
+                pca = PCA(n_components=self.max_pca_comp, random_state=21)
                 comps = pca.fit_transform(M.T)
-                del(M, pca)
+                singular_values = pca.singular_values_
                 for i in range(self.max_pca_comp):
                     comps[:,i] /= np.linalg.norm(comps[:,i])
+                N_actual = M.shape[0]
+                sigma0 = np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2)
+                sigma0 = np.nanmean(sigma0)
+                lambda_threshold = 1.0*(np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
+                self.n_pca_comp = np.sum(singular_values**2 > lambda_threshold)
+                comps = comps[:,:self.n_pca_comp]
+                del(M, pca)
+                
                 ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
-                pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
-                pca_comp[:,ifeed] = np.transpose(comps, (1,0))
+                l2.tofile_dict["pca_feed_ampl"][:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
+                l2.tofile_dict["pca_feed_comp"][:self.n_pca_comp,ifeed] = np.transpose(comps, (1,0))
+                l2.tofile_dict["n_pca_feed_comp"][ifeed] = self.n_pca_comp
+                l2.tofile_dict["pca_feed_eigvals"][ifeed, :self.n_pca_comp] = singular_values[:self.n_pca_comp]**2
         else:
             t0 = time.time()
             n = l2.Nsb*l2.Nfreqs
@@ -1032,7 +1107,7 @@ class PCA_feed_filter(Filter):
             self.n_pca_comp = np.zeros(l2.Nfeeds, dtype=int)
             for ifeed in range(l2.Nfeeds):
                 for icomp in range(self.max_pca_comp):
-                    M = np.zeros((N, l2.Ntod), dtype=np.float32)
+                    M = np.zeros((N, p), dtype=np.float32)
                     mask = np.zeros((N), dtype=bool)
                     for isb in range(l2.Nsb):
                         for ifreq in range(self.N_deci_freqs):
@@ -1040,23 +1115,21 @@ class PCA_feed_filter(Filter):
                             M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
                             w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
                             M[i,:] /= w
-                            M[i,:] /= (16.0/np.sqrt(w))
+                            M[i,:] /= (self.deci_factor/np.sqrt(w))
                             mask[i] = l2.freqmask[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor].any()
 
                     if (mask == 0).all():
                         self.n_pca_comp[ifeed] = 0
                         break
                     M[~np.isfinite(M)] = 0
+                    M = M[(M != 0).any(axis=1)]
 
                     # M = M[np.sum(M != 0, axis=-1) != 0]
                     n_actual = M.shape[0]
 
                     sigma0 = np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2)
-                    sigma0 = np.nanmean(sigma0, where=mask)
-                    # sigma0 = 1.0/np.sqrt(1.0/50*(2e9/(1024/16)))
-                    lambda_treshold = 1.2*(np.sqrt(n_actual) + np.sqrt(p))**2*sigma0**2
-                    # print("PCAf lambda_threshold:", lambda_treshold, "(sigma0:)", sigma0)
-
+                    sigma0 = np.nanmean(sigma0)
+                    lambda_treshold = 1.0*(np.sqrt(n_actual) + np.sqrt(p))**2*sigma0**2
                     if lambda_treshold == 0:
                         self.n_pca_comp[ifeed] = 0
                         break
@@ -1078,8 +1151,8 @@ class PCA_feed_filter(Filter):
                     PCAlib.subtract_eigcomp(l2.tod[ifeed], r, ak, l2.Nsb*l2.Nfreqs, l2.Ntod)
 
 
-                    pca_ampl[icomp,ifeed] = ak
-                    pca_comp[icomp,ifeed] = r
+                    # pca_ampl[icomp,ifeed] = ak
+                    # pca_comp[icomp,ifeed] = r
                     l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
                     # print("4:", time.time() - t0); t0=time.time()
 
@@ -1094,7 +1167,7 @@ class PCA_feed_filter(Filter):
 
         if masking_run:
             for ifeed in range(l2.Nfeeds):
-                b = pca_ampl[:,ifeed].reshape((self.max_pca_comp, l2.Nsb*l2.Nfreqs)).T
+                b = l2.tofile_dict["pca_feed_ampl"][:,ifeed].reshape((self.max_pca_comp, l2.Nsb*l2.Nfreqs)).T
                 b[~np.isfinite(b)] = 0
                 b[~l2.freqmask[ifeed].flatten()] = 0.0
                 if (b != 0).any():
@@ -1109,9 +1182,6 @@ class PCA_feed_filter(Filter):
                     l2.tofile_dict["C_template_pcaf"][ifeed,0] += template[l2.Nfreqs*0:l2.Nfreqs*2,l2.Nfreqs*0:l2.Nfreqs*2]
                     l2.tofile_dict["C_template_pcaf"][ifeed,1] += template[l2.Nfreqs*2:l2.Nfreqs*4,l2.Nfreqs*2:l2.Nfreqs*4]
 
-
-        l2.tofile_dict["pca_feed_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
-        l2.tofile_dict["pca_feed_comp"] = pca_comp#[::-1]
 
 
         
@@ -1670,8 +1740,8 @@ class Mask_Az_Edges(Filter):
                 i += 1
             for i in range(len(starts)):
                 extreme_idx = np.argmax(az_diff[starts[i]:stops[i]])
-                cut_start = extreme_idx - self.params.az_edges_mask_size + starts[i]
-                cut_stop = extreme_idx + self.params.az_edges_mask_size + starts[i]
+                cut_start = extreme_idx - self.params.az_edges_mask_size_before + starts[i]
+                cut_stop = extreme_idx + self.params.az_edges_mask_size_after + starts[i]
                 cut_start = max(0, cut_start)
                 cut_stop = min(l2.Ntod, cut_stop)
                 # cut_length = cut_stop - cut_start
@@ -1689,3 +1759,29 @@ class Mask_Az_Edges(Filter):
                 # az_mask[ifeed,cut_start:cut_stop] = False
         # l2.tofile_dict["az_edge_mask"] = az_mask
         # l2.az_mask = az_mask
+
+
+
+class Highpass(Filter):
+    name = "highpass"
+    name_long = "Highpass"
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.params = params
+        self.highpass_fknee = 0.1  # Hz
+        self.highpass_alpha = 8.0
+
+    def run(self, l2):
+        data_padded = np.zeros((l2.Nfreqs,3*l2.Ntod))
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                data_padded[:,l2.Ntod:2*l2.Ntod] = l2.tod[ifeed,isb]
+                weights = np.linspace(1, 0, 100)
+                data_padded[:,:l2.Ntod] = -l2.tod[ifeed,isb,:,::-1] + 2*np.average(l2.tod[ifeed,isb,:,:100], weights=weights, axis=-1)[:,None]
+                data_padded[:,2*l2.Ntod:] = -l2.tod[ifeed,isb,:,::-1] + 2*np.average(l2.tod[ifeed,isb,:,-100:], weights=weights[::-1], axis=-1)[:,None]
+                
+                freq_padded = rfftfreq(3*l2.Ntod)*l2.samprate
+                W = 1.0/(1 + (freq_padded/self.highpass_fknee)**self.highpass_alpha)
+                lowpass = irfft(rfft(data_padded)*W)[:,l2.Ntod:2*l2.Ntod]
+                
+                l2.tod[ifeed,isb] -= lowpass

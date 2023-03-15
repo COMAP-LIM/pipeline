@@ -143,12 +143,27 @@ parser.add_argument(
 
 
 ###### FILTER SETTINGS ######
+### Start-of-scan exponential subtraction filter
+parser.add_argument(
+    "--start_exponential_decay_time",
+    type=float,
+    default=19.2,
+    help="(start_exp) Decay time ('mean lifetime') of exponential fitted and subtracted at the start of scans."
+)
+
+
 ### Azimuth edge masking filter
 parser.add_argument(
-    "--az_edges_mask_size",
+    "--az_edges_mask_size_before",
     type=int,
     default=25,
-    help="(az-mask) How many TOD time samples to mask at the azimuth extremes."
+    help="(az-mask) How many TOD time samples to mask at the azimuth extremes, before turnaround."
+)
+parser.add_argument(
+    "--az_edges_mask_size_after",
+    type=int,
+    default=25,
+    help="(az-mask) How many TOD time samples to mask at the azimuth extremes, after turnaround."
 )
 
 ### Gain normalization filter
@@ -208,7 +223,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_pca_comp",
     type=int,
-    default=8,
+    default=12,
     help="(pca) Number of feed-global PCA components to be subtracted.",
 )
 
