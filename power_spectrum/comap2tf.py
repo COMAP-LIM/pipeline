@@ -29,7 +29,7 @@ class COmap2TF():
         parser_sim = deepcopy(parser)
 
         parser_sim.add_argument(
-        "-P"
+        "-P",
         "--params_sim",
         type=open,
         action=LoadFromFile,
@@ -42,7 +42,6 @@ class COmap2TF():
             raise ValueError(
                 "A map file name must be specified in parameter file or terminal."
             )
-
 
         self.params = params
         self.params_sim = params_sim
@@ -63,8 +62,33 @@ class COmap2TF():
 
         mappaths = [simpath, mappath, noisepath]
 
+        tf_dir = self.params_sim.transfer_function_dir        
+        tf_name = f"{fieldname_sim}_{self.params_sim.transfer_function_name}_tf.h5"
+        
+        tf_outname = os.path.join(tf_dir, tf_name)
+
+        if self.params_sim.transfer_function_dir is None or self.params_sim.transfer_function_name is None:
+            raise ValueError("Please specify a directory and name for the transfer function to be saved.")
+
         tf = TransferFunction(mappaths=mappaths)
+        
+        print("\nComputing transfer functions from:")
+        print(f"1) {simpath}")
+        print(f"2) {mappath}")
+        print(f"3) {noisepath}")
+
         tf.compute_transfer_function()
+
+        tf.write(tf_outname)
+
+        NFEED = 19
+        for feed in range(NFEED):
+            tf.compute_transfer_function(feed=feed)
+            tf_outname = os.path.join(
+                tf_dir,
+                f"{tf_name}_feed{feed + 1}.h5",
+            )
+            tf.write(tf_outname)
 
 
         
