@@ -54,7 +54,7 @@ class TransferFunction:
         if len(self.mappaths) != 3:
             raise ValueError("Make sure to only provide three map paths. ")
 
-        signal_map_path, injected_signal_map_path, noise_map_path = self.mappaths
+        signal_map_path, injected_with_signal_map_path, noise_map_path = self.mappaths
 
         # Map object with only pure signal
         signal_map = MapCosmo(signal_map_path, feed=feed, split=split)
@@ -63,10 +63,10 @@ class TransferFunction:
         P_signal = PowerSpectrum(signal_map)
 
         # Map object with signal injected and pipeline processed data
-        injected_signal_map = MapCosmo(injected_signal_map_path, feed=feed, split=split)
+        injected_with_signal_map = MapCosmo(injected_with_signal_map_path, feed=feed, split=split)
 
         # Power spectrum object with signal injected and pipeline processed data
-        P_injected_signal_map = PowerSpectrum(injected_signal_map)
+        P_injected_with_signal_map = PowerSpectrum(injected_with_signal_map)
 
         # Map object with pipeline processed noisy data
         noisemap = MapCosmo(noise_map_path, feed=feed, split=split)
@@ -87,17 +87,17 @@ class TransferFunction:
                 _,
             ) = P_signal.calculate_ps(do_2d=avg)
 
-            ps_injected_signal, _, _ = P_injected_signal_map.calculate_ps(do_2d=avg)
+            ps_injected_with_signal, _, _ = P_injected_with_signal_map.calculate_ps(do_2d=avg)
 
             ps_pure_noise, _, _ = P_noise.calculate_ps(do_2d=avg)
 
             # Transfer function computed by using the power spectra
-            transfer_function = (ps_injected_signal - ps_pure_noise) / ps_pure_signal
+            transfer_function = (ps_injected_with_signal - ps_pure_noise) / ps_pure_signal
 
             # Save as class attributes
             if avg:
                 self.ps_pure_signal_2D = ps_pure_signal
-                self.ps_injected_signal_2D = ps_injected_signal
+                self.ps_injected_with_signal_2D = ps_injected_with_signal
                 self.ps_pure_noise_2D = ps_pure_noise
                 self.transfer_function_2D = transfer_function
                 self.k_bin_centers_par_2D = k_bin_centers[0]
@@ -106,7 +106,7 @@ class TransferFunction:
                 self.k_bin_edges_perp_2D = P_signal.k_bin_edges_perp
             else:
                 self.ps_pure_signal_1D = ps_pure_signal
-                self.ps_injected_signal_1D = ps_injected_signal
+                self.ps_injected_with_signal_1D = ps_injected_with_signal
                 self.ps_pure_noise_1D = ps_pure_noise
                 self.transfer_function_1D = transfer_function
 
@@ -146,8 +146,8 @@ class TransferFunction:
                     f"{cyl_avg}/power_spectrum/pure_noise_2D"
                 ] = self.ps_pure_noise_2D
                 outfile[
-                    f"{cyl_avg}/power_spectrum/injected_signal_2D"
-                ] = self.ps_injected_signal_2D
+                    f"{cyl_avg}/power_spectrum/injected_with_signal_2D"
+                ] = self.ps_injected_with_signal_2D
 
             if "transfer_function_1D" in self.__dict__.keys():
                 sph_avg = "spherically_averaged"
@@ -166,8 +166,8 @@ class TransferFunction:
                     f"{sph_avg}/power_spectrum/pure_noise_1D"
                 ] = self.ps_pure_noise_1D
                 outfile[
-                    f"{sph_avg}/power_spectrum/injected_signal_1D"
-                ] = self.ps_injected_signal_1D
+                    f"{sph_avg}/power_spectrum/injected_with_signal_1D"
+                ] = self.ps_injected_with_signal_1D
 
     def read(self, inpath: Optional[str] = None):
         """Method that reads transfer function from HDF5 file
@@ -205,8 +205,8 @@ class TransferFunction:
                 self.ps_pure_noise_2D = infile[
                     f"{cyl_avg}/power_spectrum/pure_noise_2D"
                 ][()]
-                self.ps_injected_signal_2D = infile[
-                    f"{cyl_avg}/power_spectrum/injected_signal_2D"
+                self.ps_injected_with_signal_2D = infile[
+                    f"{cyl_avg}/power_spectrum/injected_with_signal_2D"
                 ][()]
 
             if "transfer_function_1D" in self.__dict__.keys():
@@ -228,8 +228,8 @@ class TransferFunction:
                 self.ps_pure_noise_1D = infile[
                     f"{sph_avg}/power_spectrum/pure_noise_1D"
                 ][()]
-                self.ps_injected_signal_1D = infile[
-                    f"{sph_avg}/power_spectrum/injected_signal_1D"
+                self.ps_injected_with_signal_1D = infile[
+                    f"{sph_avg}/power_spectrum/injected_with_signal_1D"
                 ][()]
 
     def __sub__(self, other: TransferFunction):
