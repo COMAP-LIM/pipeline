@@ -18,7 +18,7 @@ from astropy.cosmology import FlatLambdaCDM
 field_id_dict = {
     "co2": "field1",
     "co7": "field2",
-    "co3": "field3",
+    "co6": "field3",
 }
 
 
