@@ -7,9 +7,6 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 from astropy import units as u
-from astropy import constants
-from astropy import wcs
-from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -126,7 +123,7 @@ class MapCosmo:
         dx = np.abs(x[1] - x[0])
         dy = np.abs(y[1] - y[0])
         dz = np.abs(z[1] - z[0])
-
+        
         # Grid sizes
         nx = len(x)
         ny = len(y)
