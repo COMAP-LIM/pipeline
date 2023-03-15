@@ -475,13 +475,6 @@ parser.add_argument(
 
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
-    "--field",
-    type=str,
-    default=None,
-    help="(comap2fpxs) Name of field to use. Defualt None signals that field must be specified to compute cross-spectra.",
-)
-
-parser.add_argument(
     "--tf_cutoff",
     type=float,
     default=0.2,
@@ -494,6 +487,12 @@ parser.add_argument(
     help="(comap2fpxs) If flag is provided already computed spectra are read from file.",
 )
 
+parser.add_argument(
+    "--power_spectrum_dir",
+    type=str,
+    default="/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/fpxs/",
+    help="(comap2fpxs) Path to directory where cross spectrum data is saved.",
+)
 
 ###### Make Signal Cube ######
 parser.add_argument(
