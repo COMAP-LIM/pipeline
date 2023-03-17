@@ -70,6 +70,13 @@ parser.add_argument(
     help="Time, in seconds, to cut at the beginning of each scan.",
 )
 
+parser.add_argument(
+    "--sbA_num_masked_channels",
+    type=int,
+    default=179,
+    help="How many channels on each edge of sisdeband A to mask (they behave weirdly).",
+)
+
 ### Paths and files
 parser.add_argument(
     "--level1_dir",
