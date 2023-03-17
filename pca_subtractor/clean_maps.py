@@ -111,6 +111,9 @@ def main():
 
     is_verbose = args.verbose
 
+    if is_verbose:
+        print(f"Subtracting n={ncomps} PCA modes from maps:")
+
     subtract_mean = args.subtract_mean
     approx_noise = args.approx_noise
 
