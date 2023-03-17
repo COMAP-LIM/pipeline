@@ -277,8 +277,61 @@ class Normalize_Gain_Old(Filter):
                     l2.tod[feed,sb] = l2_padded[:,:l2.Ntod]        
 
 
-
 class Decimation(Filter):
+    name = "dec"
+    name_long = "decimation"
+
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.Nfreqs_lowres = params.decimation_freqs
+
+    def run(self, l2):
+        # Set up the lowres frequency bins.
+        self.freq_bin_centers_lowres = np.zeros((l2.Nsb, self.Nfreqs_lowres))
+        self.freq_bin_edges_lowres = np.zeros((l2.Nsb, self.Nfreqs_lowres+1))
+        for isb in range(l2.Nsb):
+            self.freq_bin_edges_lowres[isb] = np.linspace(26+isb*2, 28+isb*2, self.Nfreqs_lowres+1)
+            for ifreq in range(self.Nfreqs_lowres):
+                self.freq_bin_centers_lowres[isb,ifreq] = np.mean(self.freq_bin_edges_lowres[isb, ifreq:ifreq+2])
+        
+        freq_idxs_included = np.zeros((l2.Nsb, self.Nfreqs_lowres, l2.Nfreqs), dtype=bool)  # An array saying whether each high-res frequency (dimension 3) is a part of a low-res bin (dimension 2).
+        for isb in range(l2.Nsb):
+            for ifreq in range(self.Nfreqs_lowres):
+                # Find the indexes of all high-res frequencies that should go into this frequency bin:
+                freq_idxs_included[isb,ifreq] = (l2.freq_bin_centers[isb] > self.freq_bin_edges_lowres[isb,ifreq])*(l2.freq_bin_centers[isb] < self.freq_bin_edges_lowres[isb,ifreq+1])
+        N_freqs_in_bin = np.sum(freq_idxs_included, axis=-1)  # An array saying how many high-res frequencies goes into each low-res frequency.
+
+        self.dnu = l2.Nfreqs//self.Nfreqs_lowres
+        l2.Nfreqs_highres = l2.Nfreqs
+        l2.Nfreqs = self.Nfreqs_lowres
+        weight = 1.0/np.nanvar(l2.tod, axis=-1)
+        weight[~l2.freqmask] = 0
+        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=np.float32)
+        for isb in range(l2.Nsb):
+            for ifreq in range(self.Nfreqs_lowres):
+                tod_decimated[:,isb,ifreq,:] = np.nansum(l2.tod[:,isb,freq_idxs_included[isb,ifreq],:]*weight[:,isb,freq_idxs_included[isb,ifreq],None], axis=1)
+                tod_decimated[:,isb,ifreq,:] /= np.nansum(weight[:,isb,freq_idxs_included[isb,ifreq]], axis=1)[:,None]
+        l2.tod = tod_decimated
+        l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs_lowres), dtype=bool)
+        for isb in range(l2.Nsb):
+            for ifreq in range(self.Nfreqs_lowres):
+                l2.freqmask_decimated[:,isb,ifreq] = l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]].any(axis=-1)
+        l2.freqmask_decimated[~(np.isfinite(l2.tod).all(axis=-1))] = False
+        tsys_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs_lowres))
+        for isb in range(l2.Nsb):
+            for ifreq in range(self.Nfreqs_lowres):
+                tsys_decimated[:,isb,ifreq] = np.sqrt(self.dnu/np.nansum(l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]]/l2.Tsys[:,isb,freq_idxs_included[isb,ifreq]]**2, axis=-1))
+
+        tsys_decimated[~l2.freqmask_decimated] = np.nan
+        l2.tofile_dict["freqmask"] = l2.freqmask_decimated
+        l2.tofile_dict["decimation_nu"] = self.dnu
+        l2.tofile_dict["Tsys_lowres"] = tsys_decimated
+        l2.tofile_dict["N_freqs_in_bin"] = N_freqs_in_bin
+        l2.tofile_dict["freq_bin_edges_lowres"] = self.freq_bin_edges_lowres
+        l2.tofile_dict["freq_bin_centers_lowres"] = self.freq_bin_centers_lowres
+        
+
+class DecimationOld(Filter):
     name = "dec"
     name_long = "decimation"
 
@@ -1061,7 +1114,7 @@ class PCA_feed_filter(Filter):
                         M[i,:] /= (self.deci_factor/np.sqrt(w))
                 M[~np.isfinite(M)] = 0
                 M = M[(M != 0).any(axis=1)]
-                if M.shape[0] < 10:  # Very few channels remaining
+                if M.shape[0] < 15:  # Very few channels remaining
                     continue
                 pca = PCA(n_components=self.max_pca_comp, random_state=21)
                 comps = pca.fit_transform(M.T)
