@@ -127,12 +127,15 @@ class PCA_SubTractor:
         # Define inverse variance
         inv_var = 1 / inrms**2
 
+
         # Mask zero hit regions
         mask = ~np.isfinite(inv_var)
         inv_var[mask] = 0
 
+
         # Define feed-coadded map
         map_coadd = inmap.copy()
+        map_coadd[mask] = 0
 
         # Coadding feed maps
         map_coadd = map_coadd * inv_var
@@ -147,10 +150,10 @@ class PCA_SubTractor:
 
         # Mask regions with no hits in coadded feed maps
         mask_coadd = ~np.isfinite(rms_coadd)
-        map_coadd[mask_coadd] = 0
-        rms_coadd[mask_coadd] = 0
+        map_coadd[mask_coadd] = np.nan
+        rms_coadd[mask_coadd] = np.nan
         if nhit_key in self.map.keys:
-            nhit_coadd[mask_coadd] = 0
+            nhit_coadd[mask_coadd] = np.nan
             return (map_coadd, nhit_coadd, rms_coadd)
         else:
             return (map_coadd, rms_coadd)
@@ -370,7 +373,7 @@ class PCA_SubTractor:
                 map_reconstruction = self.reconstruct_modes(key)
                 self.map[key] -= map_reconstruction
                 self.map.pca_reconstruction[f"{key}"] = map_reconstruction
-
+            
         if self.clean:
             # Coadd feed map
             if "nhit" in self.map.keys:
@@ -397,6 +400,7 @@ class PCA_SubTractor:
 
             self.map["sigma_wn_coadd"] = rms_coadd
 
+        
         # Assigning parameter specifying that map object is PCA subtracted
         # and what norm was used
         self.map["is_pca_subtr"] = True
@@ -442,5 +446,22 @@ class PCA_SubTractor:
         for key, value in self.map.pca_reconstruction.items():
             self.map[key] = value
 
+        recon_map = self.map.pca_reconstruction["map"].copy()
+        recon_sigma_wn = self.map["sigma_wn"].copy()
+
+        inv_var = 1 / recon_sigma_wn ** 2
+        mask = ~np.isfinite(inv_var)
+        inv_var[mask] = 0
+        recon_coadd = recon_map.copy() * inv_var
+        recon_coadd[mask] = 0
+        recon_coadd = recon_coadd.sum(0)
+
+        inv_var = inv_var.sum(0)
+
+        recon_coadd /= inv_var
+
+
+        self.map["map_coadd"] = recon_coadd.copy()
+        
         self.map["is_pca_subtr"] = False
         self.map["is_pca_recon"] = True
