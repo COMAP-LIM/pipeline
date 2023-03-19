@@ -1285,11 +1285,11 @@ class Masking(Filter):
                 for isb in l2.flipped_sidebands:
                     AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
                     leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
-                l2.freqmask[AB_mask[l2.feeds-1] < 15] = False
-                l2.freqmask[leak_mask[l2.feeds-1] < 15] = False
-                l2.freqmask_reason[AB_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
+                l2.freqmask[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
+                l2.freqmask_reason[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
                 l2.freqmask_reason_string.append("Aliasing suppression (AB_mask)")
-                l2.freqmask_reason[leak_mask[l2.feeds-1] < 15] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+                l2.freqmask_reason[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
                 l2.freqmask_reason_string.append("Aliasing suppression (leak_mask)")
                 l2.tofile_dict["AB_aliasing"] = AB_mask
                 l2.tofile_dict["leak_aliasing"] = leak_mask

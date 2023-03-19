@@ -118,10 +118,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--scantypes",
+    "--allowed_scantypes",
     type=int,
     default=[
-        16,
+        32,
     ],
     nargs="+",
     help="Scan types to include in run.",
@@ -258,6 +258,12 @@ parser.add_argument(
     type=str,
     default="",
     help="(mask) Path to level2 files from which to load freqmasks instead of computing masks. If empty, will compute masking as usual.",
+)
+parser.add_argument(
+    "--aliasing_mask_dB",
+    type=float,
+    default=15,
+    help="(mask) Aliasing suppression threshold. Frequency channels below this is masked.",
 )
 parser.add_argument(
     "--box_sizes",
