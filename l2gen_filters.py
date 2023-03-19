@@ -1568,8 +1568,11 @@ class Masking(Filter):
             
             ### Mask entire sideband if less than 10% of sideband is unmasked
             temp_mask = np.mean(l2.freqmask, axis=-1) > 0.1
+            for ifeed in range(temp_mask.shape[0]):
+                for isb in range(temp_mask.shape[1]):
+                    if not temp_mask[ifeed,isb]:
+                        l2.freqmask_reason[ifeed, isb, l2.freqmask[ifeed,isb]] += 2**l2.freqmask_counter  # Only add previously unmasked channels. No point in double-counting.
             l2.freqmask[~temp_mask] = False
-            l2.freqmask_reason[~temp_mask] += 2**l2.freqmask_counter
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Less than 10% of band unmasked")
             del(temp_mask)
@@ -1751,6 +1754,7 @@ class Calibration(Filter):
                         running_median2[ifeed,isb,i] = 0
                 tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median2[ifeed,isb] + median_cut2)] = np.nan
         tsys_median_mask = np.isfinite(tsys_temp)
+        tsys_median_mask[~np.isfinite(l2.Tsys)] = True  # Channels that have already been flagged as NaN or inf, don't need to double-flag them.
         
         l2.freqmask[~tsys_median_mask] = False
         l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
@@ -1821,7 +1825,7 @@ class Highpass(Filter):
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.params = params
-        self.highpass_fknee = 0.1  # Hz
+        self.highpass_fknee = 0.3  # Hz
         self.highpass_alpha = 8.0
 
     def run(self, l2):
