@@ -1,6 +1,6 @@
 """
 Example usage:
-    mpirun -n 10 -machinefile machinefile.txt python3 -W ignore -u l2gen.py
+    mpirun --machinefile machinefile.txt python3 -W ignore -u l2gen.py
     mpirun -n 120 python3 -W ignore -u l2gen.py
     python3 -W ignore l2gen.py
     To get Numpy to respect number of threads (per MPI thread):
@@ -115,12 +115,13 @@ class l2gen_runner:
             if os.path.isdir(os.path.join(self.params.level2_dir, dir)):
                 for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
                     if file[0] == "." and self.rank == 0:  # Delete any left-over hidden files from previously aborted runs.
-                        os.remove(os.path.join(os.path.join(self.params.level2_dir, dir), file))
+                        if os.path.exists(os.path.join(os.path.join(self.params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(self.params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old.
+                            os.remove(os.path.join(os.path.join(self.params.level2_dir, dir), file))
                 self.comm.Barrier()
                 for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
                     if file[-3:] == ".h5" or file[-4:] == ".hd5":
                         if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
-                            existing_scans.append(int(file.split(".")[0].split("_")[1]))
+                            existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
 
         with open(self.params.runlist) as my_file:
             lines = [line.split() for line in my_file]
