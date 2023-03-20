@@ -389,7 +389,7 @@ def Mhalo_to_Lcatalog(halos, params):
 
     model = params.catalog_model
 
-    dict = {'test1':          Mhalo_to_Lcatalog_test1,
+    dict = {'default':          Mhalo_to_Lcatalog_test1,
             'test2':          Mhalo_to_Lcatalog_test2
             }
 

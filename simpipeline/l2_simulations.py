@@ -25,6 +25,9 @@ class SimGenerator:
             if key[0:4] == 'sim_':
                 setattr(simparams, key[4:], val)
 
+        # function to broaden the spectral axes
+        simparams.filterfunc = gaussian_filter1d
+
         self.simparams = simparams
 
     def generate_co_sims(self):

@@ -451,6 +451,103 @@ parser.add_argument(
     help="The cosmological parameters to use in generating the simulations. Defaults to the values used in Li 2016."
 )
 
+parser.add_argument(
+    "--sim_units",
+    type=str,
+    default='intensity',
+    help="The brightness units used by the simulations. Defaults to 'intensity'."
+)
+
+parser.add_argument(
+    "--sim_xrefine",
+    type=int,
+    default=5,
+    help="Factor by which to oversample the angular axes of the simulations. Defaults to 5."
+)
+
+parser.add_argument(
+    "--sim_freqrefine",
+    type=int,
+    default=5,
+    help="Factor by which to oversample the frequency axes of the simulations. Defaults to 5."
+)
+
+parser.add_argument(
+    "--sim_beambroaden",
+    type=str2bool,
+    default=True,
+    help="Whether to smooth the angular axes by a 4.5' Gaussian approximation of the COMAP primary beam. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_beamkernel",
+    type=str,
+    default=None,
+    help="Convolution kernel approximating the primary beam. If none, use Gaussian with 4.5' FWHM."
+)
+
+parser.add_argument(
+    "--sim_freqbroaden",
+    type=str2bool,
+    default=True,
+    help="Whether to simulate astrophysical line broadening. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_bincount",
+    type=int,
+    default=5,
+    help="Number of mass bins to split simulated halos into before line broadening. Defaults to 5."
+)
+
+parser.add_argument(
+    "--sim_fwhmfunction",
+    type=str,
+    default=None,
+    help="Function used to calculate FWHMa for halos. If none (default), vvirsini is used."
+)
+
+parser.add_argument(
+    "--sim_fwhmattr",
+    type=str,
+    default='vbroaden',
+    help="Which type of per-halo velocity (stored as an attribute) to use when broadening. Default 'vbroaden'."
+)
+
+parser.add_argument(
+    "--sim_lazyfilter",
+    type=str2bool,
+    default=True,
+    help="Faster FFT when binning after line broadening. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_catalog_model",
+    type=str,
+    default='default',
+    help="Name of the function used to model emission of the other tracer. Defaults to 'default' function in generate_luminosities.py."
+)
+
+parser.add_argument(
+    "--sim_catalog_coeffs",
+    type=str,
+    default=None,
+    help="Coefficients used for the emission modeling function. Defaults to None."
+)
+
+parser.add_argument(
+    "--sim_rho",
+    type=float,
+    default=0.8,
+    help="Correlation between CO and tracer luminosities (-1, 1). Default to 0.8."
+)
+
+parser.add_argument(
+    "--sim_save_scatterless_lums",
+    type=str2bool,
+    default=True,
+    help="Boolean: whether to keep the luminosity values calculated before scatter added. Defaults to True."
+)
 
 ###### Signal Injection ######
 parser.add_argument(

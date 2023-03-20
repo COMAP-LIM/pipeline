@@ -106,6 +106,32 @@ class HaloCatalog():
         sortidx = np.argsort(self.M)[::-1]
         self.indexcut(sortidx, in_place=True)
 
+    def get_velocities(self, params):
+        """
+        assigns each halo a rotation velocity based on its DM mass
+        adds the velocity value to self.vbroaden and also returns it
+        uses params.freq_attr:
+        if 'vvirincli', calculates the virial velocity and muliplies it by a
+           sin(i), i a randomly generated inclination angle, to simulate the
+           effects of inclination on line broadening
+        if 'vvir', just calculates the virial velocity
+        """
+        vvir = lambda M,z:35*(M*self.cosmo.H(z).value/1e10)**(1/3) # km/s
+
+        if params.freq_attr == 'vvirincli':
+            # Calculate doppler parameters
+            self.sin_i = np.sqrt(1-np.random.uniform(size=self.nhalo)**2)
+            self.vvir = vvir(self.M, self.redshift) / 2 #****
+            self.vbroaden = self.vvir*self.sin_i/0.866
+
+        elif params.freq_attr == 'vvir':
+            # Calculate doppler parameters
+            self.sin_i = np.sqrt(1-np.random.uniform(size=self.nhalo)**2)
+            self.vbroaden = vvir(self.M, self.redshift)
+
+        return self.vbroaden
+
+
 
 
     #### FUNCTIONS TO SLICE THE HALO CATALOGUE IN SOME WAY
@@ -202,3 +228,44 @@ class HaloCatalog():
             self.attrcut_subset('vmax', min_vmax, max_vmax, in_place=True)
         else:
             return self.attrcut_subset('vmax', min_vmax, max_vmax)
+
+
+    def write_cat(self, params, trim=None, writeall=False):
+        """
+        save halos as npz catalog
+        """
+        if params.verbose: print('\n\tSaving Halo Catalogue to\n\t\t', params.cat_output_file)
+        if trim:
+            i = trim
+        else:
+            i = -1
+
+        try:
+            velocities = self.vbroaden[:i]
+        except AttributeError:
+            velocities = np.ones(len(self.dec[:i])) * -99
+
+        if writeall:
+            np.savez(params.cat_output_file,
+                     dec=self.dec[:i], nhalo=len(self.dec[:i]),
+                     nu=self.nu[:i], ra=self.ra[:i],
+                     z=self.redshift[:i], vx=self.vx[:i],
+                     vz    = self.vz[:i],
+                     x_pos   = self.x_pos[:i],
+                     y_pos = self.y_pos[:i],
+                     z_pos        = self.z_pos[:i],
+                     zformation=self.zformation[:i],
+                     Lco = self.Lco[:i],
+                     Lcat = self.Lcat[:i],
+                     vhalo = velocities,
+                     M = self.M[:i])
+        else:
+            np.savez(params.cat_output_file,
+                     dec = self.dec[:i], ra = self.ra[:i],
+                     z = self.redshift[:i],
+                     Lco = self.Lco[:i],
+                     Lcat = self.Lcat[:i],
+                     vhalo = velocities,
+                     M = self.M[:i])
+
+        return

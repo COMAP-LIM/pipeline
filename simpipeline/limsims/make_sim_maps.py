@@ -5,6 +5,8 @@ import os
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter1d, uniform_filter1d
+from astropy.convolution import convolve, Gaussian2DKernel
 import copy
 
 
@@ -101,16 +103,23 @@ class SimMap():
 
         if params.freqbroaden:
 
+            try:
+                velocities = getattr(halos, 'vbroaden')
+            except AttributeError:
+                halos.get_velocities(params)
+
             # pull the relevant parameters out of the params object
             # number of velocity bins to use
             bincount = params.bincount
             # function to turn halo attributes into a line width (in observed freq space)
             # default is vmax/c times observed frequency (if set to None)
-            fwhmfunction = params.fwhmfunction
+            fwhmfunc = params.fwhmfunction
             # number of bins by which to oversample in frequency
             freqrefine = params.freqrefine
             # function used to broaden halo emission based on linewidth
             filterfunc = params.filterfunc
+            # name of attribute describing fwhm? why necessary ***
+            fwhmattr = params.fwhmattr
             # if true, will do a fast convolution thing (??)
             lazyfilter = params.lazyfilter
 
@@ -120,10 +129,7 @@ class SimMap():
                 # a fwhmfunc is needed to turn halo attributes into a line width
                 #   (in observed frequency space)
                 # default fwhmfunc based on halos is vmax/c times observed frequency
-                if fwhmattr is not None:
-                    fwhmfunc = lambda h:h.nu*getattr(h,fwhmattr)/299792.458
-                else:
-                    fwhmfunc = lambda h:h.nu*h.vmax/299792.458
+                fwhmfunc = lambda h:h.nu*h.vbroaden/299792.458
 
             # for each velocity bin, convolve all halos with a kernel of the same width and then add onto the map
             for i,sub in enumerate(subsets):
@@ -169,11 +175,54 @@ class SimMap():
             self.map = maps[:,:,::-1]
 
         if params.beambroaden:
-            self.map = beam_smooth(self.map, params.xrefine)
+            # smooth by the primary beam
 
-        # write to file if required
-        # if params.map_output_file:
-        #     self.write(params.map_output_file)
+            # come up with a convolution kernel approximating the beam if one isn't already passed
+            if not params.beamkernel:
+                # number of refined pixels corresponding to the fwhm in arcminutes
+                std = params.beam_fwhm / (2*np.sqrt(2*np.log(2))) / 60 # standard deviation in degrees
+                std_pix = std / dx_fine
+
+                beamkernel = Gaussian2DKernel(std_pix)
+
+            if params.verbose:
+                print('\nsmoothing by synthesized beam: {} channels total'.format(maps.shape[-1]))
+
+            smoothsimlist = []
+            for i in range(maps.shape[-1]):
+                smoothsimlist.append(convolve(maps[:,:,i], beamkernel))
+                if params.verbose:
+                    if i%100 == 0:
+                        print('\n\t done {} of {} channels'.format(i, maps.shape[-1]))
+
+            maps_sm_fine = np.stack(smoothsimlist, axis=-1)
+            print(maps_sm_fine.shape)
+
+            # rebin
+            mapssm = np.sum(maps_sm_fine.reshape((params.npix_x, params.xrefine,
+                                                  params.npix_y, params.xrefine, -1)), axis=(1,3))
+
+            if (params.units=='intensity'):
+                mapssm/= self.Ompix
+            # flip back frequency bins
+            self.map = mapssm[:,:,::-1]
+
+
+    def write(self, params):
+        """
+        save 3D data cube in .npz format, including map header information
+        """
+        if params.verbose: print('\n\tSaving Map Data Cube to\n\t\t', params.map_output_file)
+        np.savez(params.map_output_file,
+                 fov_x=self.fov_x, fov_y=self.fov_y,
+                 pix_size_x=self.pix_size_x, pix_size_y=self.pix_size_y,
+                 npix_x=self.npix_x, npix_y=self.npix_y,
+                 map_pixel_ra    = self.pix_bincents_x,
+                 map_pixel_dec   = self.pix_bincents_y,
+                 map_frequencies = self.nu_bincents,
+                 map_cube        = self.map)
+
+        return
 
 
 
