@@ -5,7 +5,7 @@ import scipy.interpolate as interp
 import numpy.typing as ntyping
 
 from dataclasses import dataclass, field
-# from pixell import enmap, utils
+from pixell import enmap, utils
 import os
 
 from limsim_tools import *
