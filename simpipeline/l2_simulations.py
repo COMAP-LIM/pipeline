@@ -5,11 +5,34 @@ import scipy.interpolate as interp
 import numpy.typing as ntyping
 
 from dataclasses import dataclass, field
-from pixell import enmap, utils
+# from pixell import enmap, utils
 import os
 
-import limlam_mocker as llm
-from llm_mocker.extensions import llm_doppler as llmd
+from limsim_tools import *
+from load_halos import *
+from make_sim_maps import *
+from generate_luminosities import *
+
+
+class SimParameters():
+    """
+    simple Class creating an empty table
+    used for halo catalogue and map instances
+    """
+    def __init__(self):
+        pass
+
+    def copy(self):
+        """@brief Creates a copy of the table."""
+        return copy.deepcopy(self)
+
+    def print(self):
+        attrlist = []
+        for i in dir(self):
+            if i[0]=='_': continue
+            elif i == 'copy': continue
+            else: attrlist.append(i)
+        print(attrlist)
 
 @dataclass
 class SimGenerator:
@@ -20,7 +43,7 @@ class SimGenerator:
         # keep only the arguments set to begin with 'sim' in a separate dict
         # to pass them easily to the simulation functions
         param_dict = vars(params)
-        simparams = llm.empty_table()
+        simparams = SimParameters()
         for key, val in param_dict.items():
             if key[0:4] == 'sim_':
                 setattr(simparams, key[4:], val)
@@ -30,70 +53,95 @@ class SimGenerator:
 
         self.simparams = simparams
 
-    def generate_co_sims(self):
-        """
-        Generator function to get the simulated LIM cube, and an associated catalogue
-        of DM halos with simulated CO properties.
-        """
+    def run(self):
 
-        # pull the simulation parameters object out to make it easier to work with
         simpars = self.simparams
 
-        # set up the output files to save to
-        llm.make_output_filenames(self.simparams, output_dir=simpars.output_dir)
+        # generate the halo catalog from the passed peak-patch catalog
+        halos = HaloCatalog(simpars, simpars.halo_catalogue_file)
 
-        # set up map objects to be output
-        mapinst = llm.params_to_mapinst(simpars)
+        # generate luminosities for each halo
+        Mhalo_to_Ls(halos, simpars)
 
-        # load halos from catalogue and trim to only the relevant ones
-        halos, cosmo = llm.load_peakpatch_catalogue(simpars.halo_catalogue_file,
-                                                    output=simpars.halo_output_file)
-        halos = llm.cull_peakpatch_catalogue(halos, simpars.min_mass, mapinst)
+        # set up map parameters
+        map = SimMap(simpars)
 
-        # calculate the luminosity of each halo
-        halos.Lco = llm.Mhalo_to_Lco(halos, simpars.model_name, simpars.model_coeffs)
+        # make the map
+        map.mockmapmaker(halos, simpars)
 
-        # if broadening spectrally, find the velocity that the CO is assumed to be moving at
-        # in each halo
-        if simpars.freqbroaden:
-            halos = llmd.get_halo_velocities(halos, cosmo, simpars)
+        # output files for map and catalog
+        simpars.map_output_file = simpars.output_dir + '/sim_map.npz'
+        simpars.cat_output_file = simpars.output_dir + '/sim_cat.npz'
 
-        # make the maps, applying broadening in whichever axes were requested
-        if simpars.freqbroaden and simpars.spacebroaden:
-            mapinst.maps = llmd.Lco_to_map_doppler_synthbeam(halos, mapinst,
-                                                             bincount=simpars.velocity_bins,
-                                                             binattr=simpars.freq_attr,
-                                                             fwhmattr=simpars.freq_attr,
-                                                             freqrefine=simpars.freq_subpix,
-                                                             xrefine=simpars.x_subpix,
-                                                             beamfwhm=simpars.beam_fwhm)
+        map.write(simpars)
+        halos.write_cat(simpars)
 
-        elif simpars.freqbroaden:
-            mapinst.maps = llmd.Lco_to_map_doppler(halos, mapinst,
-                                                     bincount=simpars.velocity_bins,
-                                                     binattr=simpars.freq_attr,
-                                                     fwhmattr=simpars.freq_attr,
-                                                     freqrefine=simpars.freq_subpix)
+        return
 
-        else:
-            mapinst.maps = llm.Lco_to_map(halos, mapinst)
-
-        # if requested, save the map to file as a data cube
-        if simpars.savecube:
-            llm.save_maps(mapinst)
-
-        # store the catalogue and resulting map in the class
-        self.halos = halos
-        self.maps = mapinst
-
-    def generate_galaxy_catalog(self):
-        """
-        Generator function to get a simulated traditional galaxy catalogue (based
-        on some passed tracer) for the same ensemble of galaxies as in the CO map
-        """
-
-        # pull the simulation parameters object out to make it easier to work with
-        simpars = self.simparams
+    # def generate_co_sims(self):
+    #     """
+    #     Generator function to get the simulated LIM cube, and an associated catalogue
+    #     of DM halos with simulated CO properties.
+    #     """
+    #
+    #     # pull the simulation parameters object out to make it easier to work with
+    #     simpars = self.simparams
+    #
+    #     # set up the output files to save to
+    #     llm.make_output_filenames(self.simparams, output_dir=simpars.output_dir)
+    #
+    #     # set up map objects to be output
+    #     mapinst = llm.params_to_mapinst(simpars)
+    #
+    #     # load halos from catalogue and trim to only the relevant ones
+    #     halos, cosmo = llm.load_peakpatch_catalogue(simpars.halo_catalogue_file,
+    #                                                 output=simpars.halo_output_file)
+    #     halos = llm.cull_peakpatch_catalogue(halos, simpars.min_mass, mapinst)
+    #
+    #     # calculate the luminosity of each halo
+    #     halos.Lco = llm.Mhalo_to_Lco(halos, simpars.model_name, simpars.model_coeffs)
+    #
+    #     # if broadening spectrally, find the velocity that the CO is assumed to be moving at
+    #     # in each halo
+    #     if simpars.freqbroaden:
+    #         halos = llmd.get_halo_velocities(halos, cosmo, simpars)
+    #
+    #     # make the maps, applying broadening in whichever axes were requested
+    #     if simpars.freqbroaden and simpars.spacebroaden:
+    #         mapinst.maps = llmd.Lco_to_map_doppler_synthbeam(halos, mapinst,
+    #                                                          bincount=simpars.velocity_bins,
+    #                                                          binattr=simpars.freq_attr,
+    #                                                          fwhmattr=simpars.freq_attr,
+    #                                                          freqrefine=simpars.freq_subpix,
+    #                                                          xrefine=simpars.x_subpix,
+    #                                                          beamfwhm=simpars.beam_fwhm)
+    #
+    #     elif simpars.freqbroaden:
+    #         mapinst.maps = llmd.Lco_to_map_doppler(halos, mapinst,
+    #                                                  bincount=simpars.velocity_bins,
+    #                                                  binattr=simpars.freq_attr,
+    #                                                  fwhmattr=simpars.freq_attr,
+    #                                                  freqrefine=simpars.freq_subpix)
+    #
+    #     else:
+    #         mapinst.maps = llm.Lco_to_map(halos, mapinst)
+    #
+    #     # if requested, save the map to file as a data cube
+    #     if simpars.savecube:
+    #         llm.save_maps(mapinst)
+    #
+    #     # store the catalogue and resulting map in the class
+    #     self.halos = halos
+    #     self.maps = mapinst
+    #
+    # def generate_galaxy_catalog(self):
+    #     """
+    #     Generator function to get a simulated traditional galaxy catalogue (based
+    #     on some passed tracer) for the same ensemble of galaxies as in the CO map
+    #     """
+    #
+    #     # pull the simulation parameters object out to make it easier to work with
+    #     simpars = self.simparams
 
 
 

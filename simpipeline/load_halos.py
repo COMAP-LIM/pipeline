@@ -110,7 +110,7 @@ class HaloCatalog():
         """
         assigns each halo a rotation velocity based on its DM mass
         adds the velocity value to self.vbroaden and also returns it
-        uses params.freq_attr:
+        uses params.velocity_attr:
         if 'vvirincli', calculates the virial velocity and muliplies it by a
            sin(i), i a randomly generated inclination angle, to simulate the
            effects of inclination on line broadening
@@ -118,13 +118,13 @@ class HaloCatalog():
         """
         vvir = lambda M,z:35*(M*self.cosmo.H(z).value/1e10)**(1/3) # km/s
 
-        if params.freq_attr == 'vvirincli':
+        if params.velocity_attr == 'vvirincli':
             # Calculate doppler parameters
             self.sin_i = np.sqrt(1-np.random.uniform(size=self.nhalo)**2)
             self.vvir = vvir(self.M, self.redshift) / 2 #****
             self.vbroaden = self.vvir*self.sin_i/0.866
 
-        elif params.freq_attr == 'vvir':
+        elif params.velocity_attr == 'vvir':
             # Calculate doppler parameters
             self.sin_i = np.sqrt(1-np.random.uniform(size=self.nhalo)**2)
             self.vbroaden = vvir(self.M, self.redshift)

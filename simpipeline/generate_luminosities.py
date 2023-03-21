@@ -22,9 +22,9 @@ def Mhalo_to_Ls(halos, params):
 
     # if no random number generator seed is set, give it one
     try:
-        seed = params.seed
+        seed = params.lum_uncert_seed
     except AttributeError:
-        params.seed = 12345
+        params.lum_uncert_seed = 12345
 
     try:
         scatterless = params.save_scatterless_lums
@@ -44,14 +44,14 @@ def Mhalo_to_Ls(halos, params):
             halos.scatterless_Lcat = copy.deepcopy(halos.Lcat)
 
         # joint scatter
-        halos = add_co_tracer_dependant_scatter(halos, params.rho, params.codex, params.catdex, params.seed)
+        halos = add_co_tracer_dependant_scatter(halos, params.rho, params.codex, params.catdex, params.lum_uncert_seed)
 
     else:
         if params.save_scatterless_lums:
             halos.scatterless_Lco = copy.deepcopy(halos.Lco)
 
         # co-only scatter
-        halos.Lco = add_log_normal_scatter(halos.Lco, params.codex, params.seed)
+        halos.Lco = add_log_normal_scatter(halos.Lco, params.codex, params.lum_uncert_seed)
 
 
 

@@ -431,122 +431,233 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--sim_model_name",
+    "--sim_verbose",
+    type=str2bool,
+    default=True,
+    help="(SimGenerator) Verbose output while generating simulation cubes."
+)
+
+parser.add_argument(
+    "--sim_halo_catalogue_file",
+    type=str,
+    default='/mn/stornext/d22/cmbco/comap/delaney/limlam_mocker/catalogues/COMAP_z2.39-3.44_1140Mpc_seed_13579.npz',
+    help="(SimGenerator) Path to peak-patch simulation catalogue. Default seed 13579."
+)
+
+parser.add_argument(
+    "--sim_mass_cutoff",
+    type=float,
+    default=500000000000.,
+    help="(SimGenerator) Maximum DM mass to include in the simulated cube (in M_sun). Default 5e11 M_sun."
+)
+
+parser.add_argument(
+    "--sim_min_mass",
+    type=float,
+    default=10000000000.,
+    help="(SimGenerator) Minimum DM mass to include in the simulated cube (in M_sun). Default 1e10 M_sun."
+)
+
+parser.add_argument(
+    "--sim_model",
     type=str,
     default="fiuducial",
-    help="Name of model to use for halo CO luminosities. By default 'fiuducial' is used."
+    help="(SimGenerator) Name of model to use for halo CO luminosities. By default 'fiuducial' is used."
 )
 
 parser.add_argument(
     "--sim_model_coeffs",
     type=list,
     default=None,
-    help="Adjusted model coefficients. If 'None', default values for the model are used."
+    help="(SimGenerator) Adjusted model coefficients. If 'None', default values for the model are used."
 )
-
-parser.add_argument(
-    "--sim_cosmology",
-    type=str,
-    default='comap',
-    help="The cosmological parameters to use in generating the simulations. Defaults to the values used in Li 2016."
-)
-
-parser.add_argument(
-    "--sim_units",
-    type=str,
-    default='intensity',
-    help="The brightness units used by the simulations. Defaults to 'intensity'."
-)
-
-parser.add_argument(
-    "--sim_xrefine",
-    type=int,
-    default=5,
-    help="Factor by which to oversample the angular axes of the simulations. Defaults to 5."
-)
-
-parser.add_argument(
-    "--sim_freqrefine",
-    type=int,
-    default=5,
-    help="Factor by which to oversample the frequency axes of the simulations. Defaults to 5."
-)
-
-parser.add_argument(
-    "--sim_beambroaden",
-    type=str2bool,
-    default=True,
-    help="Whether to smooth the angular axes by a 4.5' Gaussian approximation of the COMAP primary beam. Defaults to True."
-)
-
-parser.add_argument(
-    "--sim_beamkernel",
-    type=str,
-    default=None,
-    help="Convolution kernel approximating the primary beam. If none, use Gaussian with 4.5' FWHM."
-)
-
-parser.add_argument(
-    "--sim_freqbroaden",
-    type=str2bool,
-    default=True,
-    help="Whether to simulate astrophysical line broadening. Defaults to True."
-)
-
-parser.add_argument(
-    "--sim_bincount",
-    type=int,
-    default=5,
-    help="Number of mass bins to split simulated halos into before line broadening. Defaults to 5."
-)
-
-parser.add_argument(
-    "--sim_fwhmfunction",
-    type=str,
-    default=None,
-    help="Function used to calculate FWHMa for halos. If none (default), vvirsini is used."
-)
-
-parser.add_argument(
-    "--sim_fwhmattr",
-    type=str,
-    default='vbroaden',
-    help="Which type of per-halo velocity (stored as an attribute) to use when broadening. Default 'vbroaden'."
-)
-
-parser.add_argument(
-    "--sim_lazyfilter",
-    type=str2bool,
-    default=True,
-    help="Faster FFT when binning after line broadening. Defaults to True."
-)
-
 parser.add_argument(
     "--sim_catalog_model",
     type=str,
     default='default',
-    help="Name of the function used to model emission of the other tracer. Defaults to 'default' function in generate_luminosities.py."
+    help="(SimGenerator) Name of the function used to model emission of the other tracer. Defaults to 'default' function in generate_luminosities.py."
 )
 
 parser.add_argument(
     "--sim_catalog_coeffs",
     type=str,
     default=None,
-    help="Coefficients used for the emission modeling function. Defaults to None."
+    help="(SimGenerator) Coefficients used for the emission modeling function. Defaults to None."
+)
+
+parser.add_argument(
+    "--sim_catdex",
+    type=float,
+    default=0.5,
+    help="(SimGenerator) Size of the artificial scatter in the tracer luminosities. Defaults to 0.5."
+)
+
+parser.add_argument(
+    "--sim_codex",
+    type=float,
+    default=0.42,
+    help="(SimGenerator) Size of the artificial scatter in the tracer luminosities. Defaults to 0.42 (chung22 fiducial value)."
 )
 
 parser.add_argument(
     "--sim_rho",
     type=float,
     default=0.8,
-    help="Correlation between CO and tracer luminosities (-1, 1). Default to 0.8."
+    help="(SimGenerator) Correlation between CO and tracer luminosities (-1, 1). Default to 0.8."
+)
+
+parser.add_argument(
+    "--sim_lum_uncert_seed",
+    type=int,
+    default=12345,
+    help="(SimGenerator) Seed for the RNG determining scatter in the halo luminosities. Default 12345."
 )
 
 parser.add_argument(
     "--sim_save_scatterless_lums",
     type=str2bool,
     default=True,
-    help="Boolean: whether to keep the luminosity values calculated before scatter added. Defaults to True."
+    help="(SimGenerator) Boolean: whether to keep the luminosity values calculated before scatter added. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_cosmology",
+    type=str,
+    default='comap',
+    help="(SimGenerator) The cosmological parameters to use in generating the simulations. Defaults to the values used in Li 2016."
+)
+
+parser.add_argument(
+    "--sim_units",
+    type=str,
+    default='intensity',
+    help="(SimGenerator) The brightness units used by the simulations. Defaults to 'intensity'."
+)
+
+parser.add_argument(
+    "--sim_nmaps",
+    type=int,
+    default=1024,
+    help="(SimGenerator) Number of frequency channels to include in the (final) simulation cube. Default 1024."
+)
+
+parser.add_argument(
+    "--sim_npix_x",
+    type=int,
+    default=120,
+    help="(SimGenerator) Number of pixels to include in the RA axis of the (final) simulation cube. Default 120."
+)
+
+parser.add_argument(
+    "--sim_npix_y",
+    type=int,
+    default=120,
+    help="(SimGenerator) Number of pixels to include in the Dec axis of the (final) simulation cube. Default 120."
+)
+
+parser.add_argument(
+    "--sim_fov_x",
+    type=float,
+    default=4.,
+    help="(SimGenerator) Size in the RA axis of the simulation cube (in degrees). Default 4.0 degrees."
+)
+
+parser.add_argument(
+    "--sim_fov_y",
+    type=float,
+    default=4.,
+    help="(SimGenerator) Size in the Dec axis of the simulation cube (in degrees). Default 4.0 degrees."
+)
+
+parser.add_argument(
+    "--sim_nu_f",
+    type=float,
+    default=26.,
+    help="(SimGenerator) Minimum frequency to include in the map (in GHz). Default 26.0."
+)
+
+parser.add_argument(
+    "--sim_nu_i",
+    type=float,
+    default=34.,
+    help="(SimGenerator) Maximum frequency to include in the map (in GHz). Default 34.0."
+)
+
+parser.add_argument(
+    "--sim_nu_rest",
+    type=float,
+    default=115.27,
+    help="(SimGenerator) Rest-frequency of the spectral line being modeled (in GHz). Default CO(1-0): 115.27 GHz."
+)
+
+parser.add_argument(
+    "--sim_xrefine",
+    type=int,
+    default=5,
+    help="(SimGenerator) Factor by which to oversample the angular axes of the simulations. Defaults to 5."
+)
+
+parser.add_argument(
+    "--sim_freqrefine",
+    type=int,
+    default=5,
+    help="(SimGenerator) Factor by which to oversample the frequency axes of the simulations. Defaults to 5."
+)
+
+parser.add_argument(
+    "--sim_beambroaden",
+    type=str2bool,
+    default=True,
+    help="(SimGenerator) Whether to smooth the angular axes by a 4.5' Gaussian approximation of the COMAP primary beam. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_beamkernel",
+    type=str,
+    default=None,
+    help="(SimGenerator) Convolution kernel approximating the primary beam. If none, use Gaussian with 4.5' FWHM."
+)
+
+parser.add_argument(
+    "--sim_freqbroaden",
+    type=str2bool,
+    default=True,
+    help="(SimGenerator) Whether to simulate astrophysical line broadening. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_bincount",
+    type=int,
+    default=5,
+    help="(SimGenerator) Number of mass bins to split simulated halos into before line broadening. Defaults to 5."
+)
+
+parser.add_argument(
+    "--sim_fwhmfunction",
+    type=str,
+    default=None,
+    help="(SimGenerator) Function used to calculate FWHMa for halos. If none (default), vvirsini is used."
+)
+
+parser.add_argument(
+    "--sim_velocity_attr",
+    type=str,
+    default='vvirincli',
+    help="(SimGenerator) Which type of per-halo velocity (stored as an attribute) to use when broadening. Default 'vvirincli'."
+)
+
+parser.add_argument(
+    "--sim_lazyfilter",
+    type=str2bool,
+    default=True,
+    help="(SimGenerator) Faster FFT when binning after line broadening. Defaults to True."
+)
+
+parser.add_argument(
+    "--sim_output_dir",
+    type=str,
+    default='./simulations',
+    help="(SimGenerator) Path to directory in which to store all the output simulation files." #*****
 )
 
 ###### Signal Injection ######
