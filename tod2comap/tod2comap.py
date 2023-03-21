@@ -418,6 +418,11 @@ class Mapmaker:
 
                 time_array[5] += time.perf_counter() - ti
 
+
+        # Get frequency bin centers and edges from last level2 file.
+        full_map["freq_centers"] = l2data["freq_bin_centers"]
+        full_map["freq_edges"] = l2data["freq_bin_edges"]
+
         self.comm.Reduce(
             [time_array, MPI.DOUBLE], [time_buffer, MPI.DOUBLE], op=MPI.SUM, root=0
         )
@@ -449,6 +454,7 @@ class Mapmaker:
             print("Total time for scan:", 1e3 * time_buffer[5], "ms")
 
             print("=" * 80)
+
 
         # Perform MPI reduce on map datasets
         self.reduce_maps(full_map)
