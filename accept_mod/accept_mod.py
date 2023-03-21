@@ -286,6 +286,8 @@ def get_scan_stats(filepath, map_grid=None):
         tod_ind[~np.isfinite(tod_ind)] = 0
         # print(np.sum(np.isfinite(tod_ind)), np.size(tod_ind), tod_ind.shape)
         n_det_ind, n_sb, n_freq, n_samp = tod_ind.shape
+        freq_decimation_factor = my_file["decimation_nu"][()]
+        freq_bin_sizes_lowres_MHz = (my_file["freq_bin_centers_lowres"][0,1] - my_file["freq_bin_centers_lowres"][0,0])*1000
         sb_mean_ind = np.array(my_file['sb_mean'][:])
         point_tel_ind = np.array(my_file['point_tel'][:])
         point_radec_ind = np.array(my_file['point_cel'][:])
@@ -453,13 +455,13 @@ def get_scan_stats(filepath, map_grid=None):
     el_amp = point_amp[:, :, :, 0]
 
 
-    mask_sum = np.nansum(mask_full.reshape((n_det, n_sb, n_freq, 16)), axis=3)
+    mask_sum = np.nansum(mask_full.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3)
     az_amp = az_amp * mask_full
     el_amp = el_amp * mask_full
 
-    az_amp_lowres = np.nansum(az_amp.reshape((n_det, n_sb, n_freq, 16)), axis=3) / mask_sum
+    az_amp_lowres = np.nansum(az_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3) / mask_sum
     
-    el_amp_lowres = np.nansum(el_amp.reshape((n_det, n_sb, n_freq, 16)), axis=3) / mask_sum
+    el_amp_lowres = np.nansum(el_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3) / mask_sum
 
     mask_sb_sum = np.nansum(mask_full, axis=2)
     where = (mask_sb_sum > 0)
@@ -484,7 +486,7 @@ def get_scan_stats(filepath, map_grid=None):
     tsys_sb = np.nansum((tsys * mask), axis=2) / mask_sb_sum_lowres
 
     dt = (time[1] - time[0]) * 60  # seconds
-    radiometer = 1 / np.sqrt(31.25 * 10 ** 6 * dt)
+    radiometer = 1 / np.sqrt(freq_bin_sizes_lowres_MHz * 10 ** 6 * dt)
     ampl = np.nanmean(np.abs(ampl), axis=3)
     ampl = 100 * np.sqrt(ampl ** 2 * pca.std(1)[:, None, None] ** 2 / radiometer ** 2)
     # ampl[np.where(ampl == 0)] = np.nan
@@ -987,6 +989,7 @@ class ObsidData():
 
 def get_scan_data(params, fields, fieldname, paralellize=True):
     l2_path = params['level2_dir']
+    n_freqs = params["decimation_freqs"]
     field = fields[fieldname]
     n_scans = field[2]
     n_feeds = 20
@@ -997,7 +1000,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
     scan_data = np.zeros((n_scans, n_feeds, n_sb, n_stats), dtype=np.float32)
  
     if paralellize:
-        pool = multiprocessing.Pool(256)
+        pool = multiprocessing.Pool(80)
 
         i_scan = 0
         obsid_infos = []
@@ -1006,6 +1009,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             n_scans = len(scans)
             obsid_info = ObsidData()
             obsid_info.scans = scans
+            obsid_info.n_freqs = n_freqs
             obsid_info.field = fieldname
             obsid_info.l2_path = l2_path
             obsid_infos.append(obsid_info)
@@ -1057,6 +1061,7 @@ def get_obsid_data(obsid_info):
     scans = obsid_info.scans
     fieldname = obsid_info.field
     l2_path = obsid_info.l2_path
+    n_freqs = obsid_info.n_freqs
     
     ## set up map grid
     info = patch_info[fieldname]
@@ -1089,7 +1094,7 @@ def get_obsid_data(obsid_info):
         maps.append(map)
         i_scan += 1
     
-    ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2, ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2 = get_power_spectra(maps, map_grid)
+    ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2, ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2 = get_power_spectra(maps, map_grid, n_freqs)
 
     insert_data_in_array(scan_data, ps_s_sb_chi2, 'ps_s_sb_chi2', obsid=True)
     insert_data_in_array(scan_data, ps_s_feed_chi2, 'ps_s_feed_chi2', obsid=True)
@@ -1108,7 +1113,7 @@ def get_obsid_data(obsid_info):
     return scan_data
 
 
-def get_power_spectra(maps, map_grid):
+def get_power_spectra(maps, map_grid, n_freqs):
     n_feeds = 20
     n_sb = 4
     n_k = 10
@@ -1137,9 +1142,9 @@ def get_power_spectra(maps, map_grid):
     
     # ps_o_stackp_chi2 = np.zeros((n_scans, n_feeds, n_sb))
     # ps_o_stackfp_chi2 = np.zeros((n_scans, n_feeds, n_sb))
-    sum_obsid = np.zeros((len(ra) - 1, len(dec) - 1, n_sb, 64))  # np.zeros((len(ra), len(dec), 64))
+    sum_obsid = np.zeros((len(ra) - 1, len(dec) - 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
     div_obsid = np.zeros_like(sum_obsid)
-    sum_sb_obsid = np.zeros((n_feeds, len(ra) - 1, len(dec) - 1, n_sb, 64))  # np.zeros((len(ra), len(dec), 64))
+    sum_sb_obsid = np.zeros((n_feeds, len(ra) - 1, len(dec) - 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
     div_sb_obsid = np.zeros_like(sum_sb_obsid)
     ind_feed = []  # np.zeros((n_scans, n_feeds, 2, 2)).astype(int)
     accepted = np.zeros((n_scans, n_feeds, n_sb))
@@ -1149,7 +1154,7 @@ def get_power_spectra(maps, map_grid):
         #     with open('scan1map.pkl','wb') as my_file:
         #         pickle.dump(maps[l],my_file)
             # np.save('scan1map.npy', maps[l])
-        sum_scan = np.zeros((len(ra) - 1, len(dec) - 1, n_sb, 64))  # np.zeros((len(ra), len(dec), 64))
+        sum_scan = np.zeros((len(ra) - 1, len(dec) - 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
         div_scan = np.zeros_like(sum_scan)
         ind_feed.append(indices)
         for i in range(n_feeds):
@@ -1157,7 +1162,7 @@ def get_power_spectra(maps, map_grid):
             # dec_bins = map_grid[1][indices[i, 1, 0] - 1:indices[i, 1, 1] + 1]
             ind = indices[i]
             # print(indices)
-            map_feed = np.zeros((ind[0, 1] - ind[0, 0] + 1, ind[1, 1] - ind[1, 0] + 1, n_sb, 64))  # np.zeros((len(ra), len(dec), 64))
+            map_feed = np.zeros((ind[0, 1] - ind[0, 0] + 1, ind[1, 1] - ind[1, 0] + 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
             rms_feed = np.zeros_like(map_feed)
             for j in range(n_sb):
                 if not map_list[i][j]:
@@ -1195,8 +1200,8 @@ def get_power_spectra(maps, map_grid):
                 sh = map_feed.shape
 
                 ps_s_feed_chi2[l, i, :] = get_ps_chi2(
-                    map_feed.reshape((sh[0], sh[1], n_sb * 64)),
-                    rms_feed.reshape((sh[0], sh[1], n_sb * 64)),
+                    map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
                     n_k, d_th, dz, is_feed=True)
                 where = np.where(rms_feed > 0.0)
                 sum_scan[indices[i, 0, 0] - 1:indices[i, 0, 1], indices[i, 1, 0] - 1:indices[i, 1, 1], :, :][where] += map_feed[where] / rms_feed[where] ** 2 
@@ -1210,8 +1215,8 @@ def get_power_spectra(maps, map_grid):
             map_scan[where] = sum_scan[where] / div_scan[where]
             rms_scan[where] = np.sqrt(1.0 / div_scan[where])
             sh = map_scan.shape
-            map_scan = map_scan.reshape((sh[0], sh[1], n_sb * 64))
-            rms_scan = rms_scan.reshape((sh[0], sh[1], n_sb * 64))
+            map_scan = map_scan.reshape((sh[0], sh[1], n_sb * n_freqs))
+            rms_scan = rms_scan.reshape((sh[0], sh[1], n_sb * n_freqs))
             indices = np.ma.masked_equal(indices, 0, copy=False).astype(int)
             min_ind = np.min(indices[:, :, 0], axis=0)  ## only use the non-masked sidebands
             max_ind = np.max(indices[:, :, 1], axis=0)
@@ -1235,8 +1240,8 @@ def get_power_spectra(maps, map_grid):
         map_obsid[where] = sum_obsid[where] / div_obsid[where]
         rms_obsid[where] = np.sqrt(1.0 / div_obsid[where])
         sh = map_obsid.shape
-        map_obsid = map_obsid.reshape((sh[0], sh[1], n_sb * 64))
-        rms_obsid = rms_obsid.reshape((sh[0], sh[1], n_sb * 64))
+        map_obsid = map_obsid.reshape((sh[0], sh[1], n_sb * n_freqs))
+        rms_obsid = rms_obsid.reshape((sh[0], sh[1], n_sb * n_freqs))
 
         ind_feed = np.array(ind_feed).astype(int)
         ind_feed = np.ma.masked_equal(ind_feed, 0, copy=False).astype(int)
@@ -1255,8 +1260,8 @@ def get_power_spectra(maps, map_grid):
                 if np.sum(accepted[:, i, j]) == 0:
                     ps_o_sb_chi2[:, i, j] = np.nan
                 else: 
-                    map_sb = np.zeros((len(ra), len(dec), 64))
-                    rms_sb = np.zeros((len(ra), len(dec), 64))
+                    map_sb = np.zeros((len(ra), len(dec), n_freqs))
+                    rms_sb = np.zeros((len(ra), len(dec), n_freqs))
                     where = np.where(div_sb_obsid[i, :, :, j, :] > 0)
                     map_sb[where] = sum_sb_obsid[i, :, :, j, :][where] / div_sb_obsid[i, :, :, j, :][where]
                     rms_sb[where] = np.sqrt(1.0 / div_sb_obsid[i, :, :, j, :][where])
@@ -1267,7 +1272,7 @@ def get_power_spectra(maps, map_grid):
             if np.sum(accepted[:, i, :].flatten()) == 0:
                 ps_o_feed_chi2[:, i, :] = np.nan
             else:   
-                map_feed = np.zeros((len(ra), len(dec), n_sb, 64)) #np.zeros((max_ind[0] - min_ind[0] + 2, max_ind[1] - min_ind[1] + 2, n_sb, 64)) #np.zeros((len(ra), len(dec), n_sb, 64))        
+                map_feed = np.zeros((len(ra), len(dec), n_sb, n_freqs)) #np.zeros((max_ind[0] - min_ind[0] + 2, max_ind[1] - min_ind[1] + 2, n_sb, 64)) #np.zeros((len(ra), len(dec), n_sb, 64))        
                 rms_feed = np.zeros_like(map_feed)
                 where = where = np.where(div_sb_obsid[i, :, :, :, :] > 0)
                 map_feed[where] = sum_sb_obsid[i, :, :, :, :][where] / div_sb_obsid[i, :, :, :, :][where]
@@ -1276,8 +1281,8 @@ def get_power_spectra(maps, map_grid):
                 rms_feed = rms_feed[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]]
                 sh = map_feed.shape
                 ps_o_feed_chi2[:, i, :] = get_ps_chi2(
-                        map_feed.reshape((sh[0], sh[1], n_sb * 64)),
-                        rms_feed.reshape((sh[0], sh[1], n_sb * 64)),
+                        map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                        rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
                         n_k, d_th, dz, is_feed=True)
 
     return (ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2,
@@ -1617,7 +1622,7 @@ if __name__ == "__main__":
     # params = get_params(param_file)
     #sys.path.append(params['accept_param_folder'])
     #accept_params = importlib.import_module(params['accept_param_folder'] + params['accept_mod_params'][:-3])
-    sys.path.append("../")  # TODO: Find better solution
+    sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
     from l2gen_argparser import parser
     params = parser.parse_args()
     if not params.runlist:
