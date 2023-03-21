@@ -147,12 +147,21 @@ def main():
         pca_sub.overwrite_maps_with_reconstruction()
 
         if outpath is None or len(outpath) == 0:
-            outpath = mymap_clean.path.split(".h5")[0] + "_pca_reconstruction.h5"
+            new_outpath = mymap_clean.path.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}.h5"
         else:
-            outpath = outpath.split(".h5")[0] + "_pca_reconstruction.h5"
+            new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}.h5"
 
-        mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True)
+        mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True)
 
+        for i in range(ncomps):
+            pca_sub.overwrite_maps_with_reconstruction(component=i)
+
+            if outpath is None or len(outpath) == 0:
+                new_outpath = mymap_clean.path.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}_comp{i}.h5"
+            else:
+                new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}_comp{i}.h5"
+
+            mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True)
 
 if __name__ == "__main__":
     main()

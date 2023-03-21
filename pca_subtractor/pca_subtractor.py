@@ -258,19 +258,28 @@ class PCA_SubTractor:
         map_reconstruction = (
             map_reconstruction * singular_values[:, :, None, None, None, None]
         )
+
+
+        all_reconstructed_modes = map_reconstruction.transpose(1, 0, 2, 3, 4, 5)
         map_reconstruction = np.sum(map_reconstruction, axis=1)
 
         # Get back original units by undoing normalization
         if self.approx_noise:
             map_reconstruction = map_reconstruction / self.weights
+            all_reconstructed_modes = all_reconstructed_modes / self.weights
         else:
             map_reconstruction = map_reconstruction * (inrms**self.norm_exponent)
+            all_reconstructed_modes = all_reconstructed_modes * (inrms[None, ...] ** self.norm_exponent)
 
         map_reconstruction = np.where(
             map_reconstruction != 0, map_reconstruction, np.nan
         )
 
-        return map_reconstruction
+        all_reconstructed_modes = np.where(
+            all_reconstructed_modes != 0, all_reconstructed_modes, np.nan
+        )
+
+        return map_reconstruction, all_reconstructed_modes
 
     def compute_pca(self, norm: str = "sigma_wn") -> COmap:
         """Method to compute PCA of map datasets
@@ -292,6 +301,7 @@ class PCA_SubTractor:
 
         # Empty dict to save pca reconstructions
         self.map.pca_reconstruction = {}
+        self.map.full_pca_reconstruction = {}
 
         # Compute PCA of all feed-map datasets
         for key in self.keys_to_pca:
@@ -370,9 +380,10 @@ class PCA_SubTractor:
 
             if self.clean:
                 # Clean data
-                map_reconstruction = self.reconstruct_modes(key)
+                map_reconstruction, full_map_reconstruction = self.reconstruct_modes(key)
                 self.map[key] -= map_reconstruction
                 self.map.pca_reconstruction[f"{key}"] = map_reconstruction
+                self.map.full_pca_reconstruction[f"{key}"] = full_map_reconstruction
             
         if self.clean:
             # Coadd feed map
@@ -440,28 +451,56 @@ class PCA_SubTractor:
 
         return rms_reconstruction
 
-    def overwrite_maps_with_reconstruction(self):
+    def overwrite_maps_with_reconstruction(self, component = None):
         """Method that will overwrite, i.e. fill in, map data with PCA reconstruction"""
 
-        for key, value in self.map.pca_reconstruction.items():
-            self.map[key] = value
+        if component is None:
+            for key, value in self.map.pca_reconstruction.items():
+                self.map[key] = value
 
-        recon_map = self.map.pca_reconstruction["map"].copy()
-        recon_sigma_wn = self.map["sigma_wn"].copy()
+            recon_map = self.map.pca_reconstruction["map"].copy()
+            recon_sigma_wn = self.map["sigma_wn"].copy()
 
-        inv_var = 1 / recon_sigma_wn ** 2
-        mask = ~np.isfinite(inv_var)
-        inv_var[mask] = 0
-        recon_coadd = recon_map.copy() * inv_var
-        recon_coadd[mask] = 0
-        recon_coadd = recon_coadd.sum(0)
+            inv_var = 1 / recon_sigma_wn ** 2
+            mask = ~np.isfinite(inv_var)
+            inv_var[mask] = 0
+            recon_coadd = recon_map.copy() * inv_var
+            recon_coadd[mask] = 0
+            recon_coadd = recon_coadd.sum(0)
 
-        inv_var = inv_var.sum(0)
+            inv_var = inv_var.sum(0)
 
-        recon_coadd /= inv_var
+            recon_coadd /= inv_var
 
 
-        self.map["map_coadd"] = recon_coadd.copy()
+            self.map["map_coadd"] = recon_coadd.copy()
+            
+            self.map["is_pca_subtr"] = False
+            self.map["is_pca_recon"] = True
+            self.map["pca_component"] = -1
+
+        else:
+            for key, value in self.map.full_pca_reconstruction.items():
+                self.map[key] = value[component]
+
+            recon_map = self.map.full_pca_reconstruction["map"][component].copy()
+            recon_sigma_wn = self.map["sigma_wn"].copy()
+
+            inv_var = 1 / recon_sigma_wn ** 2
+            mask = ~np.isfinite(inv_var)
+            inv_var[mask] = 0
+            recon_coadd = recon_map.copy() * inv_var
+            recon_coadd[mask] = 0
+            recon_coadd = recon_coadd.sum(0)
+
+            inv_var = inv_var.sum(0)
+
+            recon_coadd /= inv_var
+
+
+            self.map["map_coadd"] = recon_coadd.copy()
+            
+            self.map["is_pca_subtr"] = False
+            self.map["is_pca_recon"] = True
+            self.map["pca_component"] = component
         
-        self.map["is_pca_subtr"] = False
-        self.map["is_pca_recon"] = True

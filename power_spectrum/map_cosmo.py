@@ -97,7 +97,7 @@ class MapCosmo:
         angle2Mpc = cosmo.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
 
         NRA, NDEC = self.x.size, self.y.size
-
+        
         # Centering RA and Dec relative to field centers before converting to cosmological distnace
         x = (
             (
