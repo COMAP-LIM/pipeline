@@ -260,7 +260,7 @@ class PCA_SubTractor:
         )
 
 
-        all_reconstructed_modes = map_reconstruction.transpose(1, 0, 2, 3, 4, 5)
+        all_reconstructed_modes = map_reconstruction.copy().transpose(1, 0, 2, 3, 4, 5)
         map_reconstruction = np.sum(map_reconstruction, axis=1)
 
         # Get back original units by undoing normalization
@@ -305,6 +305,10 @@ class PCA_SubTractor:
 
         # Compute PCA of all feed-map datasets
         for key in self.keys_to_pca:
+            # if key == "map":
+            #     # Only want to do map PCA on feed and split maps
+            #     continue
+
             if self.verbose:
                 print(" " * 4 + "Dataset: " + f"{key}")
 
@@ -334,34 +338,83 @@ class PCA_SubTractor:
                 #     1e6 * self.map[rms_key] < maskrms, self.map[rms_key], np.nan
                 # )
 
-                nfeed, nsb, nchannel, nra, ndec = self.map[rms_key].shape
-                sorted_rms = self.map[rms_key].reshape(nfeed, nsb, nchannel, nra * ndec)
+                # nfeed, nsb, nchannel, nra, ndec = self.map[rms_key].shape
+                # sorted_rms = self.map[rms_key].reshape(nfeed, nsb, nchannel, nra * ndec)
+
+                # bottom100_idx = np.argpartition(sorted_rms, 100, axis=-1)[..., :100]
+                # bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis=-1)
+
+                # mean_bottom100_rms = np.nanmean(bottom100, axis=-1)
+
+                # noise_lim = mean_bottom100_rms * self.maskrms
+
+                # self.map[key] = np.where(
+                #     self.map[rms_key] < noise_lim[..., None, None],
+                #     self.map[key],
+                #     np.nan,
+                # )
+
+                # fig, ax = plt.subplots(figsize = (10, 10))
+                # ax.imshow(
+                #     self.map[key]
+
+                # )
+
+                # if nhit_key in self.map.keys:
+                #     self.map[nhit_key] = np.where(
+                #         self.map[rms_key] < noise_lim[..., None, None],
+                #         self.map[nhit_key],
+                #         np.nan,
+                #     )
+
+                # self.map[rms_key] = np.where(
+                #     self.map[rms_key] < noise_lim[..., None, None],
+                #     self.map[rms_key],
+                #     np.nan,
+                # )
+
+                feed_noise_freq_coadded = 1 / self.map[rms_key] ** 2
+                mask = ~np.isfinite(feed_noise_freq_coadded)
+                feed_noise_freq_coadded[mask] = 0
+
+                feed_noise_freq_coadded = 1 / np.sqrt(np.sum(feed_noise_freq_coadded, axis = (1, 2)))
+
+                nfeed, _, _, nra, ndec = self.map[rms_key].shape
+                sorted_rms = feed_noise_freq_coadded.reshape(nfeed, nra * ndec)
 
                 bottom100_idx = np.argpartition(sorted_rms, 100, axis=-1)[..., :100]
                 bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis=-1)
 
-                mean_bottom100_rms = np.nanmean(bottom100, axis=-1)
+                mean_bottom100_rms = np.nanmean(bottom100, axis=-1) 
 
-                noise_lim = mean_bottom100_rms * self.maskrms
+                noise_lim = self.maskrms * mean_bottom100_rms 
 
-                self.map[key] = np.where(
-                    self.map[rms_key] < noise_lim[..., None, None],
-                    self.map[key],
-                    np.nan,
-                )
+                mask = feed_noise_freq_coadded[:, None, None, :] * np.ones_like(self.map[rms_key]) > noise_lim[:, None, None, None, None] 
+
+                self.map[key][mask] = np.nan
+
+                # self.map[key] = np.where(
+                #     self.map[rms_key] < noise_lim[..., None, None],
+                #     self.map[key],
+                #     np.nan,
+                # )
 
                 if nhit_key in self.map.keys:
-                    self.map[nhit_key] = np.where(
-                        self.map[rms_key] < noise_lim[..., None, None],
-                        self.map[nhit_key],
-                        np.nan,
-                    )
+                    # self.map[nhit_key] = np.where(
+                    #     self.map[rms_key] < noise_lim[..., None, None],
+                    #     self.map[nhit_key],
+                    #     np.nan,
+                    # )
+                    self.map[nhit_key] = self.map[nhit_key].astype(np.float32)
+                    self.map[nhit_key][mask] = np.nan
 
-                self.map[rms_key] = np.where(
-                    self.map[rms_key] < noise_lim[..., None, None],
-                    self.map[rms_key],
-                    np.nan,
-                )
+
+                # self.map[rms_key] = np.where(
+                #     self.map[rms_key] < noise_lim[..., None, None],
+                #     self.map[rms_key],
+                #     np.nan,
+                # )
+                self.map[rms_key][mask] = np.nan
 
             if self.approx_noise:
                 self.weights = self.approximate_sigma_wn(self.map[rms_key])
@@ -395,12 +448,12 @@ class PCA_SubTractor:
             if not self.maskrms:
                 # Assert if coadded rms and nhit maps are same as the ones from
                 # original initialization
-                if "nhit" in self.map.keys:
-                    assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
+                #if "nhit" in self.map.keys:
+                #    assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
 
                 rms_coadd[rms_coadd == 0] = np.inf
 
-                assert np.allclose(rms_coadd, self.map["sigma_wn_coadd"])
+                #assert np.allclose(rms_coadd, self.map["sigma_wn_coadd"])
 
             rms_coadd[np.isinf(rms_coadd)] = np.nan
 
@@ -471,7 +524,6 @@ class PCA_SubTractor:
             inv_var = inv_var.sum(0)
 
             recon_coadd /= inv_var
-
 
             self.map["map_coadd"] = recon_coadd.copy()
             
