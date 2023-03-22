@@ -25,7 +25,6 @@ import importlib
 import warnings
 import shutil
 from tqdm import trange, tqdm
-from mpi4py import MPI
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 warnings.filterwarnings("ignore", message="invalid value encountered in power")
 warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
@@ -288,10 +287,8 @@ def get_scan_stats(filepath, map_grid=None):
         # print(np.sum(np.isfinite(tod_ind)), np.size(tod_ind), tod_ind.shape)
         n_det_ind, n_sb, n_freq, n_samp = tod_ind.shape
         freq_decimation_factor = my_file["decimation_nu"][()]
-        try:
-            freq_bin_sizes_lowres_MHz = (my_file["freq_bin_centers_lowres"][0,1] - my_file["freq_bin_centers_lowres"][0,0])*1000
-        except:
-            freq_bin_sizes_lowres_MHz = 31.25
+        # freq_bin_sizes_lowres_MHz = (my_file["freq_bin_centers_lowres"][0,1] - my_file["freq_bin_centers_lowres"][0,0])*1000
+        freq_bin_sizes_lowres_MHz = 31.25
         sb_mean_ind = np.array(my_file['sb_mean'][:])
         point_tel_ind = np.array(my_file['point_tel'][:])
         point_radec_ind = np.array(my_file['point_cel'][:])
@@ -992,22 +989,21 @@ class ObsidData():
         pass
 
 def get_scan_data(params, fields, fieldname, paralellize=True):
-    WORK_TAG = 1
-    DIE_TAG = 2
+    l2_path = params['level2_dir']
+    n_freqs = params["decimation_freqs"]
+    field = fields[fieldname]
+    n_scans = field[2]
+    n_feeds = 20
+    n_sb = 4
+    n_stats = len(stats_list)
+    
+    scan_list = np.zeros((n_scans), dtype=np.int32)
+    scan_data = np.zeros((n_scans, n_feeds, n_sb, n_stats), dtype=np.float32)
+ 
+    if paralellize:
+        pool = multiprocessing.Pool(32)
 
-    if rank == 0:
-        l2_path = params['level2_dir']
-        n_freqs = params["decimation_freqs"]
-        field = fields[fieldname]
-        tot_scans = field[2]
-        n_feeds = 20
-        n_sb = 4
-        n_stats = len(stats_list)
-        
-        scan_list = np.zeros((tot_scans), dtype=np.int32)
-        scan_data = np.zeros((tot_scans, n_feeds, n_sb, n_stats), dtype=np.float32)
-
-        # i_scan = 0
+        i_scan = 0
         obsid_infos = []
         for obsid in field[0]:
             scans = field[1][obsid]
@@ -1018,75 +1014,48 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             obsid_info.field = fieldname
             obsid_info.l2_path = l2_path
             obsid_infos.append(obsid_info)
-            # scan_list[i_scan:i_scan+n_scans] = scans
-            # i_scan += n_scans
-        
-        n_tasks = len(obsid_infos) 
-        print(f"Total of {n_tasks} tasks (obsids).")
+            scan_list[i_scan:i_scan+n_scans] = scans
+            i_scan += n_scans
+        scan_data_list = list(tqdm(pool.imap(get_obsid_data, obsid_infos, chunksize=1), total=len(obsid_infos)))
+        print('Done with parallell')
+        i = 0
         i_scan = 0
-        tasks_done = 0
-        tasks_started = 0
-        for iproc in range(1, Nproc):
-            comm.send(obsid_infos[tasks_started], dest=iproc, tag=WORK_TAG)
-            # print(f"Sent work to worker {iproc} for task {tasks_started}.", flush=True)
-            tasks_started += 1
+        for obsid in field[0]:
+            scans = field[1][obsid]
+            n_scans = len(scans)
+            scan_data[i_scan:i_scan+n_scans] = scan_data_list[i]
+            i_scan += n_scans
+            i += 1
+        
+        # scanids = [scanid for obsid in field[0] for scanid in field[1][obsid]]
 
-        while tasks_started < n_tasks:
-            status = MPI.Status()
-            scan_data_list = comm.recv(source=MPI.ANY_SOURCE, status=status)
-            tasks_done += 1
-            workerID = status.Get_source()
-            # print(f"Recieved work from worker {workerID}.", flush=True)
-            comm.send(obsid_infos[tasks_started], dest=workerID, tag=WORK_TAG)
-            tasks_started += 1
-            # print(f"Sent work to worker {workerID} for task {tasks_started}.", flush=True)
-            n_scans = len(scan_data_list)
-            scan_data[i_scan:i_scan+n_scans] = scan_data_list
+        # filepaths = [l2_path + '/' + fieldname + '/' + fieldname + '_0' + scanid + '.h5' for scanid in scanids]
+                                                                                                                                                                
+        # pool = multiprocessing.Pool(100)                                                                                                                              
+        # scan_data[:,:,:,:], _ = np.array(list(pool.map(get_scan_stats, filepaths)))
+        # scan_list[:] = scanids
+    else:
+        i_scan = 0
+        for obsid in field[0]:
+            scans = field[1][obsid]
+            n_scans = len(scans)
+            obsid_info = ObsidData()
+            obsid_info.scans = scans
+            obsid_info.field = fieldname
+            obsid_info.l2_path = l2_path
+            scan_data[i_scan:i_scan+n_scans] = get_obsid_data(obsid_info)
+            scan_list[i_scan:i_scan+n_scans] = scans
             i_scan += n_scans
 
-        while tasks_done < n_tasks:
-            status = MPI.Status()
-            scan_data_list = comm.recv(source=MPI.ANY_SOURCE, status=status)
-            tasks_done += 1
-            workerID = status.Get_source()
-            # print(f"Recieved work from worker {workerID}.", flush=True)
-            print(f"Completed task {tasks_done} of {n_tasks}.", flush=True)
-            n_scans = len(scan_data_list)
-            scan_data[i_scan:i_scan+n_scans] = scan_data_list
-            i_scan += n_scans
+            
         
-        print("Shutting down workers.")
-        for iproc in range(1, Nproc):
-            print(f"Shutting down worker {iproc}.")
-            comm.send(-1, dest=iproc, tag=DIE_TAG)
-
-        # print(scan_data.shape)
-        # print(scan_data[0,0,0])
-        # scan_idx_in_scanid = np.argwhere(stats_list == "scanid")[0]
-        # print("Finalizing MPI section.")
-        # for iscan in range(tot_scans):
-        #     scan_data[iscan] = scan_data[iscan,0,0,1]
-        
-        # print(scan_data.shape)
-        # print(scan_data[0,0,0])
-
-    
-    else:
-        while True:
-            status = MPI.Status()
-            obsid_info = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
-            # print(f"Worker {rank} recieved work with tag {status.Get_tag()}.", flush=True)
-            if status.Get_tag() == DIE_TAG:
-                print(f"Worker {rank} dying.", flush=True)
-                break
-            scan_data_list = get_obsid_data(obsid_info)
-            comm.send(scan_data_list, dest=0)
-    print(f"Done from rank {rank}.")
-
-    if rank == 0:
-        return scan_list, scan_data
-    else:
-        return None, None
+            # for scanid in scans:
+            #     filepath = l2_path + '/' + fieldname + '/' + fieldname + '_0' + scanid + '.h5'
+            #     #filepath = l2_path + '/' + fieldname + '_0' + scanid + '.h5'
+            #     scan_data[i_scan] = get_scan_stats(filepath)
+            #     scan_list[i_scan] = int(scanid)
+            #     i_scan +=1
+    return scan_list, scan_data
 
 
 def get_obsid_data(obsid_info):
@@ -1645,10 +1614,15 @@ def get_max_runID(folder):
     return maxid
 
 if __name__ == "__main__":
-    comm = MPI.COMM_WORLD
-    Nproc = comm.Get_size()
-    rank = comm.Get_rank()
-
+    # try:
+    #     param_file = sys.argv[1]
+    # except IndexError:
+    #     print('You need to provide param file as command-line argument')
+    #     sys.exit()
+    
+    # params = get_params(param_file)
+    #sys.path.append(params['accept_param_folder'])
+    #accept_params = importlib.import_module(params['accept_param_folder'] + params['accept_mod_params'][:-3])
     sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
     from l2gen_argparser import parser
     params = parser.parse_args()
@@ -1698,181 +1672,179 @@ if __name__ == "__main__":
                 scan_data = my_file['scan_data'][()]
         else:
             scan_list, scan_data = get_scan_data(params, fields, fieldname)
-        
-        if rank == 0:
-            scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
-            scan_data_data_name_list.append(scan_data_data_name)
-            print('Saved scan data')
-            accept_list, reject_reason, acc = make_accept_list(params, accept_params, scan_data)
-            print('Made accept list')
-            jk_list, cutoff_list, split_list = make_jk_list(params, accept_list, scan_list, scan_data, jk_param_list_file)
-            print('Made jk_list')
-            jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
-            jk_data_name_list.append(jk_data_name)
 
-            if show_plot:
-                labels = ['freq'] + stats_list 
-                ind = np.arange(len(acc))
-                plt.bar(ind, acc * 19, alpha=0.5, label=fieldname)
-                plt.xticks(ind, labels, rotation='vertical')
-    if rank == 0:
+        scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
+        scan_data_data_name_list.append(scan_data_data_name)
+        print('Saved scan data')
+        accept_list, reject_reason, acc = make_accept_list(params, accept_params, scan_data)
+        print('Made accept list')
+        jk_list, cutoff_list, split_list = make_jk_list(params, accept_list, scan_list, scan_data, jk_param_list_file)
+        print('Made jk_list')
+        jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
+        jk_data_name_list.append(jk_data_name)
+
         if show_plot:
-            plt.ylabel('effective # of feeds')
-            plt.grid()
-            plt.legend()
-            plt.tight_layout()
-            plt.show()
+            labels = ['freq'] + stats_list 
+            ind = np.arange(len(acc))
+            plt.bar(ind, acc * 19, alpha=0.5, label=fieldname)
+            plt.xticks(ind, labels, rotation='vertical')
+    if show_plot:
+        plt.ylabel('effective # of feeds')
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
 
-        accept_params_name = params['accept_param_folder'] + params['accept_mod_params']
-        stats_list_name    = params['accept_param_folder'] + params['stats_list']
-        
-        accept_params_name_raw = params['accept_mod_params'][:-3]
-        stats_list_name_raw = params['stats_list'][:-3]
-
-        # param_file_copy_raw = param_file.split("/")
-        # param_file_copy_raw = param_file_copy_raw[-1][:-4]
-        runlist_name    = params['runlist']
-        runlist_copy_raw    = runlist_name.split("/")[-1][:-4]
-        jk_def_raw    = jk_param_list_file.split("/")[-1][:-4]
-
-        # param_file_copy = copy_folder + param_file_copy_raw + f"_{runid:06d}" + ".txt"
-        runlist_copy = copy_folder + runlist_copy_raw + f"_{runid:06d}" + ".txt"
-        jk_def_copy = copy_folder + jk_def_raw + f"_{runid:06d}" + ".txt"
-        accept_params_name_copy = copy_folder + accept_params_name_raw + f"_{runid:06d}" + ".py"
-        stats_list_name_copy = copy_folder + stats_list_name_raw + f"_{runid:06d}" + ".py"
-
-
-        # shutil.copyfile(param_file, param_file_copy)
-        #shutil.copyfile(runlist_name, runlist_copy)
-        #shutil.copyfile(jk_param_list_file, jk_def_copy)
-        #shutil.copyfile(accept_params_name, accept_params_name_copy)
-        #shutil.copyfile(stats_list_name, stats_list_name_copy)
+    accept_params_name = params['accept_param_folder'] + params['accept_mod_params']
+    stats_list_name    = params['accept_param_folder'] + params['stats_list']
     
+    accept_params_name_raw = params['accept_mod_params'][:-3]
+    stats_list_name_raw = params['stats_list'][:-3]
 
-            
+    # param_file_copy_raw = param_file.split("/")
+    # param_file_copy_raw = param_file_copy_raw[-1][:-4]
+    runlist_name    = params['runlist']
+    runlist_copy_raw    = runlist_name.split("/")[-1][:-4]
+    jk_def_raw    = jk_param_list_file.split("/")[-1][:-4]
 
-        ### Making scan data plots ###
-        print("Making scan data plots")
-        plot_folder = os.path.join(data_folder, "plots")
-        if not os.path.exists(plot_folder):
-            os.mkdir(plot_folder)
+    # param_file_copy = copy_folder + param_file_copy_raw + f"_{runid:06d}" + ".txt"
+    runlist_copy = copy_folder + runlist_copy_raw + f"_{runid:06d}" + ".txt"
+    jk_def_copy = copy_folder + jk_def_raw + f"_{runid:06d}" + ".txt"
+    accept_params_name_copy = copy_folder + accept_params_name_raw + f"_{runid:06d}" + ".py"
+    stats_list_name_copy = copy_folder + stats_list_name_raw + f"_{runid:06d}" + ".py"
 
-        lims = {
-            "obsid" : [6000, 38000],
-            "scanid" : [600000, 3800000],
-            "mjd" : [58600, 60500],
-            "night": [0, 12],
-            "sidereal" : [0, 360],
-            "az" : [0, 360],
-            "el" : [0, 80],
-            "chi2" : [-6, 6],
-            "acceptrate" : [0, 1],
-            "acceptrate_specific" : [0, 1],
-            "az_chi2" : [-10, 10],
-            "max_az_chi2" : [-10, 10],
-            "med_az_chi2" : [-10, 10],
-            "fbit" : [0, 0],
-            "az_amp" : [-0.002, 0.002],
-            "el_amp" : [-1.5, 1.5],
-            "n_spikes" : [-1, 30],
-            "n_jumps" : [-0.1, 10.1],
-            "n_anomalies" : [-0.1, 5.1],
-            "n_nan" : [-0.1, 10.1],
-            "tsys" : [0, 120],
-            "pca1" : [0, 100],
-            "pca2" : [0, 60],
-            "pca3" : [0, 40],
-            "pca4" : [0, 20],
-            "weather" : [-0.05, 1.05],
-            "kurtosis" : [-0.05, 0.05],
-            "skewness" : [-0.04, 0.04],
-            "scan_length" : [0, 25],
-            "saddlebag" : [-0.1, 5.1],
-            "sigma_poly0" : [0, 0.1],
-            "fknee_poly0" : [0, 110],
-            "alpha_poly0" : [-8, 4],
-            "sigma_poly1" : [0, 0.1],
-            "fknee_poly1" : [0, 110],
-            "alpha_poly1" : [-8, 4],
-            "power_mean" : [-1e9, 1.5e10],
-            "sigma_mean" : [-10000, 110000],
-            "fknee_mean" : [0, 110],
-            "alpha_mean" : [-8, 4],
-            "airtemp" : [-25, 45],
-            "dewtemp" : [-30, 60],
-            "humidity" : [-0.1, 1.1],
-            "pressure" : [690, 1310],
-            "rain" : [-0.1, 25.1],
-            "winddir" : [-1, 361],
-            "windspeed" : [-1, 21],
-            "moon_dist" : [20, 200],
-            "moon_angle" : [-200, 420],
-            "moon_cent_sl" : [-0.1, 2.1],
-            "moon_outer_sl" : [-0.1, 2.1],    
-            "sun_dist" : [0, 181],
-            "sun_angle" : [-200, 370],
-            "sun_cent_sl" : [-0.1, 1.1],
-            "sun_outer_sl" : [-0.1, 2.1],
-            "sun_el" : [-91, 91],
-            "ps_chi2" : [-20, 30],
-            "ps_s_sb_chi2" : [-20, 30],
-            "ps_s_feed_chi2" : [-20, 100],
-            "ps_s_chi2" : [-20, 200],
-            "ps_o_sb_chi2": [-20.0, 30.0],
-            "ps_o_feed_chi2": [-20.0, 80.0],
-            "ps_o_chi2": [-20.0, 160.0],
-            "ps_z_s_sb_chi2": [-60.0, 40.0],
-            "ps_xy_s_sb_chi2": [-60.0, 40.0]}
+
+    # shutil.copyfile(param_file, param_file_copy)
+    #shutil.copyfile(runlist_name, runlist_copy)
+    #shutil.copyfile(jk_param_list_file, jk_def_copy)
+    #shutil.copyfile(accept_params_name, accept_params_name_copy)
+    #shutil.copyfile(stats_list_name, stats_list_name_copy)
+  
+
         
-        import sys
-        # sys.path.append("/mn/stornext/d22/cmbco/comap/protodir/accept_mod/")
-        from accept_params import stats_cut
-        
-        Nstats = len(stats_list) - 14
 
-        fig, ax = plt.subplots(Nstats, 1, figsize=(12,4*Nstats))
-        for i in range(Nstats):
-            stat = stats_list[i]#.decode("ascii")
-            stat_cut = stats_cut[stat]
-            histrange = lims[stat]
-            _data = scan_data[:,:,:,i].flatten().copy()
-            _data[_data < histrange[0]] = histrange[0] + 1e-8
-            _data[_data > histrange[1]] = histrange[1] - 1e-8
-            ax[i].hist(_data, density=True, bins=100, range=histrange, histtype="step", lw=2)
-            ax[i].axvline(stat_cut[0], ls="--", c="k")
-            ax[i].axvline(stat_cut[1], ls="--", c="k")
-            ax[i].set_title(stat)
-        plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, params['accept_data_id_string'] + "_histograms.png"), bbox_inches="tight", dpi=200)
-        
-        
-        def downsample(mjd, data, bin_size_days=1):
-            mjd_start = int(np.floor(mjd.min()))
-            mjd_stop = int(np.ceil(mjd.max()))
-            bins = np.arange(mjd_start, mjd_stop+1, bin_size_days)
-            Nbins = bins.shape[0]
-            data_binned = np.zeros((Nbins)) + np.nan
-            N_binned = np.zeros((Nbins))
-            for ibin in range(Nbins-1):
-                data_binned[ibin] = np.nanmean(data[(mjd >= bins[ibin])*(mjd < bins[ibin+1])])
-                N_binned[ibin] = np.sum((mjd >= bins[ibin])*(mjd < bins[ibin+1]))
-            data_binned[N_binned < bin_size_days*5*20*4] = np.nan
-            return bins, data_binned
+    ### Making scan data plots ###
+    print("Making scan data plots")
+    plot_folder = os.path.join(data_folder, "plots")
+    if not os.path.exists(plot_folder):
+        os.mkdir(plot_folder)
+
+    lims = {
+        "obsid" : [6000, 38000],
+        "scanid" : [600000, 3800000],
+        "mjd" : [58600, 60500],
+        "night": [0, 12],
+        "sidereal" : [0, 360],
+        "az" : [0, 360],
+        "el" : [0, 80],
+        "chi2" : [-6, 6],
+        "acceptrate" : [0, 1],
+        "acceptrate_specific" : [0, 1],
+        "az_chi2" : [-10, 10],
+        "max_az_chi2" : [-10, 10],
+        "med_az_chi2" : [-10, 10],
+        "fbit" : [0, 0],
+        "az_amp" : [-0.002, 0.002],
+        "el_amp" : [-1.5, 1.5],
+        "n_spikes" : [-1, 30],
+        "n_jumps" : [-0.1, 10.1],
+        "n_anomalies" : [-0.1, 5.1],
+        "n_nan" : [-0.1, 10.1],
+        "tsys" : [0, 120],
+        "pca1" : [0, 100],
+        "pca2" : [0, 60],
+        "pca3" : [0, 40],
+        "pca4" : [0, 20],
+        "weather" : [-0.05, 1.05],
+        "kurtosis" : [-0.05, 0.05],
+        "skewness" : [-0.04, 0.04],
+        "scan_length" : [0, 25],
+        "saddlebag" : [-0.1, 5.1],
+        "sigma_poly0" : [0, 0.1],
+        "fknee_poly0" : [0, 110],
+        "alpha_poly0" : [-8, 4],
+        "sigma_poly1" : [0, 0.1],
+        "fknee_poly1" : [0, 110],
+        "alpha_poly1" : [-8, 4],
+        "power_mean" : [-1e9, 1.5e10],
+        "sigma_mean" : [-10000, 110000],
+        "fknee_mean" : [0, 110],
+        "alpha_mean" : [-8, 4],
+        "airtemp" : [-25, 45],
+        "dewtemp" : [-30, 60],
+        "humidity" : [-0.1, 1.1],
+        "pressure" : [690, 1310],
+        "rain" : [-0.1, 25.1],
+        "winddir" : [-1, 361],
+        "windspeed" : [-1, 21],
+        "moon_dist" : [20, 200],
+        "moon_angle" : [-200, 420],
+        "moon_cent_sl" : [-0.1, 2.1],
+        "moon_outer_sl" : [-0.1, 2.1],    
+        "sun_dist" : [0, 181],
+        "sun_angle" : [-200, 370],
+        "sun_cent_sl" : [-0.1, 1.1],
+        "sun_outer_sl" : [-0.1, 2.1],
+        "sun_el" : [-91, 91],
+        "ps_chi2" : [-20, 30],
+        "ps_s_sb_chi2" : [-20, 30],
+        "ps_s_feed_chi2" : [-20, 100],
+        "ps_s_chi2" : [-20, 200],
+        "ps_o_sb_chi2": [-20.0, 30.0],
+        "ps_o_feed_chi2": [-20.0, 80.0],
+        "ps_o_chi2": [-20.0, 160.0],
+        "ps_z_s_sb_chi2": [-60.0, 40.0],
+        "ps_xy_s_sb_chi2": [-60.0, 40.0]}
+    
+    import sys
+    # sys.path.append("/mn/stornext/d22/cmbco/comap/protodir/accept_mod/")
+    from accept_params import stats_cut
+    
+    Nstats = len(stats_list) - 14
+
+    fig, ax = plt.subplots(Nstats, 1, figsize=(12,4*Nstats))
+    for i in range(Nstats):
+        stat = stats_list[i]#.decode("ascii")
+        stat_cut = stats_cut[stat]
+        histrange = lims[stat]
+        _data = scan_data[:,:,:,i].flatten().copy()
+        _data[_data < histrange[0]] = histrange[0] + 1e-8
+        _data[_data > histrange[1]] = histrange[1] - 1e-8
+        ax[i].hist(_data, density=True, bins=100, range=histrange, histtype="step", lw=2)
+        ax[i].axvline(stat_cut[0], ls="--", c="k")
+        ax[i].axvline(stat_cut[1], ls="--", c="k")
+        ax[i].set_title(stat)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_folder, params['accept_data_id_string'] + "_histograms.png"), bbox_inches="tight", dpi=200)
+    
+    
+    def downsample(mjd, data, bin_size_days=1):
+        mjd_start = int(np.floor(mjd.min()))
+        mjd_stop = int(np.ceil(mjd.max()))
+        bins = np.arange(mjd_start, mjd_stop+1, bin_size_days)
+        Nbins = bins.shape[0]
+        data_binned = np.zeros((Nbins)) + np.nan
+        N_binned = np.zeros((Nbins))
+        for ibin in range(Nbins-1):
+            data_binned[ibin] = np.nanmean(data[(mjd >= bins[ibin])*(mjd < bins[ibin+1])])
+            N_binned[ibin] = np.sum((mjd >= bins[ibin])*(mjd < bins[ibin+1]))
+        data_binned[N_binned < bin_size_days*5*20*4] = np.nan
+        return bins, data_binned
 
 
-        fig, ax = plt.subplots(Nstats, 1, figsize=(12,4*Nstats))
-        for i in range(Nstats):
-            stat = stats_list[i]
-            stat_cut = stats_cut[stat]
-            histrange = lims[stat]
+    fig, ax = plt.subplots(Nstats, 1, figsize=(12,4*Nstats))
+    for i in range(Nstats):
+        stat = stats_list[i]
+        stat_cut = stats_cut[stat]
+        histrange = lims[stat]
 
-            bins_days, data_days = downsample(scan_data[:,:,:,2].flatten(), scan_data[:,:,:,i].flatten(), bin_size_days=1)
-            bins_weeks, data_weeks = downsample(scan_data[:,:,:,2].flatten(), scan_data[:,:,:,i].flatten(), bin_size_days=7)
+        bins_days, data_days = downsample(scan_data[:,:,:,2].flatten(), scan_data[:,:,:,i].flatten(), bin_size_days=1)
+        bins_weeks, data_weeks = downsample(scan_data[:,:,:,2].flatten(), scan_data[:,:,:,i].flatten(), bin_size_days=7)
 
-            ax[i].axhline(stat_cut[0], ls="--", c="k")
-            ax[i].axhline(stat_cut[1], ls="--", c="k")
-            ax[i].plot(bins_days, data_days)
-            ax[i].plot(bins_weeks, data_weeks)
-            ax[i].set_title(stat)
-        plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, params['accept_data_id_string'] + "_time_plot.png"), bbox_inches="tight", dpi=200)
+        ax[i].axhline(stat_cut[0], ls="--", c="k")
+        ax[i].axhline(stat_cut[1], ls="--", c="k")
+        ax[i].plot(bins_days, data_days)
+        ax[i].plot(bins_weeks, data_weeks)
+        ax[i].set_title(stat)
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_folder, params['accept_data_id_string'] + "_time_plot.png"), bbox_inches="tight", dpi=200)

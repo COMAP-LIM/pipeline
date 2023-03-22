@@ -9,6 +9,78 @@ from dataclasses import dataclass, field
 from pixell import enmap, utils
 import os
 
+from limsim_tools import *
+from load_halos import *
+from make_sim_maps import *
+from generate_luminosities import *
+
+
+class SimParameters():
+    """
+    simple Class creating an empty table
+    used for halo catalogue and map instances
+    """
+    def __init__(self):
+        pass
+
+    def copy(self):
+        """@brief Creates a copy of the table."""
+        return copy.deepcopy(self)
+
+    def print(self):
+        attrlist = []
+        for i in dir(self):
+            if i[0]=='_': continue
+            elif i == 'copy': continue
+            else: attrlist.append(i)
+        print(attrlist)
+
+@dataclass
+class SimGenerator:
+    """class to make simulation cubes using the limlam_mocker package"""
+
+    def __init__(self, params):
+
+        # keep only the arguments set to begin with 'sim' in a separate dict
+        # to pass them easily to the simulation functions
+        param_dict = vars(params)
+        simparams = SimParameters()
+        for key, val in param_dict.items():
+            if key[0:4] == 'sim_':
+                setattr(simparams, key[4:], val)
+
+        # function to broaden the spectral axes
+        simparams.filterfunc = gaussian_filter1d
+
+        self.simparams = simparams
+
+    def run(self):
+
+        simpars = self.simparams
+
+        # generate the halo catalog from the passed peak-patch catalog
+        halos = HaloCatalog(simpars, simpars.halo_catalogue_file)
+
+        # generate luminosities for each halo
+        Mhalo_to_Ls(halos, simpars)
+
+        # set up map parameters
+        map = SimMap(simpars)
+
+        # make the map
+        map.mockmapmaker(halos, simpars)
+
+        # output files for map and catalog
+        simpars.map_output_file = simpars.output_dir + '/sim_map.npz'
+        simpars.cat_output_file = simpars.output_dir + '/sim_cat.npz'
+
+        map.write(simpars)
+        halos.write_cat(simpars)
+
+        return
+
+
+
 
 @dataclass
 class SimCube:
