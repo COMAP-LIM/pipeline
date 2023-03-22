@@ -22,6 +22,7 @@ import sys
 import math
 import multiprocessing
 import importlib
+import time
 import warnings
 import shutil
 from tqdm import trange, tqdm
@@ -1007,7 +1008,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
         scan_list = np.zeros((tot_scans), dtype=np.int32)
         scan_data = np.zeros((tot_scans, n_feeds, n_sb, n_stats), dtype=np.float32)
 
-        # i_scan = 0
+        i_scan = 0
         obsid_infos = []
         for obsid in field[0]:
             scans = field[1][obsid]
@@ -1018,16 +1019,21 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             obsid_info.field = fieldname
             obsid_info.l2_path = l2_path
             obsid_infos.append(obsid_info)
-            # scan_list[i_scan:i_scan+n_scans] = scans
-            # i_scan += n_scans
+            scan_list[i_scan:i_scan+n_scans] = scans
+            i_scan += n_scans
         
         n_tasks = len(obsid_infos) 
         print(f"Total of {n_tasks} tasks (obsids).")
         i_scan = 0
         tasks_done = 0
         tasks_started = 0
-        for iproc in range(1, Nproc):
-            comm.send(obsid_infos[tasks_started], dest=iproc, tag=WORK_TAG)
+        proc_order = np.arange(1, Nproc)
+        np.random.shuffle(proc_order)
+        for iproc in range(Nproc-1):
+            print(f"Spawning worker {iproc} (thread {proc_order[iproc]}) of {Nproc}.")
+            comm.send(obsid_infos[tasks_started], dest=proc_order[iproc], tag=WORK_TAG)
+            if params.distributed_starting:
+                time.sleep(2)
             # print(f"Sent work to worker {iproc} for task {tasks_started}.", flush=True)
             tasks_started += 1
 
@@ -1039,6 +1045,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             # print(f"Recieved work from worker {workerID}.", flush=True)
             comm.send(obsid_infos[tasks_started], dest=workerID, tag=WORK_TAG)
             tasks_started += 1
+            print(f"Started task {tasks_started} of {n_tasks}.", flush=True)
             # print(f"Sent work to worker {workerID} for task {tasks_started}.", flush=True)
             n_scans = len(scan_data_list)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
@@ -1050,7 +1057,6 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             tasks_done += 1
             workerID = status.Get_source()
             # print(f"Recieved work from worker {workerID}.", flush=True)
-            print(f"Completed task {tasks_done} of {n_tasks}.", flush=True)
             n_scans = len(scan_data_list)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
             i_scan += n_scans
