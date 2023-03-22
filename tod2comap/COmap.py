@@ -9,11 +9,8 @@ import re
 import os
 import argparse
 
-from astropy import units as u
-from astropy import constants
 from astropy import wcs
 from astropy.io import fits
-from astropy.cosmology import FlatLambdaCDM
 
 field_id_dict = {
     "co2": "field1",
