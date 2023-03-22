@@ -9,11 +9,8 @@ import re
 import os
 import argparse
 
-from astropy import units as u
-from astropy import constants
 from astropy import wcs
 from astropy.io import fits
-from astropy.cosmology import FlatLambdaCDM
 
 field_id_dict = {
     "co2": "field1",
@@ -360,6 +357,8 @@ class COmap:
             outpath (str): path to save output map file.
         """
 
+
+
         self.params = params
 
         if not save_hdf5 and not save_fits:
@@ -411,6 +410,7 @@ class COmap:
                 full_sigma_wn_hdu_list,
                 full_significance_hdu_list,
             ) = self.get_hdu_list("map", wcs_full)
+
             full_map_hdul = fits.HDUList(full_map_hdu_list)
             full_nhit_hdul = fits.HDUList(full_nhit_hdu_list)
             full_sigma_wn_hdul = fits.HDUList(full_sigma_wn_hdu_list)
@@ -523,17 +523,7 @@ class COmap:
                         split_significance_outname = os.path.join(
                             split_dir, f"{fits_dir}_{which_split}_significance.fits"
                         )
-
-                        # print("Saving split map to: ", split_map_outname)
-                        # print("Saving split nhit to: ", split_nhit_outname)
-                        # print(
-                        #     "Saving split sigma_wn to: ",
-                        #     split_sigma_wn_outname,
-                        # )
-                        # print(
-                        #     "Saving split significance to: ",
-                        #     split_significance_outname,
-                        # )
+                        
                         split_map_hdul.writeto(split_map_outname, overwrite=True)
                         split_nhit_hdul.writeto(split_nhit_outname, overwrite=True)
                         split_sigma_wn_hdul.writeto(
@@ -656,13 +646,15 @@ class COmap:
             "NAXIS2": angular_wcs_params["NAXIS2"],
             "CTYPE3": "FREQ",
             "CUNIT3": "Hz",
-            "CRVAL3": 26.015625
+            # "CRVAL3": 26.015625
+            "CRVAL3": self._data["freq_centers"][0, 0]
             * 1e9,  # NOTE: CHANGE THIS LATER ONCE JONAS DEFINES STANDARD FREQ GRID IN L2GEN
-            "CDELT3": (31.25)
+            # "CDELT3": (31.25)
+            "CDELT3": (self._data["freq_centers"][0, 1] - self._data["freq_centers"][0, 0])
             * 1e6,  # NOTE: CHANGE THIS LATER ONCE JONAS DEFINES STANDARD FREQ GRID IN L2GEN
             "CRPIX3": 1,
-            "NAXIS3": NSIDEBAND * NCHANNEL,
-            "RESTFRQ": 115.27,  # For CO (J 1->0)
+            "NAXIS3": self._data["freq_centers"].size,
+            "RESTFRQ": 115.27,  # For CO(1-0)
         }
 
         # Must use decode to convert from bytes type to string, after extracting string from HDF5. Can only save bytes string to HDF5.
