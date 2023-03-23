@@ -51,10 +51,23 @@ parser.add_argument(
     help="Name of each filter, in order, to include in the l2gen run.",
 )
 parser.add_argument(
-    "--obsid_start", type=int, default=0, help="Earliest obsid to include."
+    "--fields",
+    type=str,
+    default=["co2", "co6", "co7"],
+    nargs="+",
+    help="List of fields to include in run."
 )
 parser.add_argument(
-    "--obsid_stop", type=int, default=9999999, help="Last obsid to include."
+    "--obsid_start",
+    type=int,
+    default=0,
+    help="Earliest obsid to include."
+)
+parser.add_argument(
+    "--obsid_stop",
+    type=int,
+    default=9999999,
+    help="Last obsid to include."
 )
 
 parser.add_argument(
@@ -69,7 +82,12 @@ parser.add_argument(
     default=0,
     help="Time, in seconds, to cut at the beginning of each scan.",
 )
-
+parser.add_argument(
+    "--min_allowed_scan_length",
+    type=float,
+    default=120.0,
+    help="Minimum allowed length of scans, in seconds (applied when reading runlist).",
+)
 parser.add_argument(
     "--sbA_num_masked_channels",
     type=int,
@@ -471,35 +489,6 @@ parser.add_argument(
     help="(tod2comap) Number of obsIDs to chunck in temporal chunking runs. If default 0 is used, no temporal chunking is performed.",
 )
 
-#### Scan detect stuff ####
-parser.add_argument(
-    "--scandetect_cut_start",
-    type=int,
-    default=10,
-    help="(scan_detect) Number of datapoints to cut at start of scan when creating runlist.",
-)
-
-parser.add_argument(
-    "--scandetect_cut_end",
-    type=int,
-    default=50,
-    help="(scan_detect) Number of datapoints to cut at end of scan when creating runlist.",
-)
-
-parser.add_argument(
-    "--scandetect_minimum_scan_length",
-    type=float,
-    default=2.0,
-    help="(scan_detect) Minimum allowed length of scans, in minutes, when creating runlist.",
-)
-
-
-parser.add_argument(
-    "--ces_only",
-    type=str2bool,
-    default=True,
-    help="(scan_detect) Use only CES scans when creating runlist.",
-)
 
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
