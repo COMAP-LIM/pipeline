@@ -89,7 +89,8 @@ def read_runlist(params):
 
         random.seed(42)
         random.shuffle(field_runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.        
-        runlist.
+        runlist.extend(field_runlist)
+        
         if fieldname in params.fields:
             print(f"Field name:                 {fieldname}")
             print(f"Obsids in runlist file:     {n_obsids}")
