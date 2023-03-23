@@ -29,6 +29,9 @@ def read_runlist(params):
 
     print(f"Creating runlist in specified obsid range [{params.obsid_start}, {params.obsid_stop}]")
     print(f"Runlist file: {params.runlist}")
+    if len(params.allowed_scantypes) > 1 or 32 not in params.allowed_scantypes:
+        print("######### WARNING #########")
+        print("RUNNING WITH NON-CES SCANS!")
 
     # Create list of already processed scanids.
     existing_scans = []
@@ -49,7 +52,6 @@ def read_runlist(params):
     n_fields = int(lines[i][0])
     i = i + 1
     for i_field in range(n_fields):
-        field_runlist = []
         n_scans_tot = 0
         n_scans_outside_range = 0
         n_scans_already_processed = 0
@@ -78,7 +80,7 @@ def read_runlist(params):
                             scan_length_seconds = (mjd_stop - mjd_start)*60*60*24
                             if scan_length_seconds > params.min_allowed_scan_length:
                                 if not scanid in existing_scans:
-                                    field_runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
+                                    runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
                                 else:
                                     n_scans_already_processed += 1
                             else:
@@ -87,9 +89,6 @@ def read_runlist(params):
                             n_scans_outside_range += 1
             i = i + n_scans + 1
 
-        random.seed(42)
-        random.shuffle(field_runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.        
-        runlist.extend(field_runlist)
         
         if fieldname in params.fields:
             print(f"Field name:                 {fieldname}")
@@ -97,8 +96,10 @@ def read_runlist(params):
             print(f"Scans in runlist file:      {n_scans_tot}")
             print(f"Scans of right scantype:    {n_right_scantype}")
             print(f"Scans included in run:      {len(runlist)}")
+            print(f"Scans too short:            {n_scans_too_short}")
             print(f"Scans outside obsid range:  {n_scans_outside_range}")
             print(f"Scans already processed:    {n_scans_already_processed}")
-            print(f"Scans too short:            {n_scans_too_short}")
 
+    random.seed(42)
+    random.shuffle(runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.        
     return runlist

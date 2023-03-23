@@ -111,8 +111,6 @@ class l2gen_runner:
             self.runlist = read_runlist(self.params)
 
         self.runlist = self.comm.bcast(self.runlist, root=0)
-        
-        print(self.rank, len(self.runlist))
 
 
 class l2gen:

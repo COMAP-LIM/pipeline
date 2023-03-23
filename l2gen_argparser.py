@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--time_stop_cut",
     type=int,
-    default=0,
+    default=1,
     help="Time, in seconds, to cut at the end of each scan.",
 )
 parser.add_argument(
