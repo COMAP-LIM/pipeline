@@ -4,10 +4,16 @@ import numpy.typing as npt
 import h5py
 import scipy.interpolate as interp
 import numpy.typing as ntyping
+import sys
 
 from dataclasses import dataclass, field
 from pixell import enmap, utils
 import os
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+
+sys.path.append(parent_directory)
 
 from limsim_tools import *
 from load_halos import *
