@@ -365,7 +365,10 @@ class Mapmaker:
 
             if i % self.Nranks == self.rank:
                 # Cycle to next scan
-                scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0][0]
+                scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]
+                if len(scan_idx) == 0:
+                    raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
+                scan_idx = scan_idx[0]
                 if (
                     np.all(~self.splitdata["accept_list"][scan_idx])
                     and not self.params.override_accept
