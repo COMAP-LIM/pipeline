@@ -16,6 +16,7 @@ import random
 from mpi4py import MPI
 from l2gen_l2class import level2_file
 import l2gen_filters
+from tools.read_runlist import read_runlist
 # from l2gen_filters import Tsys_calc, Normalize_Gain, Decimation, Pointing_Template_Subtraction, Masking, Polynomial_filter, Frequency_filter, PCA_filter, PCA_feed_filter, Calibration
 
 import warnings
@@ -105,70 +106,11 @@ class l2gen_runner:
 
 
     def read_runlist(self):
+        self.runlist = []
         if self.rank == 0:
-            print(f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]")
-            print(f"Runlist file: {self.params.runlist}")
-    
-        # Create list of already processed scanids.
-        existing_scans = []
-        for dir in os.listdir(self.params.level2_dir):
-            if os.path.isdir(os.path.join(self.params.level2_dir, dir)):
-                for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
-                    if file[0] == "." and self.rank == 0:  # Delete any left-over hidden files from previously aborted runs.
-                        if os.path.exists(os.path.join(os.path.join(self.params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(self.params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old.
-                            os.remove(os.path.join(os.path.join(self.params.level2_dir, dir), file))
-                self.comm.Barrier()
-                for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
-                    if file[-3:] == ".h5" or file[-4:] == ".hd5":
-                        if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
-                            existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
+            self.runlist = read_runlist(self.params)
 
-        with open(self.params.runlist) as my_file:
-            lines = [line.split() for line in my_file]
-        i = 0
-        runlist = []
-        n_fields = int(lines[i][0])
-        i = i + 1
-        for i_field in range(n_fields):
-            runlist = []
-            n_scans_tot = 0
-            n_scans_outside_range = 0
-            n_scans_already_processed = 0
-            fieldname = lines[i][0]
-            n_obsids = int(lines[i][1])
-            i = i + 1
-            for j in range(n_obsids):
-                obsid = "0" + lines[i][0]
-                n_scans = int(lines[i][3])
-                l1_filename = lines[i][-1]
-                l1_filename = l1_filename.strip("/")  # The leading "/" will stop os.path.join from joining the filenames.
-                l1_filename = os.path.join(self.params.level1_dir, l1_filename)
-                for k in range(n_scans):
-                    scantype = int(float(lines[i+k+1][3]))
-                    if scantype != 8192:
-                        n_scans_tot += 1
-                        if self.params.obsid_start <= int(obsid) <= self.params.obsid_stop:
-                            scanid = int(lines[i+k+1][0])
-                            mjd_start = float(lines[i+k+1][1]) + self.params.time_start_cut/(60*60*24)  # seconds -> MJD
-                            mjd_stop = float(lines[i+k+1][2]) - self.params.time_stop_cut/(60*60*24)
-                            if not scanid in existing_scans:
-                                runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
-                            else:
-                                n_scans_already_processed += 1
-                        else:
-                            n_scans_outside_range += 1
-                i = i + n_scans + 1
-            if self.rank == 0:
-                print(f"Field name:                 {fieldname}")
-                print(f"Obsids in runlist file:     {n_obsids}")
-                print(f"Scans in runlist file:      {n_scans_tot}")
-                print(f"Scans included in run:      {len(runlist)}")
-                print(f"Scans outside obsid range:  {n_scans_outside_range}")
-                print(f"Scans already processed:    {n_scans_already_processed}")
-
-        random.seed(42)
-        random.shuffle(runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.
-        self.runlist = runlist
+        self.runlist = self.comm.bcast(self.runlist, root=0)
 
 
 class l2gen:
