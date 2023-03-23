@@ -80,7 +80,7 @@ parser.add_argument(
     "--time_stop_cut",
     type=int,
     default=0,
-    help="Time, in seconds, to cut at the beginning of each scan.",
+    help="Time, in seconds, to cut at the end of each scan.",
 )
 parser.add_argument(
     "--min_allowed_scan_length",
