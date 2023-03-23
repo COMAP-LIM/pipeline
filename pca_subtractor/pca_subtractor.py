@@ -208,7 +208,7 @@ class PCA_SubTractor:
         rms_key = re.sub(r"map", "sigma_wn", key)
 
         if self.approx_noise:
-            norm_data = self.map[key] * (self.weights**self.norm_exponent)
+            norm_data = self.map[key] * (self.weights ** self.norm_exponent)
         else:
             norm_data = self.map[key] / (self.map[rms_key] ** self.norm_exponent)
 
@@ -305,10 +305,6 @@ class PCA_SubTractor:
 
         # Compute PCA of all feed-map datasets
         for key in self.keys_to_pca:
-            # if key == "map":
-            #     # Only want to do map PCA on feed and split maps
-            #     continue
-
             if self.verbose:
                 print(" " * 4 + "Dataset: " + f"{key}")
 
@@ -324,19 +320,6 @@ class PCA_SubTractor:
                 # Make keys for rms and nhit datasets that corresponds to map dataset
                 rms_key = re.sub(r"map", "sigma_wn", key)
                 nhit_key = re.sub(r"map", "nhit", key)
-
-                # self.map[key] = np.where(
-                #     1e6 * self.map[rms_key] < maskrms, self.map[key], np.nan
-                # )
-
-                # if nhit_key in self.map.keys:
-                #     self.map[nhit_key] = np.where(
-                #         1e6 * self.map[rms_key] < maskrms, self.map[nhit_key], np.nan
-                #     )
-
-                # self.map[rms_key] = np.where(
-                #     1e6 * self.map[rms_key] < maskrms, self.map[rms_key], np.nan
-                # )
 
                 # nfeed, nsb, nchannel, nra, ndec = self.map[rms_key].shape
                 # sorted_rms = self.map[rms_key].reshape(nfeed, nsb, nchannel, nra * ndec)
@@ -419,6 +402,7 @@ class PCA_SubTractor:
             if self.approx_noise:
                 self.weights = self.approximate_sigma_wn(self.map[rms_key])
                 self.weights = 1 / self.weights
+                self.weights[~np.isfinite(self.weights)] = 0
 
             # Normalize data
             indata = self.normalize_data(key, norm).astype(np.float64)
@@ -478,29 +462,42 @@ class PCA_SubTractor:
     def approximate_sigma_wn(self, rms):
         """Method that computes a PCA approximation of the noise level use as weights on dataset when computing map PCA."""
 
-        rms = np.where(np.isfinite(rms), rms**self.norm_exponent, 0)
-        freqvec, angvec, singular_values = self.get_svd_basis(rms)
+        # rms = np.where(np.isfinite(rms), rms**self.norm_exponent, 0)
+        # freqvec, angvec, singular_values = self.get_svd_basis(rms)
 
-        # We only want the dominant mode for this approximation
-        freqvec = freqvec[:, 0, ...]
-        angvec = angvec[:, 0, ...]
-        singular_values = singular_values[:, 0, ...]
+        # # We only want the dominant mode for this approximation
+        # freqvec = freqvec[:, 0, ...]
+        # angvec = angvec[:, 0, ...]
+        # singular_values = singular_values[:, 0, ...]
 
-        # Perform outer product from basis vecotrs
-        rms_reconstruction = angvec[:, None, None, :, :]
-        rms_reconstruction = (
-            rms_reconstruction
-            * freqvec[
-                :,
-                :,
-                :,
-                None,
-                None,
-            ]
-        )
-        rms_reconstruction = (
-            rms_reconstruction * singular_values[:, None, None, None, None]
-        )
+        # # Perform outer product from basis vecotrs
+        # rms_reconstruction = angvec[:, None, None, :, :]
+        # rms_reconstruction = (
+        #     rms_reconstruction
+        #     * freqvec[
+        #         :,
+        #         :,
+        #         :,
+        #         None,
+        #         None,
+        #     ]
+        # )
+        # rms_reconstruction = (
+        #     rms_reconstruction * singular_values[:, None, None, None, None]
+        # )
+
+        inv_var = 1 / rms ** 2
+        mask = ~np.isfinite(inv_var)
+        inv_var[mask] = 0.0 
+
+        inv_var_per_freq = inv_var.sum((3, 4))
+        inv_var_per_pix = inv_var.sum((1, 2))
+
+        rms_per_freq = np.sqrt(np.prod(inv_var.shape[3:]) / inv_var_per_freq)
+        rms_per_pix = np.sqrt(np.prod(inv_var.shape[1:3]) / inv_var_per_pix)
+
+        rms_reconstruction = np.sqrt(rms_per_freq[:, :, :, None, None] * rms_per_pix[:, None, None, :, :])
+
 
         return rms_reconstruction
 

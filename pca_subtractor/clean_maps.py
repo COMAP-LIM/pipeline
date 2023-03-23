@@ -141,27 +141,32 @@ def main():
     mymap_clean = pca_sub.compute_pca(norm=rmsnorm)
 
     # Writing cleaned map data to file
-    mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True)
+    mymap_clean.write_map(outpath=outpath, save_fits=True, save_hdf5=True)
 
     if save_reconstruction:
         pca_sub.overwrite_maps_with_reconstruction()
 
-        if outpath is None or len(outpath) == 0:
-            new_outpath = mymap_clean.path.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}.h5"
+        if approx_noise:
+            approx = "_approx"
         else:
-            new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}.h5"
+            approx = ""
+
+        if outpath is None or len(outpath) == 0:
+            new_outpath = mymap_clean.path.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}{approx}_{rmsnorm}.h5"
+        else:
+            new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}{approx}_{rmsnorm}.h5"
 
         mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True)
 
-        for i in range(ncomps):
-            pca_sub.overwrite_maps_with_reconstruction(component=i)
+        # for i in range(ncomps):
+        #     pca_sub.overwrite_maps_with_reconstruction(component=i)
 
-            if outpath is None or len(outpath) == 0:
-                new_outpath = mymap_clean.path.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}_comp{i}.h5"
-            else:
-                new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}_comp{i}.h5"
+        #     if outpath is None or len(outpath) == 0:
+        #         new_outpath = mymap_clean.path.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}_comp{i}.h5"
+        #     else:
+        #         new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}_comp{i}.h5"
 
-            mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True)
+        #     mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True)
 
 if __name__ == "__main__":
     main()

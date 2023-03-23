@@ -511,6 +511,28 @@ parser.add_argument(
     help="(comap2fpxs) Path to directory where cross spectrum data is saved.",
 )
 
+###### Physics ######
+parser.add_argument(
+    "--phy_center_redshift",
+    type=float,
+    default=2.9,
+    help="(physics) Central redshift of CO maps. Default 2.9.",
+)
+
+parser.add_argument(
+    "--phy_cosmology_dir",
+    type=str,
+    default="./cosmologies/",
+    help="(physics) Path to pickled astropy cosmologies to be used. Defaults to repository directory containing defalt COMAP cosmology.",
+)
+
+parser.add_argument(
+    "--phy_cosmology_name",
+    type=str,
+    default="default_comap_cosmology.pkl",
+    help="(physics) Pickled astopy cosmology to be used. Defaults to cosmology used in Li et al. 2016 and Ihle et al. 2019.",
+)
+
 ###### Make Signal Cube ######
 parser.add_argument(
     "--model_name",
