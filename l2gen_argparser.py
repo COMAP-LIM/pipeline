@@ -209,7 +209,7 @@ parser.add_argument(
     "--gain_norm_gauss_sigma_seconds",
     type=int,
     default=16,
-    
+
 )
 
 ### Polynomial filter
@@ -648,7 +648,7 @@ parser.add_argument(
 parser.add_argument(
     "--sim_units",
     type=str,
-    default='intensity',
+    default='temperature',
     help="(SimGenerator) The brightness units used by the simulations. Defaults to 'intensity'."
 )
 
@@ -776,6 +776,20 @@ parser.add_argument(
     type=str,
     default='./simulations',
     help="(SimGenerator) Path to directory in which to store all the output simulation files." #*****
+)
+
+parser.add_argument(
+    "--sim_map_output_file_name",
+    type=str,
+    default='sim_map.npz',
+    help="(SimGenerator) File name for the final simulated map (.npz). Default sim_map.npz" #*****
+)
+
+parser.add_argument(
+    "--sim_cat_output_file_name",
+    type=str,
+    default='sim_cat.npz',
+    help="(SimGenerator) File name for the final simulated catalogue (.npz). Default sim_cat.npz" #*****
 )
 
 ###### Signal Injection ######

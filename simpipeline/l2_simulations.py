@@ -77,8 +77,8 @@ class SimGenerator:
         map.mockmapmaker(halos, simpars)
 
         # output files for map and catalog
-        simpars.map_output_file = simpars.output_dir + '/sim_map.npz'
-        simpars.cat_output_file = simpars.output_dir + '/sim_cat.npz'
+        simpars.map_output_file = simpars.output_dir +'/'+ simpars.map_output_file_name
+        simpars.cat_output_file = simpars.output_dir +'/'+ simpars.cat_output_file_name
 
         map.write(simpars)
         halos.write_cat(simpars)
