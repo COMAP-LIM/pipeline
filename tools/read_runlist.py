@@ -102,4 +102,19 @@ def read_runlist(params):
 
     random.seed(42)
     random.shuffle(runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.        
+
+    ### Runlist splitting options ###
+    if params.runlist_split_num_i >= params.runlist_split_in_n:
+        raise ValueError(f"--runlist_split_num_i (currently {params.runlist_split_num_i}) cannot be equal or larger than --runlist_split_in_n (currently {params.runlist_split_in_n}).")
+    if params.runlist_split_in_n > 1:
+        len_runlist = len(runlist)
+        runlist_start_idx = (len_runlist*params.runlist_split_num_i)//params.runlist_split_in_n
+        runlist_stop_idx = (len_runlist*(params.runlist_split_num_i+1))//params.runlist_split_in_n
+        print(runlist_start_idx, runlist_stop_idx)
+        if params.runlist_split_num_i == params.runlist_split_in_n - 1:
+            runlist_stop_idx = len_runlist
+        runlist = runlist[runlist_start_idx:runlist_stop_idx]
+        print(f"Runlist splitting enabled: Running part {params.runlist_split_num_i} of {params.runlist_split_in_n}.")
+        print(f"Runlist cut: [{runlist_start_idx}:{runlist_stop_idx}], {runlist_stop_idx-runlist_start_idx} scans.")
+
     return runlist
