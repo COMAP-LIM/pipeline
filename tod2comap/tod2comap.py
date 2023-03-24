@@ -25,6 +25,7 @@ parent_directory = os.path.dirname(current)
 
 sys.path.append(parent_directory)
 sys.path.append(os.path.join(parent_directory, "simpipeline/"))
+from tools.read_runlist import read_runlist
 
 
 class Mapmaker:
@@ -106,112 +107,14 @@ class Mapmaker:
         self.params = params
 
     def read_runlist(self):
+        self.runlist = []
         if self.rank == 0:
-            print(
-                f"Creating runlist in specified obsid range [{self.params.obsid_start}, {self.params.obsid_stop}]"
-            )
-            print(f"Runlist file: {self.params.runlist}\n")
-
-        # Create list of already processed scanids.
-        existing_scans = []
-        for dir in os.listdir(self.params.level2_dir):
-            if os.path.isdir(os.path.join(self.params.level2_dir, dir)):
-                for file in os.listdir(os.path.join(self.params.level2_dir, dir)):
-                    if file[-3:] == ".h5" or file[-4:] == ".hd5":
-                        if (
-                            len(file) == 16 or len(file) == 17
-                        ):
-                            if file[0] != ".":  # In order to not catch the intermediate debug files.
-                                existing_scans.append(int(file.split(".")[0].split("_")[1]))
-
-        with open(self.params.runlist) as my_file:
-            lines = [line.split() for line in my_file]
-        i = 0
-        runlist = []
-        n_fields = int(lines[i][0])
-        i = i + 1
-
-        self.obsid_list = []
-        for i_field in range(n_fields):
-            runlist = []
-            n_scans_tot = 0
-            n_scans_outside_range = 0
-            n_scans_already_processed = 0
-            fieldname = lines[i][0]
-            n_obsids = int(lines[i][1])
-            i = i + 1
-            for j in range(n_obsids):
-                obsid_int = int(lines[i][0])
-                self.obsid_list.append(obsid_int)
-                obsid = "0" + lines[i][0]
-                n_scans = int(lines[i][3])
-
-                if (
-                    obsid_int < self.params.obsid_start
-                    or obsid_int > self.params.obsid_stop
-                ):
-                    i = i + n_scans + 1
-                    continue  # Skip this loop iteration if obsid is outside parameter file specified obsid range.
-                l1_filename = lines[i][-1]
-                l1_filename = l1_filename.strip(
-                    "/"
-                )  # The leading "/" will stop os.path.join from joining the filenames.
-                l1_filename = os.path.join(self.params.level1_dir, l1_filename)
-                for k in range(n_scans):
-                    scantype = int(float(lines[i + k + 1][3]))
-                    if scantype != 8192:
-                        if scantype != 32 and self.rank == 0:
-                            scan_warning = (
-                                "\n"
-                                + "=" * 50
-                                + "\nYou are running a runlist with scanning strategies different than CES!"
-                                + " \nLissajous and circular scans are deprecated!\n"
-                                + "=" * 50
-                            )
-                            warnings.warn(scan_warning, category=FutureWarning)
-
-                        n_scans_tot += 1
-                        if (
-                            self.params.obsid_start
-                            <= int(obsid)
-                            <= self.params.obsid_stop
-                        ):
-                            scanid = int(lines[i + k + 1][0])
-
-                            l2_filename = f"{fieldname}_{scanid:09}.h5"
-                            l2_filename = os.path.join(
-                                self.params.level2_dir,
-                                fieldname,
-                                l2_filename,
-                            )
-
-                            mjd_start = float(lines[i + k + 1][1])
-                            mjd_stop = float(lines[i + k + 1][2])
-                            runlist.append(
-                                [
-                                    scanid,
-                                    mjd_start,
-                                    mjd_stop,
-                                    scantype,
-                                    fieldname,
-                                    l1_filename,
-                                    l2_filename,
-                                ]
-                            )
-                        else:
-                            n_scans_outside_range += 1
-                i = i + n_scans + 1
-
-        if self.rank == 0:
-            print(f"Field name:                 {fieldname}")
-            print(f"Obsids in runlist file:     {n_obsids}")
-            print(f"Scans in runlist file:      {n_scans_tot}")
-            print(f"Scans included in run:      {len(runlist)}")
-            print(f"Scans outside obsid range:  {n_scans_outside_range}")
-
-        self.fieldname = fieldname
-        self.runlist = runlist
-        self.n_obsids = n_obsids
+            self.runlist = read_runlist(self.params)
+            self.fieldname = self.runlist[0][4]
+            for i in range(1, len(self.runlist)):
+                if self.runlist[i][4] != self.fieldname:
+                    raise ValueError(f"Mapmaker doesn't support multiple fields. Found both {self.fieldname} and {self.runlist[i][4]}.")
+        self.runlist = self.comm.bcast(self.runlist, root=0)
 
     def parse_accept_data(self):
 
