@@ -99,11 +99,21 @@ class SimCube:
 
     def read(self):
         """Method that reads in simulation cube from file"""
-        with h5py.File(self.path, "r") as infile:
-            for key, value in infile.items():
-                self._data[key] = value[()]
 
+        if ".h5" in self.path: 
+            with h5py.File(self.path, "r") as infile:
+                for key, value in infile.items():
+                    self._data[key] = value[()]
+
+        elif ".npz" in self.path:
+            with np.load(self.path) as infile:
+                for key, value in infile.items():
+                    self._data[key] = value[()]
+        else:
+            raise NameError("Provided path to simulation cube is not of a valid format. Please use HDF5 or npz format.")
+        
         self.keys = self._data.keys()
+
 
     def __getitem__(self, key: str) -> ntyping.ArrayLike:
         """Method for indexing map data as dictionary
