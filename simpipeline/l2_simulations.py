@@ -15,11 +15,10 @@ parent_directory = os.path.dirname(current)
 
 sys.path.append(parent_directory)
 
-from limsim_tools import *
-from load_halos import *
-from make_sim_maps import *
-from generate_luminosities import *
-
+from simpipeline.limsim_tools import *
+from simpipeline.load_halos import *
+from simpipeline.make_sim_maps import *
+from simpipeline.generate_luminosities import *
 
 class SimParameters():
     """

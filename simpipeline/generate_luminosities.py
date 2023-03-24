@@ -4,8 +4,14 @@ import scipy as sp
 import scipy.interpolate
 import sys
 import os
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+
+sys.path.append(parent_directory)
+
 # from .limsim_tools import *
-from limsim_tools import *
+from simpipeline.limsim_tools import *
 # from .load_halos import *
 
 sfr_interp_tab = None
