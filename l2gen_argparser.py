@@ -434,8 +434,9 @@ parser.add_argument(
 
 parser.add_argument(
     "--split",
-    action="store_true",
-    help="(tod2comap) If flag is provided split maps are computed.",
+    type=str2bool,
+    default=True,
+    help="(tod2comap) Parameter determains whether to perfor splits or not. Default True.",
 )
 
 parser.add_argument(
@@ -522,6 +523,15 @@ parser.add_argument(
     default="/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/fpxs/",
     help="(comap2fpxs) Path to directory where cross spectrum data is saved.",
 )
+
+
+parser.add_argument(
+    "--split_base_number",
+    type=int,
+    default=2,
+    help="(comap2fpxs) Base number to use for splitting the data. Only 2 supported for now. The data is split into N parts for each split variable.",
+)
+
 
 ###### Physics ######
 parser.add_argument(

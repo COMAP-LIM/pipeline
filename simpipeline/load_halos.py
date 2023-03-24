@@ -4,8 +4,18 @@ from astropy.cosmology import FlatLambdaCDM
 import astropy.units as u
 import astropy.constants as const
 import copy
+
+import os
+import sys
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+
+sys.path.append(parent_directory)
+
 # from  .limsim_tools import *
-from  limsim_tools import *
+from  simpipeline.limsim_tools import *
+
 
 class HaloCatalog():
     """
