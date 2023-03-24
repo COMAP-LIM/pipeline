@@ -49,6 +49,25 @@ owl20:16
 ## 2.2 Creating a new filter
 ...
 
+## 2.3 Generating a simulation cube
+```
+import l2_simulations as sims
+from l2gen_argparser as parser
+
+# read in default parameters
+params = parser.parse_args()
+# probably want to change:
+params.sim_npix_x = 120 # number of pixels in the output map, in the angular x direction (RA)
+params.sim_npix_y = 120 # number of pixels in the output map, in the angular y direction (Dec)
+params.sim_nmaps = 1024 # number of frequency channels in the output map
+params.sim_output_dir = './simulations' # directory in which to save the output simulation files
+
+# set up generator object
+simgen = sims.SimGenerator(params)
+
+# run
+simgen.run()
+```
 
 
 # 3. TODO
