@@ -104,11 +104,17 @@ class SimCube:
             with h5py.File(self.path, "r") as infile:
                 for key, value in infile.items():
                     self._data[key] = value[()]
-
         elif ".npz" in self.path:
-            with np.load(self.path) as infile:
-                for key, value in infile.items():
-                    self._data[key] = value[()]
+            with np.load(self.path) as infile:            
+                self._data["x"] = infile["map_pixel_ra"] 
+                self._data["y"] = infile["map_pixel_dec"] 
+                self._data["simulation"] = infile["map_cube"].transpose(2, 0, 1)
+                self._data["frequencies"] = infile["map_frequencies"][::-1] 
+                self._data["simulation"] = self._data["simulation"][::-1]
+                nfreq, ndec, nra = self._data["simulation"].shape
+                self._data["simulation"] = self._data["simulation"].reshape(4, nfreq // 4, ndec, nra)
+                self._data["simulation"] = np.ascontiguousarray(self._data["simulation"])
+                self._data["frequencies"] = self._data["frequencies"].reshape(4, nfreq // 4) 
         else:
             raise NameError("Provided path to simulation cube is not of a valid format. Please use HDF5 or npz format.")
         
