@@ -67,8 +67,11 @@ class SimMap():
         if (params.units=='intensity'):
             if params.verbose: print('\n\tcalculating halo intensities')
             halos.Tco = I_line(halos, self)
-        else:
+        elif (params.units=='temperature'):
             if params.verbose: print('\n\tcalculating halo temperatures')
+            halos.Tco = T_line(halos, self)
+        else:
+            if params.verbose: print('\n\tdefaulting to halo temperatures')
             halos.Tco = T_line(halos, self)
 
         # BINS HALOS SPECTRALLY BY VVIR, MAKES MAPS OF EACH SUBSET, SMOOTHS THEM, AND
