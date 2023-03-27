@@ -4,7 +4,7 @@ import os
 import git
 
 class level2_file:
-    def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, filter_list, params):
+    def __init__(self, scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename, filter_list, params):
         self.params = params
         self.filter_list = filter_list
         self.level2_dir = params.level2_dir

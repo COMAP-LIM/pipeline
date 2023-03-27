@@ -38,10 +38,10 @@ def read_runlist(params):
     for dir in os.listdir(params.level2_dir):
         if os.path.isdir(os.path.join(params.level2_dir, dir)):
             for file in os.listdir(os.path.join(params.level2_dir, dir)):
-                if os.path.exists(os.path.join(os.path.join(params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old (margin to not accidentally delete files in the middle of writing).
-                    os.remove(os.path.join(os.path.join(params.level2_dir, dir), file))
-            for file in os.listdir(os.path.join(params.level2_dir, dir)):
-                if file[-3:] == ".h5" or file[-4:] == ".hd5":
+                if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
+                    if os.path.exists(os.path.join(os.path.join(params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old (margin to not accidentally delete files in the middle of writing).
+                        os.remove(os.path.join(os.path.join(params.level2_dir, dir), file))
+                elif file[-3:] == ".h5" or file[-4:] == ".hd5":
                     if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
                         existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
 
@@ -75,12 +75,14 @@ def read_runlist(params):
                         n_right_scantype += 1
                         if params.obsid_start <= int(obsid) <= params.obsid_stop:
                             scanid = int(lines[i+k+1][0])
+                            l2_filename = f"{fieldname}_{scanid:09}.h5"
+                            l2_filename = os.path.join(params.level2_dir, fieldname, l2_filename)
                             mjd_start = float(lines[i+k+1][1]) + params.time_start_cut/(60*60*24)  # seconds -> MJD
                             mjd_stop = float(lines[i+k+1][2]) - params.time_stop_cut/(60*60*24)
                             scan_length_seconds = (mjd_stop - mjd_start)*60*60*24
                             if scan_length_seconds > params.min_allowed_scan_length:
                                 if not scanid in existing_scans:
-                                    runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename])
+                                    runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename])
                                 else:
                                     n_scans_already_processed += 1
                             else:
