@@ -427,9 +427,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--make_no_nhit",
-    action="store_false",
-    help="(tod2comap) If flag is provided hit maps are made. By default hit maps are made.",
+    "--make_nhit",
+    type=str2bool,
+    default=True
+    help="(tod2comap) If True, hit maps are made. Default True.",
 )
 
 parser.add_argument(
@@ -503,6 +504,15 @@ parser.add_argument(
 )
 
 
+parser.add_argument(
+    "--t2m_rms_mask_factor",
+    type=float,
+    default=8,
+    help="(tod2comap) If not None, this parameter will mask high noise regions in map datasets. All regions with a higher noise than the bottom-100 freq-coadded noise per feed and split times the parameter factor will be masked out.",
+)
+
+
+
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
     "--tf_cutoff",
@@ -533,10 +543,18 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--_psx_null_maps",
+    "--psx_map_names",
     type=str,
     nargs="+",
-    help="(comap2fpxs) List of maps to use for cross-field null tests.",
+    default = [],
+    help="(comap2fpxs) List of map filenames (not absolute path) to use for cross-field null tests.",
+)
+
+parser.add_argument(
+    "--null_cross_field",
+    type=str2bool,
+    default=False,
+    help="(comap2fpxs) If True compute cross-field feed-feed pseudo cross-spectrum null tests. Default False."
 )
 
 
