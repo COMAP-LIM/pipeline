@@ -9,7 +9,7 @@ import os
 import time
 import random
 
-def read_runlist(params):
+def read_runlist(params, ignore_existing):
     """ Given a argparse parameter file object, returns the runlist specified (in the object), within the cut parameters set.
         The relevant cut parameters from the parameter object are:
             * obsid_start
@@ -35,15 +35,16 @@ def read_runlist(params):
 
     # Create list of already processed scanids.
     existing_scans = []
-    for dir in os.listdir(params.level2_dir):
-        if os.path.isdir(os.path.join(params.level2_dir, dir)):
-            for file in os.listdir(os.path.join(params.level2_dir, dir)):
-                if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
-                    if os.path.exists(os.path.join(os.path.join(params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old (margin to not accidentally delete files in the middle of writing).
-                        os.remove(os.path.join(os.path.join(params.level2_dir, dir), file))
-                elif file[-3:] == ".h5" or file[-4:] == ".hd5":
-                    if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
-                        existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
+    if ignore_existing:
+        for dir in os.listdir(params.level2_dir):
+            if os.path.isdir(os.path.join(params.level2_dir, dir)):
+                for file in os.listdir(os.path.join(params.level2_dir, dir)):
+                    if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
+                        if os.path.exists(os.path.join(os.path.join(params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old (margin to not accidentally delete files in the middle of writing).
+                            os.remove(os.path.join(os.path.join(params.level2_dir, dir), file))
+                    elif file[-3:] == ".h5" or file[-4:] == ".hd5":
+                        if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
+                            existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
 
     with open(params.runlist) as my_file:
         lines = [line.split() for line in my_file]

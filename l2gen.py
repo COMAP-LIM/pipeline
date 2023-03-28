@@ -108,7 +108,7 @@ class l2gen_runner:
     def read_runlist(self):
         self.runlist = []
         if self.rank == 0:
-            self.runlist = read_runlist(self.params)
+            self.runlist = read_runlist(self.params, ignore_existing=True)
 
         self.runlist = self.comm.bcast(self.runlist, root=0)
 
