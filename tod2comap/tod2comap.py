@@ -327,6 +327,7 @@ class Mapmaker:
 
                 time_array[5] += time.perf_counter() - ti
 
+                break 
 
         # Get frequency bin centers and edges from last level2 file.
         full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
@@ -592,7 +593,8 @@ class Mapmaker:
             map_key = re.sub(r"numerator_map", "map", numerator_key)
             sigma_wn_key = re.sub(r"numerator_map", "sigma_wn", numerator_key)
 
-            self.mask_map(mapdata, numerator_key, denominator_key)
+            if self.params.t2m_rms_mask_factor is not None:
+                self.mask_map(mapdata, numerator_key, denominator_key)
 
             inv_var = mapdata[denominator_key]
 
@@ -711,9 +713,6 @@ class Mapmaker:
         
 
         inv_var = mapdata[denominator_key]
-
-        # White noise level map
-        sigma = 1 / np.sqrt(inv_var)
         
         # Make keys for rms and nhit datasets that corresponds to map dataset
         nhit_key = re.sub(r"numerator_map", "nhit", numerator_key)
@@ -722,9 +721,12 @@ class Mapmaker:
         mask = ~np.isfinite(feed_noise_freq_coadded)
         feed_noise_freq_coadded[mask] = 0
 
-        feed_noise_freq_coadded = 1 / np.sqrt(np.sum(feed_noise_freq_coadded, axis = (1, 2)))
+        feed_noise_freq_coadded = 1 / np.sqrt(np.sum(feed_noise_freq_coadded, axis = 3))
 
-        nfeed, _, _, nra, ndec = mapdata[denominator_key].shape
+
+        nfeed, nra, ndec, _ = mapdata[denominator_key].shape
+
+
         sorted_rms = feed_noise_freq_coadded.reshape(nfeed, nra * ndec)
 
         bottom100_idx = np.argpartition(sorted_rms, 100, axis=-1)[..., :100]
@@ -734,23 +736,34 @@ class Mapmaker:
 
         noise_lim = self.params.t2m_rms_mask_factor * mean_bottom100_rms 
 
-        mask = feed_noise_freq_coadded[:, None, None, :] * np.ones_like(mapdata[denominator_key]) > noise_lim[:, None, None, None, None] 
+        mask = feed_noise_freq_coadded[:, :, :, None] * np.ones_like(mapdata[denominator_key]) > noise_lim[:, None, None, None] 
 
-        mapdata[key][mask] = np.nan
-
+        mapdata[numerator_key][mask] = 0
 
         if self.params.make_nhit:
             mapdata[nhit_key] = mapdata[nhit_key].astype(np.float32)
-            mapdata[nhit_key][mask] = np.nan
+            mapdata[nhit_key][mask] = 0
 
-        mapdata[denominator_key][mask] = np.nan
+        mapdata[denominator_key][mask] = 0
 
 
-        average_noise_per_channel = np.sqrt(np.prod(mapdata[denominator_key].shape[1:2])) * feed_noise_freq_coadded
+        # Masking all channels that have a factor self.params.t2m_rms_mask_factor larger aritmetic average noise per channel than the totally arithmetically averaged sigma_wn.
 
-        print("hei", average_noise_per_channel.shape, feed_noise_freq_coadded.shape)
+        sigma = 1 / np.sqrt(inv_var)
+        sigma[~np.isfinite(sigma)] = np.nan
         
-        sys.exit()
+        average_noise = np.nanmean(sigma)
+        
+        average_noise_per_channel = np.nanmean(sigma, axis = (1, 2))
+        
+        mask = average_noise_per_channel > (average_noise * self.params.t2m_rms_mask_factor)
+
+        feeds_to_mask, channels_to_mask = np.where(mask)
+
+        mapdata[numerator_key][feeds_to_mask, :, :, channels_to_mask] = 0
+        mapdata[denominator_key][feeds_to_mask, :, :, channels_to_mask] = 0
+        if self.params.make_nhit:
+            mapdata[nhit_key][feeds_to_mask, :, :, channels_to_mask] = 0
 
     def get_pointing_matrix(
         self,
