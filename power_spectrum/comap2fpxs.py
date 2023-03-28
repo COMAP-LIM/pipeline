@@ -7,21 +7,42 @@ import os
 import sys
 import pickle
 import itertools
+from mpi4py import MPI
 
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
 sys.path.append(parent_directory)
 
+import xs_class
 
 class COMAP2FPXS():
-    def __init__(self):
+    def __init__(self, omp_num_threads: int = 2):
+        self.OMP_NUM_THREADS = omp_num_threads
+
+        # Define MPI parameters as class attribites
+        self.comm = MPI.COMM_WORLD
+        self.Nranks = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()
+
         self.read_params()
         self.read_cosmology()
         self.read_jackknife_definition_file()
         self.generate_split_map_names()
 
     def run(self):
+        feed_combinations = list(itertools.product(range(19), range(19)))
+        all_combinations = list(itertools.product(self.split_map_combinations, feed_combinations))
+        Number_of_combinations = len(all_combinations)
+
+        for i in range(Number_of_combinations):
+            if i % self.Nranks == self.rank:
+                maps, feeds = all_combinations[i]
+                map1, map2 = maps
+                feed1, feed2 = feeds
+
+                print(self.rank, map1, map2, feed1, feed2)
+
         return NotImplemented
 
     def read_params(self):
@@ -194,4 +215,4 @@ if __name__ == "__main__":
     print(comap2fpxs.cross_and_secondary)
     print(comap2fpxs.split_map_combinations)
     
-
+    comap2fpxs.run()

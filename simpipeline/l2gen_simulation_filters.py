@@ -34,7 +34,13 @@ class Cube2TOD:
 
     def __init__(self, params, omp_num_threads):
         self.boost = params.boost_factor
-        self.simpath = params.signal_path
+        
+        if params.signal_path is not None:
+            self.simpath = params.signal_path
+        else:
+            self.simpath = params.sim_output_dir
+            self.simpath = os.path.join(self.simpath, params.sim_map_output_file_name)
+
         self.model_name = params.model_name
         self.verbose = params.verbose
         self.omp_num_threads = omp_num_threads
@@ -62,6 +68,7 @@ class Cube2TOD:
                 "To run signal injection from a signal cube make sure to specify the path to the signal cube HDF5 file."
             )
 
+
         # Setting up simulation cube object
         simdata = SimCube(self.simpath)
 
@@ -69,6 +76,10 @@ class Cube2TOD:
         simdata.read()
         # print("Time read cube:", time.perf_counter() - t0, "s")
 
+        # Testing if frequency array in new simulation format has same bin centers as level2 data
+        if ".npz" in self.simpath:
+            np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
+            
         # Defining simulation cube geometry using standard geometies and boost signal
         simdata.prepare_geometry(l2file.fieldname, self.boost)
 

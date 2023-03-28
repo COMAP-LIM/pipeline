@@ -7,6 +7,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 from astropy import units as u
+import astropy.cosmology
 
 import argparse
 
@@ -25,6 +26,7 @@ class MapCosmo:
         self,
         params: argparse.Namespace,
         field: str,
+        cosmology: astropy.cosmology.flrw.FlatLambdaCDM,
         feed: Optional[int] = None,
         split: Optional[str] = None,
     ):

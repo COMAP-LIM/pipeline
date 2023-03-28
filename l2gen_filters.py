@@ -1272,7 +1272,11 @@ class Masking(Filter):
                 raise ValueError(f"Specified l2 file for loading freqmask does not exist: {filename}.")
             logging.debug(f"Using imported freqmask from {filename}.")
             with h5py.File(filename, "r") as f:
+                feeds = f["feeds"][()]
+                feedmask = feeds != 20
                 freqmask = f["freqmask_full_aftermasking"][()]
+                freqmask = freqmask[feedmask, ...]
+
             l2.freqmask[~freqmask] = False
             l2.freqmask_reason[freqmask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
             l2.freqmask_reason_string.append("Imported freqmask")

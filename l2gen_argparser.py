@@ -532,6 +532,13 @@ parser.add_argument(
     help="(comap2fpxs) Base number to use for splitting the data. Only 2 supported for now. The data is split into N parts for each split variable.",
 )
 
+parser.add_argument(
+    "--_psx_null_maps",
+    type=str,
+    nargs="+",
+    help="(comap2fpxs) List of maps to use for cross-field null tests.",
+)
+
 
 ###### Physics ######
 parser.add_argument(
