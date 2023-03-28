@@ -429,7 +429,7 @@ parser.add_argument(
 parser.add_argument(
     "--make_nhit",
     type=str2bool,
-    default=True
+    default=True,
     help="(tod2comap) If True, hit maps are made. Default True.",
 )
 
