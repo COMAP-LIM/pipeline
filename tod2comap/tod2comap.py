@@ -109,7 +109,7 @@ class Mapmaker:
     def read_runlist(self):
         self.runlist = []
         if self.rank == 0:
-            self.runlist = read_runlist(self.params)
+            self.runlist = read_runlist(self.params, ignore_existing=False)
             self.fieldname = self.runlist[0][4]
             for i in range(1, len(self.runlist)):
                 if self.runlist[i][4] != self.fieldname:
