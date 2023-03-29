@@ -25,6 +25,8 @@ class level2_file:
             self.scantype = "ces"
         elif scantype&2**15:
             self.scantype = "liss"
+        elif scantype&2**7:
+            self.scantype = "stationary"
 
     def load_level1_data(self):
         with h5py.File(self.l1_filename, "r") as f:
@@ -39,18 +41,15 @@ class level2_file:
             self.tod_times_seconds = (self.tod_times-self.tod_times[0])*24*60*60
             self.samprate = 1.0/(self.tod_times_seconds[1] - self.tod_times_seconds[0])
             self.feeds          = f["/spectrometer/feeds"][()]
-            if 20 in self.feeds:  # If feed 20 is included in the l1 file, slice it away.
-                self.feeds_slice = slice(self.feeds.shape[0]-1)
-            else:
-                self.feeds_slice = slice(self.feeds.shape[0])
-            self.feeds = self.feeds[self.feeds_slice]
+            self.included_feeds_idxs = np.array([i for i in range(len(self.feeds)) if self.feeds[i] in self.params.included_feeds])
+            self.feeds = self.feeds[self.included_feeds_idxs]
             self.array_features = f["/hk/array/frame/features"][()]
             self.array_time     = f["/hk/array/frame/utc"][()]
-            self.az             = f["/spectrometer/pixel_pointing/pixel_az"][self.feeds_slice,self.scan_start_idx:self.scan_stop_idx]
-            self.el             = f["/spectrometer/pixel_pointing/pixel_el"][self.feeds_slice,self.scan_start_idx:self.scan_stop_idx]
-            self.ra             = f["/spectrometer/pixel_pointing/pixel_ra"][self.feeds_slice,self.scan_start_idx:self.scan_stop_idx]
-            self.dec            = f["/spectrometer/pixel_pointing/pixel_dec"][self.feeds_slice,self.scan_start_idx:self.scan_stop_idx]
-            self.tod            = f["/spectrometer/tod"][self.feeds_slice,:,:,self.scan_start_idx:self.scan_stop_idx]
+            self.az             = f["/spectrometer/pixel_pointing/pixel_az"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
+            self.el             = f["/spectrometer/pixel_pointing/pixel_el"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
+            self.ra             = f["/spectrometer/pixel_pointing/pixel_ra"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
+            self.dec            = f["/spectrometer/pixel_pointing/pixel_dec"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
+            self.tod            = f["/spectrometer/tod"][self.included_feeds_idxs,:,:,self.scan_start_idx:self.scan_stop_idx]
             self.freqs          = f["/spectrometer/frequency"][()]
             self.sb_mean = np.nanmean(self.tod, axis=2)
             self.tod_mean = np.nanmean(self.tod, axis=-1)

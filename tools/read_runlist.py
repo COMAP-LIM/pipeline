@@ -25,6 +25,7 @@ def read_runlist(params, ignore_existing):
                 3. scantype (int) - Type of scan, in the bitmask format (16 = circular, 32 = CES, 32768 = Liss)
                 4. fieldname (str) - Name of field, usually "co2", "co6" or "co7".
                 5. l1_filename (str) - Full path to the level1 file where this scan is located.
+                5. l2_filename (str) - Full path to the level2 file where this scan is located.
     """
 
     print(f"Creating runlist in specified obsid range [{params.obsid_start}, {params.obsid_stop}]")
@@ -37,7 +38,7 @@ def read_runlist(params, ignore_existing):
     existing_scans = []
     if ignore_existing:
         for dir in os.listdir(params.level2_dir):
-            if dir[-3:] in ["co2", "co6", "co7"]:
+            if dir[-3:] in ["co2", "co6", "co7", "ncp"]:
                 if os.path.isdir(os.path.join(params.level2_dir, dir)):
                     for file in os.listdir(os.path.join(params.level2_dir, dir)):
                         if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
