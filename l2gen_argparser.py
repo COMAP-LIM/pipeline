@@ -508,10 +508,8 @@ parser.add_argument(
     "--t2m_rms_mask_factor",
     type=float,
     default=8,
-    help="(tod2comap) If not None, this parameter will mask high noise regions in map datasets. All regions with a higher noise than the bottom-100 freq-coadded noise per feed and split times the parameter factor will be masked out.",
+    help="(tod2comap) If not negative, this parameter will mask high noise regions in map datasets. All regions with a higher noise than the bottom-100 freq-coadded noise per feed and split times the parameter factor will be masked out.",
 )
-
-
 
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
