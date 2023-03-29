@@ -370,6 +370,13 @@ class Mapmaker:
         self.reduce_maps(full_map)
 
         if self.rank == 0:
+
+            if self.params.verbose and self.params.t2m_rms_mask_factor > 0:
+                
+                print(
+                    f"Masking all sigma_wn > {self.params.t2m_rms_mask_factor} times the mean bottom 100 noise on each (feed, frequency):"
+                )
+
             # self.postprocess_map(full_map, l2data)
             self.postprocess_map(full_map)
             if self.perform_splits:
@@ -593,7 +600,7 @@ class Mapmaker:
             map_key = re.sub(r"numerator_map", "map", numerator_key)
             sigma_wn_key = re.sub(r"numerator_map", "sigma_wn", numerator_key)
 
-            if self.params.t2m_rms_mask_factor is not None:
+            if self.params.t2m_rms_mask_factor > 0:
                 self.mask_map(mapdata, numerator_key, denominator_key)
 
             inv_var = mapdata[denominator_key]
@@ -613,6 +620,8 @@ class Mapmaker:
 
             map_coadd /= sigma_coadd
             sigma_coadd = 1 / np.sqrt(sigma_coadd)
+
+            sigma_coadd[np.isinf(sigma_coadd)] = np.nan
 
             if self.params.make_nhit:
                 # Generate hit map keys
@@ -706,10 +715,7 @@ class Mapmaker:
             map_key (str): Key to map dataset to mask.
         """
 
-        if self.params.verbose:
-            print(
-                f"Masking all sigma_wn > {self.params.t2m_rms_mask_factor} times the mean bottom 100 noise on each (feed, frequency):"
-            )
+        
         
 
         inv_var = mapdata[denominator_key]
@@ -1085,7 +1091,11 @@ class Mapmaker:
         NFEED, NSIDEBAND, _, NDEC, NRA = mapdata["map"].shape
 
         # Simulation cube object to fill map object with
-        simdata = SimCube(self.params.signal_path)
+        signal_path = self.params.signal_path
+        if signal_path is None:
+            signal_path = os.path.join(self.params.sim_output_dir, self.params.sim_map_output_file_name)
+
+        simdata = SimCube(signal_path)
 
         # Reading simulation cube data from file
         simdata.read()
