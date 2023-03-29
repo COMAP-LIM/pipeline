@@ -108,16 +108,19 @@ class Mapmaker:
 
     def read_runlist(self):
         self.runlist = []
+        self.fieldname = ""
         if self.rank == 0:
             self.runlist = read_runlist(self.params, ignore_existing=False)
             self.fieldname = self.runlist[0][4]
+            
             for i in range(1, len(self.runlist)):
                 if self.runlist[i][4] != self.fieldname:
                     raise ValueError(f"Mapmaker doesn't support multiple fields. Found both {self.fieldname} and {self.runlist[i][4]}.")
         self.runlist = self.comm.bcast(self.runlist, root=0)
+        self.fieldname = self.comm.bcast(self.fieldname, root=0)
+        
 
     def parse_accept_data(self):
-
         if len(self.jk_data_string) >= 1:
             self.jk_data_string = f"_{self.jk_data_string}"
 
@@ -245,7 +248,7 @@ class Mapmaker:
             self.fieldname,
             self.params.decimation_freqs,
             self.params.res_factor,
-            self.params.make_no_nhit,
+            self.params.make_nhit,
             self.maps_to_bin,
             self.params.horizontal,
         )
@@ -324,6 +327,7 @@ class Mapmaker:
 
                 time_array[5] += time.perf_counter() - ti
 
+                break 
 
         # Get frequency bin centers and edges from last level2 file.
         full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
@@ -366,6 +370,13 @@ class Mapmaker:
         self.reduce_maps(full_map)
 
         if self.rank == 0:
+
+            if self.params.verbose and self.params.t2m_rms_mask_factor > 0:
+                
+                print(
+                    f"Masking all sigma_wn > {self.params.t2m_rms_mask_factor} times the mean bottom 100 noise on each (feed, frequency):"
+                )
+
             # self.postprocess_map(full_map, l2data)
             self.postprocess_map(full_map)
             if self.perform_splits:
@@ -411,14 +422,14 @@ class Mapmaker:
                 numerator_buffer = np.zeros_like(mapdata[numerator_key])
                 denominator_buffer = np.zeros_like(mapdata[denominator_key])
 
-                if self.params.make_no_nhit:
+                if self.params.make_nhit:
                     # Generate hit map keys
                     hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
                     nhit_buffer = np.zeros_like(mapdata[hit_key])
             else:
                 numerator_buffer = None
                 denominator_buffer = None
-                if self.params.make_no_nhit:
+                if self.params.make_nhit:
                     nhit_buffer = None
 
             # Perform MPI reduction
@@ -441,7 +452,7 @@ class Mapmaker:
                 mapdata[numerator_key] = numerator_buffer
                 mapdata[denominator_key] = denominator_buffer
 
-            if self.params.make_no_nhit:
+            if self.params.make_nhit:
                 # Generate hit map keys
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
@@ -589,6 +600,9 @@ class Mapmaker:
             map_key = re.sub(r"numerator_map", "map", numerator_key)
             sigma_wn_key = re.sub(r"numerator_map", "sigma_wn", numerator_key)
 
+            if self.params.t2m_rms_mask_factor > 0:
+                self.mask_map(mapdata, numerator_key, denominator_key)
+
             inv_var = mapdata[denominator_key]
 
             # Full map is made by computing map = sum(TOD * inv_var) / sum(inv_var)
@@ -607,7 +621,9 @@ class Mapmaker:
             map_coadd /= sigma_coadd
             sigma_coadd = 1 / np.sqrt(sigma_coadd)
 
-            if self.params.make_no_nhit:
+            sigma_coadd[np.isinf(sigma_coadd)] = np.nan
+
+            if self.params.make_nhit:
                 # Generate hit map keys
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
@@ -683,6 +699,77 @@ class Mapmaker:
             # Deleting numerator and denominator from map object
             del mapdata[numerator_key]
             del mapdata[denominator_key]
+
+    def mask_map(self, mapdata: COmap, numerator_key: str, denominator_key) -> None:
+        """Method that takes in a map object and masks out the high noise regions. The masking is doing the following;
+        
+        for any map dataset per feed {map, rms and nhit} do
+            1) coadd the rms over frequencies 
+            2) compute the arithmetic mean of bottom-100 sigma_wn
+            3) mask all map datasets where sigma_wn is below average bottom-100 channel-coadded sigma_wn per channel times self.params.t2m_rms_mask_factor.
+        repeat for all feed and split maps
+        done 
+
+        Args:
+            mapdata (COmap): Map object that contains map data to apply sigma_wn mask to.
+            map_key (str): Key to map dataset to mask.
+        """
+
+        
+        
+
+        inv_var = mapdata[denominator_key]
+        
+        # Make keys for rms and nhit datasets that corresponds to map dataset
+        nhit_key = re.sub(r"numerator_map", "nhit", numerator_key)
+        
+        feed_noise_freq_coadded = inv_var.copy()
+        mask = ~np.isfinite(feed_noise_freq_coadded)
+        feed_noise_freq_coadded[mask] = 0
+
+        feed_noise_freq_coadded = 1 / np.sqrt(np.sum(feed_noise_freq_coadded, axis = 3))
+
+
+        nfeed, nra, ndec, _ = mapdata[denominator_key].shape
+
+
+        sorted_rms = feed_noise_freq_coadded.reshape(nfeed, nra * ndec)
+
+        bottom100_idx = np.argpartition(sorted_rms, 100, axis=-1)[..., :100]
+        bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis=-1)
+
+        mean_bottom100_rms = np.nanmean(bottom100, axis=-1) 
+
+        noise_lim = self.params.t2m_rms_mask_factor * mean_bottom100_rms 
+
+        mask = feed_noise_freq_coadded[:, :, :, None] * np.ones_like(mapdata[denominator_key]) > noise_lim[:, None, None, None] 
+
+        mapdata[numerator_key][mask] = 0
+
+        if self.params.make_nhit:
+            mapdata[nhit_key] = mapdata[nhit_key].astype(np.float32)
+            mapdata[nhit_key][mask] = 0
+
+        mapdata[denominator_key][mask] = 0
+
+
+        # Masking all channels that have a factor self.params.t2m_rms_mask_factor larger aritmetic average noise per channel than the totally arithmetically averaged sigma_wn.
+
+        sigma = 1 / np.sqrt(inv_var)
+        sigma[~np.isfinite(sigma)] = np.nan
+        
+        average_noise = np.nanmean(sigma)
+        
+        average_noise_per_channel = np.nanmean(sigma, axis = (1, 2))
+        
+        mask = average_noise_per_channel > (average_noise * self.params.t2m_rms_mask_factor)
+
+        feeds_to_mask, channels_to_mask = np.where(mask)
+
+        mapdata[numerator_key][feeds_to_mask, :, :, channels_to_mask] = 0
+        mapdata[denominator_key][feeds_to_mask, :, :, channels_to_mask] = 0
+        if self.params.make_nhit:
+            mapdata[nhit_key][feeds_to_mask, :, :, channels_to_mask] = 0
 
     def get_pointing_matrix(
         self,
@@ -821,7 +908,7 @@ class Mapmaker:
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
 
         # If no hit map is needed:
-        if self.params.make_no_nhit:
+        if self.params.make_nhit:
 
             int32_array4 = np.ctypeslib.ndpointer(
                 dtype=ctypes.c_int, ndim=4, flags="contiguous"
@@ -1004,7 +1091,11 @@ class Mapmaker:
         NFEED, NSIDEBAND, _, NDEC, NRA = mapdata["map"].shape
 
         # Simulation cube object to fill map object with
-        simdata = SimCube(self.params.signal_path)
+        signal_path = self.params.signal_path
+        if signal_path is None:
+            signal_path = os.path.join(self.params.sim_output_dir, self.params.sim_map_output_file_name)
+
+        simdata = SimCube(signal_path)
 
         # Reading simulation cube data from file
         simdata.read()

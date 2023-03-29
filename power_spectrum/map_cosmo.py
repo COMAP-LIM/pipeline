@@ -25,7 +25,7 @@ class MapCosmo:
     def __init__(
         self,
         params: argparse.Namespace,
-        field: str,
+        mappath: str,
         cosmology: astropy.cosmology.flrw.FlatLambdaCDM,
         feed: Optional[int] = None,
         split: Optional[str] = None,
@@ -47,8 +47,6 @@ class MapCosmo:
 
         self.feed = feed
         
-        mappath = os.path.join(params.map_dir, f"{field}_{params.map_name}.h5") 
-
         mapdata = COmap(mappath)
 
         mapdata.read_map()
@@ -91,7 +89,7 @@ class MapCosmo:
         NU_REST = params.sim_nu_rest * u.GHz  # Rest frequency of CO J(1->0)
 
         N_FREQ = NSIDEBAND * NCHANNEL
-        nu = np.linspace(params.sin_nu_f, params.sim_nu_i, N_FREQ) * u.GHz  
+        nu = np.linspace(params.sim_nu_f, params.sim_nu_i, N_FREQ) * u.GHz  
 
         dnu = nu[1] - nu[0]
 

@@ -127,11 +127,15 @@ class Cube2TOD:
                     ]
 
         # Grid edges of simulation box
-        ra_edges = simdata["x"]
-        dec_edges = simdata["y"]
+        ra_edges = simdata["x_edges"]
+        dec_edges = simdata["y_edges"]
 
         # From bin edges to centers
-        ra_grid, dec_grid = simdata.get_bin_centers(ra_edges, dec_edges)
+        if simdata.npz_format:
+            ra_grid = simdata["x_centers"]
+            dec_grid = simdata["y_centers"]
+        else:
+            ra_grid, dec_grid = simdata.get_bin_centers(ra_edges, dec_edges)
         
         # Grid resolution
         dra = ra_grid[1] - ra_grid[0]

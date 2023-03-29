@@ -10,6 +10,8 @@ import itertools
 from mpi4py import MPI
 
 
+import time 
+
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
 sys.path.append(parent_directory)
@@ -32,17 +34,60 @@ class COMAP2FPXS():
 
     def run(self):
         feed_combinations = list(itertools.product(range(19), range(19)))
-        all_combinations = list(itertools.product(self.split_map_combinations, feed_combinations))
+
+        mapnames = self.params.psx_map_names
+        if self.params.null_cross_field:
+            if len(mapnames) == 0:
+                fields = self.params.fields
+                mapnames = [f"{field_name}_{self.params.map_name}.h5" for field_name in fields]
+            field_combinations = list(itertools.product(mapnames, mapnames))
+            
+            
+        elif len(mapnames) == 0:
+            fields = self.params.fields
+            mapnames = [f"{field_name}_{self.params.map_name}.h5" for field_name in fields]
+            field_combinations = [mapnames, mapnames]
+        else:
+
+            field_combinations = [mapnames, mapnames]
+
+
+        all_combinations = list(itertools.product(field_combinations, self.split_map_combinations, feed_combinations))
         Number_of_combinations = len(all_combinations)
+        
+
+        
 
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
-                maps, feeds = all_combinations[i]
-                map1, map2 = maps
+                
+                mapnames, splits, feeds = all_combinations[i]
+                map1, map2 = mapnames
+                split1, split2 = splits
                 feed1, feed2 = feeds
 
-                print(self.rank, map1, map2, feed1, feed2)
+                print(self.rank, map1, map2, split1, split2, feed1, feed2)
 
+                mappaths = [
+                    os.path.join(self.params.map_dir, map1),
+                    os.path.join(self.params.map_dir, map2),
+                ]
+
+                cross_spectrum = xs_class.CrossSpectrum_nmaps(
+                    mappaths, 
+                    self.params, 
+                    self.cosmology, 
+                    splits, 
+                    feed1, 
+                    feed2
+                    )
+                
+
+                ########################### REMOVE AFTER DEVELOPMENT
+                time.sleep(5)
+                ########################### REMOVE AFTER DEVELOPMENT
+            if i ==5:
+                break
         return NotImplemented
 
     def read_params(self):
@@ -88,7 +133,7 @@ class COMAP2FPXS():
                 "Please specify a accept_data_id_string in parameter file or terminal."
             )
 
-    
+
     def read_cosmology(self):
         """
         Method that reads in the standard cosmology to use form pickled astropy object.
@@ -207,12 +252,12 @@ if __name__ == "__main__":
     
     comap2fpxs = COMAP2FPXS()
     
-    print(comap2fpxs.primary_variables)
-    print(comap2fpxs.secondary_variables)
-    print(comap2fpxs.cross_variables)
-    print(comap2fpxs.all_variables)
-    print(comap2fpxs.cross_and_primary)
-    print(comap2fpxs.cross_and_secondary)
-    print(comap2fpxs.split_map_combinations)
+    # print(comap2fpxs.primary_variables)
+    # print(comap2fpxs.secondary_variables)
+    # print(comap2fpxs.cross_variables)
+    # print(comap2fpxs.all_variables)
+    # print(comap2fpxs.cross_and_primary)
+    # print(comap2fpxs.cross_and_secondary)
+    # print(comap2fpxs.split_map_combinations)
     
     comap2fpxs.run()
