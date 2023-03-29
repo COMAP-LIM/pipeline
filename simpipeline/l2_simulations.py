@@ -101,13 +101,34 @@ class SimCube:
         """Method that reads in simulation cube from file"""
 
         if ".h5" in self.path: 
+            self.npz_format = False
             with h5py.File(self.path, "r") as infile:
                 for key, value in infile.items():
                     self._data[key] = value[()]
+
+            self._data["x_edges"] = self._data["x"]
+            self._data["y_edges"] = self._data["y"]
+                
+                
         elif ".npz" in self.path:
-            with np.load(self.path) as infile:            
-                self._data["x"] = infile["map_pixel_ra"] 
-                self._data["y"] = infile["map_pixel_dec"] 
+            self.npz_format = True
+            with np.load(self.path) as infile:
+                self._data["x_centers"] = infile["map_pixel_ra"] 
+                self._data["y_centers"] = infile["map_pixel_dec"]
+
+                self._data["x_edges"] = np.zeros(self._data["x_centers"].size + 1)
+                self._data["y_edges"] = np.zeros(self._data["y_centers"].size + 1)
+
+                dx = self._data["x_centers"][1] - self._data["x_centers"][0]
+
+                dy = self._data["y_centers"][1] - self._data["y_centers"][0]
+
+                self._data["x_edges"][:-1] = self._data["x_centers"] - dx / 2
+                self._data["x_edges"][-1] = self._data["x_centers"][-1] + dx / 2
+
+                self._data["y_edges"][:-1] = self._data["y_centers"] - dy / 2
+                self._data["y_edges"][-1] = self._data["y_centers"][-1] + dy / 2
+                
                 self._data["simulation"] = infile["map_cube"].transpose(2, 0, 1)
                 self._data["frequencies"] = infile["map_frequencies"][::-1] 
                 self._data["simulation"] = self._data["simulation"][::-1]
@@ -247,8 +268,11 @@ class SimCube:
         NDEC, NRA = geometry.shape
 
         # Define source geometry situated at equatorial origin
-        ra_edges = self._data["x"]
-        dec_edges = self._data["y"]
+        ra_edges = self._data["x_edges"]
+        dec_edges = self._data["y_edges"]
+        
+        print(ra_edges.shape)
+
         box = (
             np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
             * utils.degree
@@ -293,6 +317,7 @@ class SimCube:
         # Number of hits per target geometry pixel
         hits = np.bincount(px_idx, minlength=NDEC * NRA * NFREQ)
 
+        print(px_idx.shape, self.simdata.size)
         # Binned up simulation data per target geometry pixel
         new_simdata = np.bincount(
             px_idx, minlength=NDEC * NRA * NFREQ, weights=self.simdata.flatten()
@@ -329,7 +354,7 @@ class SimCube:
         # Load and upgrade standard geomtry
         standard_geometry = enmap.read_map(standard_geometry_path).copy()
         standard_geometry = enmap.upgrade(
-            standard_geometry, (self._data["x"].size - 1) // standard_geometry.shape[1]
+            standard_geometry, (self._data["x_edges"].size - 1) // standard_geometry.shape[1]
         )
 
         # Defining an enmap with geometry equal to upgraded standard geometry
