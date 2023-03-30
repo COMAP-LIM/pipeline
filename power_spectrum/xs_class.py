@@ -22,6 +22,8 @@ warnings.filterwarnings(
 class CrossSpectrum_nmaps:
     def __init__(self, mappaths, params, cosmology, split_keys, feed1=None, feed2=None):
         
+        self.params = params
+        
         split_base_number = params.split_base_number
 
         self.name_of_map = mappaths  
@@ -61,8 +63,6 @@ class CrossSpectrum_nmaps:
 
         name1 = f"{combination1}_feed{feed1}"
         name2 = f"{combination2}_feed{feed2}"
-
-        print("XS_code:", name1, name2)
 
         self.names.append(name1)
         self.names.append(name2)
@@ -408,83 +408,33 @@ class CrossSpectrum_nmaps:
             self.rms_xs_std_2D.append(np.std(rms_xs, axis=2))
         return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D)
 
-    # MAKE SEPARATE H5 FILE FOR EACH XS
-    def make_h5(self, outdir, outname=None):
-
-        for index in range(self.how_many_combinations):
-            i = index * 2
-            j = i + 1
-
-            if outname is None:
-                tools.ensure_dir_exists("spectra/" + outdir)
-                outname = (
-                    "spectra/"
-                    + outdir
-                    + "/xs_"
-                    + self.get_information()[index][1]
-                    + "_and_"
-                    + self.get_information()[index][2]
-                    + ".h5"
-                )
-                # outname = 'spectra/xs_' + self.get_information()[index][1] + '_and_'+ self.get_information()[index][2] + '.h5'
-
-            f1 = h5py.File(outname, "w")
-            try:
-                f1.create_dataset("mappath1", data=self.maps[i].mappath)
-                f1.create_dataset("mappath2", data=self.maps[j].mappath)
-                f1.create_dataset("xs", data=self.xs[index])
-                f1.create_dataset("k", data=self.k[index])
-                f1.create_dataset("k_bin_edges", data=self.k_bin_edges)
-                f1.create_dataset("nmodes", data=self.nmodes[index])
-            except:
-                print("No cross-spectrum calculated.")
-                return
-            try:
-                f1.create_dataset("rms_xs_mean", data=self.rms_xs_mean[index])
-                f1.create_dataset("rms_xs_std", data=self.rms_xs_std[index])
-            except:
-                pass
-
-            f1.close()
-
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
-    def make_h5_2d(self, outdir, data_dir, outname=None):
+    def make_h5_2d(self, outdir, outname=None):
+        if outname is None:
+            path = os.path.join("spectra_2D/", outdir)
+            path = os.path.join(self.params.power_spectrum_dir, path)
 
-        for index in range(self.how_many_combinations):
-            i = index * 2
-            j = i + 1
+            tools.ensure_dir_exists(path)
+            outname = (
+                "xs_2D_"
+                + self.names[0]
+                + "_and_"
+                + self.names[1]
+                + ".h5"
+            )
+            outname = os.path.join(path, outname)
 
-            if outname is None:
-                path = os.path.join("spectra_2D/", outdir)
-                path = os.path.join(data_dir, path)
-
-                tools.ensure_dir_exists(path)
-                outname = (
-                    "xs_2D_"
-                    + self.get_information()[index][1]
-                    + "_and_"
-                    + self.get_information()[index][2]
-                    + ".h5"
-                )
-                outname = os.path.join(path, outname)
-                # outname = 'spectra_2D/xs_2D_' + self.get_information()[index][1] + '_and_'+ self.get_information()[index][2] + '.h5'
-
-            f1 = h5py.File(outname, "w")
+        with h5py.File(outname, "w") as outfile:
             try:
-                f1.create_dataset("mappath1", data=self.maps[i].mappath)
-                f1.create_dataset("mappath2", data=self.maps[j].mappath)
-                f1.create_dataset("xs_2D", data=self.xs[index])
-                f1.create_dataset("k", data=self.k[index])
-                f1.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
-                f1.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
-                f1.create_dataset("nmodes", data=self.nmodes[index])
+                outfile.create_dataset("mappath1", data=self.name_of_map[0])
+                outfile.create_dataset("mappath2", data=self.name_of_map[1])
+                outfile.create_dataset("xs_2D", data=self.xs[0])
+                outfile.create_dataset("k", data=self.k[0])
+                outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
+                outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
+                outfile.create_dataset("nmodes", data=self.nmodes[0])
+                outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
+                outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
             except:
-                print("No cross-spectrum calculated.")
-                return
-            try:
-                f1.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[index])
-                f1.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[index])
-            except:
-                pass
-
-            f1.close()
+                raise ValueError("No cross-spectrum calculated.")
+       
