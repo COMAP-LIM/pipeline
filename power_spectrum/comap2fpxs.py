@@ -54,6 +54,8 @@ class COMAP2FPXS():
         
         if self.params.verbose and self.rank == 0:
             print("#" * 70)
+            print(f"Primary splits: {self.primary_variables}")
+            print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
             print("#" * 70)
 
@@ -88,14 +90,13 @@ class COMAP2FPXS():
                     self.params.psx_noise_sim_number
                 )
 
-                outdir = f"{map1[:-3]}_X_{map1[:-3]}"
+                outdir = f"{map1[:-3]}_X_{map2[:-3]}"
                 
                 cross_spectrum.make_h5_2d(outdir)
 
                 if self.params.verbose:
-                    print(f"\033[91m Rank {self.rank} done with {i + 1} / {self.Nranks}: \033[00m \033[94m {map1.split('_')[0]} X {map2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed{feed1} X Feed {feed2} \033[00m")
-
-            
+                    print(outdir)
+                    print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {map1.split('_')[0]} X {map2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
             
         return NotImplemented
 

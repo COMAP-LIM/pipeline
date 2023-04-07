@@ -556,12 +556,19 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--null_cross_field",
+    "--psx_null_cross_field",
     type=str2bool,
     default=False,
     help="(comap2fpxs) If True compute cross-field feed-feed pseudo cross-spectrum null tests. Default False."
 )
 
+
+parser.add_argument(
+    "--psx_noise_sim_number",
+    type=int,
+    default=50,
+    help="(comap2fpxs) Number of noise simulations to run to get power spectrum error bars.",
+)
 
 ###### Physics ######
 parser.add_argument(
