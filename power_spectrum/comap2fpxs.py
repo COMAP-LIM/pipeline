@@ -36,37 +36,39 @@ class COMAP2FPXS():
         feed_combinations = list(itertools.product(range(19), range(19)))
 
         mapnames = self.params.psx_map_names
-        if self.params.null_cross_field:
+        if self.params.psx_null_cross_field:
             if len(mapnames) == 0:
                 fields = self.params.fields
                 mapnames = [f"{field_name}_{self.params.map_name}.h5" for field_name in fields]
             field_combinations = list(itertools.product(mapnames, mapnames))
             
-            
-        elif len(mapnames) == 0:
+        elif len(mapnames) == 0 and not self.params.psx_null_cross_field:
             fields = self.params.fields
-            mapnames = [f"{field_name}_{self.params.map_name}.h5" for field_name in fields]
-            field_combinations = [mapnames, mapnames]
+            field_combinations = [(f"{field_name}_{self.params.map_name}.h5", f"{field_name}_{self.params.map_name}.h5")
+                        for field_name in fields]            
         else:
-
-            field_combinations = [mapnames, mapnames]
-
+            field_combinations = [(name, name) for name in mapnames]
 
         all_combinations = list(itertools.product(field_combinations, self.split_map_combinations, feed_combinations))
         Number_of_combinations = len(all_combinations)
         
-
-        
+        if self.params.verbose and self.rank == 0:
+            print("#" * 70)
+            print(f"Primary splits: {self.primary_variables}")
+            print(f"Secondary splits: {self.secondary_variables}")
+            print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
+            print("#" * 70)
 
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
                 
                 mapnames, splits, feeds = all_combinations[i]
+                # print(mapnames)
                 map1, map2 = mapnames
+
                 split1, split2 = splits
                 feed1, feed2 = feeds
 
-                print(self.rank, map1, map2, split1, split2, feed1, feed2)
 
                 mappaths = [
                     os.path.join(self.params.map_dir, map1),
@@ -81,13 +83,21 @@ class COMAP2FPXS():
                     feed1, 
                     feed2
                     )
-                
+        
+                cross_spectrum.calculate_xs_2d()
 
-                ########################### REMOVE AFTER DEVELOPMENT
-                time.sleep(5)
-                ########################### REMOVE AFTER DEVELOPMENT
-            if i ==5:
-                break
+                cross_spectrum.run_noise_sims_2d(
+                    self.params.psx_noise_sim_number
+                )
+
+                outdir = f"{map1[:-3]}_X_{map2[:-3]}"
+                
+                cross_spectrum.make_h5_2d(outdir)
+
+                if self.params.verbose:
+                    print(outdir)
+                    print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {map1.split('_')[0]} X {map2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
+            
         return NotImplemented
 
     def read_params(self):
