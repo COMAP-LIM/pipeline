@@ -8,6 +8,8 @@ import sys
 import pickle
 import itertools
 from mpi4py import MPI
+import matplotlib
+import matplotlib.pyplot as plt
 
 
 import time 
@@ -27,15 +29,23 @@ class COMAP2FPXS():
         self.Nranks = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
 
+
         self.read_params()
+        self.verbose = self.params.verbose == 1
+    
         self.read_cosmology()
         self.read_jackknife_definition_file()
         self.generate_split_map_names()
 
     def run(self):
-        feed_combinations = list(itertools.product(range(19), range(19)))
+        self.included_feeds = self.params.included_feeds
+        feed_combinations = list(itertools.product(self.included_feeds, self.included_feeds))
+        self.feed_combinations = feed_combinations
 
         mapnames = self.params.psx_map_names
+
+        mapnames = [name for name in mapnames]
+
         if self.params.psx_null_cross_field:
             if len(mapnames) == 0:
                 fields = self.params.fields
@@ -48,22 +58,24 @@ class COMAP2FPXS():
                         for field_name in fields]            
         else:
             field_combinations = [(name, name) for name in mapnames]
+        
+        self.field_combinations = field_combinations        
 
         all_combinations = list(itertools.product(field_combinations, self.split_map_combinations, feed_combinations))
         Number_of_combinations = len(all_combinations)
         
-        if self.params.verbose and self.rank == 0:
+        if self.verbose and self.rank == 0:
             print("#" * 70)
             print(f"Primary splits: {self.primary_variables}")
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
             print("#" * 70)
+            sys.stdout.flush()
 
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
                 
                 mapnames, splits, feeds = all_combinations[i]
-                # print(mapnames)
                 map1, map2 = mapnames
 
                 split1, split2 = splits
@@ -75,30 +87,353 @@ class COMAP2FPXS():
                     os.path.join(self.params.map_dir, map2),
                 ]
 
-                cross_spectrum = xs_class.CrossSpectrum_nmaps(
-                    mappaths, 
-                    self.params, 
-                    self.cosmology, 
-                    splits, 
-                    feed1, 
-                    feed2
-                    )
-        
-                cross_spectrum.calculate_xs_2d()
+                mapname1 = map1.split("/")[-1]
+                mapname2 = map2.split("/")[-1]
+                outdir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
 
-                cross_spectrum.run_noise_sims_2d(
-                    self.params.psx_noise_sim_number
+                if self.verbose:
+                    print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
+                    sys.stdout.flush()
+                
+                cross_spectrum = xs_class.CrossSpectrum_nmaps(
+                        self.params, 
+                        splits, 
+                        feed1, 
+                        feed2,
+                    )
+
+                if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
+                    continue
+                else:
+                    cross_spectrum.read_map(
+                        mappaths, 
+                        self.cosmology, 
+                    )
+
+                    cross_spectrum.calculate_xs_2d(
+                        no_of_k_bins=self.params.psx_number_of_k_bins + 1,
+                    )
+
+                    cross_spectrum.run_noise_sims_2d(
+                        self.params.psx_noise_sim_number,
+                        no_of_k_bins=self.params.psx_number_of_k_bins + 1,
+                    )
+
+                    cross_spectrum.make_h5_2d(outdir)
+
+        self.comm.Barrier()
+
+        if self.rank == 0:
+            if self.verbose:
+                print("Computing averages:")
+                sys.stdout.flush()
+
+            self.compute_averages()
+                
+        return NotImplemented
+
+    def compute_averages(self):
+        average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra")
+
+        fig_dir = os.path.join(self.power_spectrum_dir, "figs")
+
+        if not os.path.exists(average_spectrum_dir):
+            os.mkdir(average_spectrum_dir)
+    
+        if not os.path.exists(fig_dir):
+            os.mkdir(fig_dir)
+
+        if not os.path.exists(os.path.join(fig_dir, "chi2_grid")):
+            os.mkdir(os.path.join(fig_dir, "chi2_grid"))
+
+        if not os.path.exists(os.path.join(fig_dir, "average_spectra")):
+            os.mkdir(os.path.join(fig_dir, "average_spectra"))
+    
+        N_feed = len(self.included_feeds)
+        N_splits = len(self.split_map_combinations)
+        N_k = self.params.psx_number_of_k_bins
+
+
+        for map1, map2 in self.field_combinations:
+            mapname1 = map1.split("/")[-1]
+            mapname2 = map2.split("/")[-1]
+            indir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+
+            outdir = os.path.join(average_spectrum_dir, indir)
+            
+            if not os.path.exists(outdir):
+                os.mkdir(outdir)
+
+            xs_mean = np.zeros((N_splits, N_k, N_k))
+            xs_error = np.zeros((N_splits, N_k, N_k))
+
+            xs_mean_1d = np.zeros((N_splits, N_k))
+            xs_error_1d = np.zeros((N_splits, N_k))
+
+            for i, splits in enumerate(self.split_map_combinations):
+                
+
+                xs_sum = np.zeros((N_k, N_k))
+
+                xs_inv_var = np.zeros((N_k, N_k))
+                
+                chi2 = np.zeros((N_feed, N_feed))
+
+                transfer_function = np.ones_like(xs_sum)
+
+                if self.params.transfer_function_name:
+                    ############################
+                    # CHANGE TO SOME STANDARD FORMAT OF TRANSFER FUNCTION IF TO APPLY TRANSFER FUNCTION TO CUT DETERMINE CHI2 XS CUTS
+                    ############################
+                    pass
+
+                for feed1 in range(N_feed):
+                    for feed2 in range(N_feed):
+                        cross_spectrum = xs_class.CrossSpectrum_nmaps(
+                            self.params, 
+                            splits, 
+                            self.included_feeds[feed1], 
+                            self.included_feeds[feed2],
+                        )
+                        cross_spectrum.read_spectrum(indir)
+
+                        xs = cross_spectrum.xs_2D
+                        xs_sigma = cross_spectrum.rms_xs_std_2D
+                        
+                        k = cross_spectrum.k
+                        
+                        k_bin_edges_par = cross_spectrum.k_bin_edges_par
+                        
+                        k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
+
+                        # ADD OPTIONAL OVERWRITING OF TRANSFER FUNCTION HERE
+
+                        transfer_function_mask = transfer_function > self.params.tf_cutoff
+
+                        chi3 = np.nansum(
+                        (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
+                        )
+
+                        number_of_samples = np.sum(transfer_function_mask)
+            
+                        chi2[feed1, feed2] = np.sign(chi3) * abs(
+                            (np.nansum((xs[transfer_function_mask]  / xs_sigma[transfer_function_mask] ) ** 2) - number_of_samples)
+                            / np.sqrt(2 * number_of_samples)
+                        )
+
+                        if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
+                            if np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit:
+                                xs_sum += xs / xs_sigma ** 2
+                                xs_inv_var += 1 / xs_sigma ** 2
+
+                if self.verbose:
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                    sys.stdout.flush()
+
+
+                xs_mean[i, ...] = xs_sum / xs_inv_var
+                xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
+                kx, ky = k
+
+                weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
+
+                xs_1d = xs_mean[i, ...].copy()
+                xs_1d /= transfer_function
+                xs_1d *= weights
+
+                k_bin_edges = np.logspace(-2.0, np.log10(1.5), len(kx) + 1)
+
+                kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
+
+                Ck_nmodes_1d = np.histogram(
+                    kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_1d[kgrid > 0]
+                )[0]
+                inv_var_nmodes_1d = np.histogram(
+                    kgrid[kgrid > 0], bins=k_bin_edges, weights=weights[kgrid > 0]
+                )[0]
+                nmodes_1d = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
+
+                # Ck = Ck_nmodes / nmodes
+                k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
+                
+                Ck_1d = np.zeros_like(k_1d)
+                rms_1d = np.zeros_like(k_1d)
+                
+                Ck_1d[np.where(nmodes_1d > 0)] = (
+                    Ck_nmodes_1d[np.where(nmodes_1d > 0)]
+                    / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
+                )
+                rms_1d[np.where(nmodes_1d > 0)] = np.sqrt(
+                    1 / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
                 )
 
-                outdir = f"{map1[:-3]}_X_{map2[:-3]}"
-                
-                cross_spectrum.make_h5_2d(outdir)
+                xs_mean_1d[i, ...] = Ck_1d
+                xs_error_1d[i, ...] = rms_1d
 
-                if self.params.verbose:
-                    print(outdir)
-                    print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {map1.split('_')[0]} X {map2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
-            
-        return NotImplemented
+
+                chi2_name = os.path.join(fig_dir, "chi2_grid")
+                chi2_name = os.path.join(chi2_name, indir)
+
+                if not os.path.exists(chi2_name):
+                    os.mkdir(chi2_name)
+
+                self.plot_chi2_grid(chi2, splits, chi2_name)
+
+                average_name = os.path.join(fig_dir, "average_spectra")
+                average_name = os.path.join(average_name, indir)
+
+                if not os.path.exists(average_name):
+                    os.mkdir(average_name)
+
+                
+                self.plot_2D_mean(
+                    k_bin_edges_par,
+                    k_bin_edges_perp,
+                    xs_mean[i, ...],
+                    xs_error[i, ...],
+                    splits,
+                    (mapname1, mapname2),
+                    average_name,
+                )
+
+            with h5py.File(os.path.join(outdir, indir + "_average_fpxs.h5"), "w") as outfile:
+                outfile.create_dataset("k_1d", data = k_1d)             
+                outfile.create_dataset("k_2d", data = k)
+                outfile.create_dataset("k_edges_par", data = k_bin_edges_par)      
+                outfile.create_dataset("k_edges_perp", data = k_bin_edges_perp)     
+                outfile.create_dataset("xs_mean_1d", data = xs_mean_1d)       
+                outfile.create_dataset("xs_mean_2d", data = xs_mean)
+                outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
+                outfile.create_dataset("xs_sigma_2d", data = xs_error)
+
+
+    def plot_2D_mean(self,
+                    k_bin_edges_par,
+                    k_bin_edges_perp,
+                    xs_mean,
+                    xs_sigma,
+                    splits,
+                    fields,
+                    outname
+                    ):
+        
+        split1 = splits[0].split("map_")[-1]
+        split2 = splits[1].split("map_")[-1]
+        outname = os.path.join(
+            outname, 
+            f"xs_mean_2d_{split1}_X_{split2}.png"
+            )
+        
+        fig, ax = plt.subplots(1, 2, figsize=(16, 5.6), sharey=True)
+
+        fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
+        
+        lim = np.nanmax(np.abs(xs_mean[3:-3, 3:-3]))
+        lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)[3:-3, 3:-3]))
+
+        norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
+        lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
+
+        img1 = ax[0].imshow(
+            xs_mean,
+            interpolation="none",
+            origin="lower",
+            extent=[0, 1, 0, 1],
+            cmap="PiYG_r",
+            norm=norm,
+            rasterized=True,
+        )
+        fig.colorbar(img1, ax=ax[0], fraction=0.046, pad=0.04).set_label(
+            r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+            size=16,
+        )
+
+        img2 = ax[1].imshow(
+            xs_mean / (xs_sigma),
+            interpolation="none",
+            origin="lower",
+            extent=[0, 1, 0, 1],
+            cmap="PiYG_r",
+            norm=lim_significance,
+            rasterized=True,
+        )
+        fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.04).set_label(
+            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
+            size=16,
+        )
+
+        ticks = [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+
+        majorticks = [0.03, 0.1, 0.3, 1]
+        majorlabels = ["0.03", "0.1", "0.3", "1"]
+
+        xbins = k_bin_edges_par
+
+        ticklist_x = self.log2lin(ticks[:-3], xbins)
+        majorlist_x = self.log2lin(majorticks, xbins)
+
+        ybins = k_bin_edges_perp
+
+        ticklist_y = self.log2lin(ticks, ybins)
+        majorlist_y = self.log2lin(majorticks, ybins)
+
+        ax[0].set_title(r"$\tilde{C}^{\mathrm{FPXS}}$ ", fontsize=16)
+        ax[1].set_title(r"$\tilde{C}^{\mathrm{FPXS}}/\sigma$ ", fontsize=16)
+
+        for i in range(2):
+            ax[i].set_xticks(ticklist_x, minor=True)
+            ax[i].set_xticks(majorlist_x, minor=False)
+            ax[i].set_xticklabels(majorlabels, minor=False, fontsize=16)
+            ax[i].set_yticks(ticklist_y, minor=True)
+            ax[i].set_yticks(majorlist_y, minor=False)
+            ax[i].set_yticklabels(majorlabels, minor=False, fontsize=16)
+
+        ax[0].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
+        ax[0].set_ylabel(r"$k_{\bot}$ [Mpc${}^{-1}$]", fontsize=16)
+        ax[1].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
+
+        plt.savefig(outname, bbox_inches = "tight")
+        
+
+
+    def plot_chi2_grid(self, chi2, splits, outname):
+        
+        split1 = splits[0].split("map_")[-1]
+        split2 = splits[1].split("map_")[-1]
+        outname = os.path.join(
+            outname, 
+            f"xs_chi2_grid_{split1}_X_{split2}.png"
+            )
+        
+        N_feed = len(self.included_feeds)
+
+        cmap = matplotlib.cm.PiYG.reversed()
+    
+        cmap.set_bad("k", 1)
+
+        # chi2[np.abs(chi2) >= vmax] = np.nan
+        #np.fill_diagonal(chi2, np.nan)
+        #chi2[np.abs(chi2) > self.params.psx_chi2_cut_limit] = np.nan
+        
+        fig, ax = plt.subplots()
+
+        img = ax.imshow(
+            chi2,
+            interpolation="none",
+            vmin=-self.params.psx_chi2_cut_limit,
+            vmax=self.params.psx_chi2_cut_limit,
+            extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap=cmap,
+            rasterized=True,
+        )
+        new_tick_locations = np.array(range(N_feed)) + 1
+        ax.set_xticks(new_tick_locations)
+        ax.set_yticks(new_tick_locations)
+        ax.set_xlabel(f"Feed of {split1}")
+        ax.set_ylabel(f"Feed of {split2}")
+        cbar = plt.colorbar(img, ax = ax)
+        cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
+        fig.savefig(outname, bbox_inches="tight")
 
     def read_params(self):
         """Method reading and parsing the parameters from file or command line.
@@ -223,8 +558,6 @@ class COMAP2FPXS():
         self.cross_and_primary  = cross_and_primary 
         self.cross_and_secondary  = cross_and_secondary 
     
-
-
     def generate_split_map_names(self):  
         secondary_variables = self.secondary_variables
         cross_and_primary = self.cross_and_primary
@@ -242,7 +575,6 @@ class COMAP2FPXS():
 
                 # Generating names of split combinations
                 for combo in combinations:
-                    # name = primary_variable + "/"
                     name = ""
                     for i, bin_number in enumerate(combo):
                         name = name + f"{secondary_variables[i]}{bin_number}" 
@@ -253,6 +585,13 @@ class COMAP2FPXS():
                     )
 
         self.split_map_combinations = split_map_combinations
+
+    
+
+    def log2lin(self, x, k_edges):
+        loglen = np.log10(k_edges[-1]) - np.log10(k_edges[0])
+        logx = np.log10(x) - np.log10(k_edges[0])
+        return logx / loglen
 
 
 

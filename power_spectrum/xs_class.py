@@ -20,16 +20,17 @@ warnings.filterwarnings(
 
 
 class CrossSpectrum_nmaps:
-    def __init__(self, mappaths, params, cosmology, split_keys, feed1=None, feed2=None):
+    def __init__(self, params, split_keys, feed1=None, feed2=None):
         
         self.params = params
         
-        split_base_number = params.split_base_number
+        split_base_number = self.params.split_base_number
 
-        self.name_of_map = mappaths  
-        if len(self.name_of_map) < 2:
-            raise ValueError("Can only compute cross-spectra when two map paths are provided.")
-        
+        self.feed1 = feed1
+        self.feed2 = feed2
+        self.split_keys = split_keys
+
+
         self.names = []
         self.maps = []
 
@@ -45,31 +46,44 @@ class CrossSpectrum_nmaps:
         combination2 = combination2.split("/map_")[-1]
         
         
-        split_map1 = map_cosmo.MapCosmo(
-            params,
-            mappaths[0], 
-            cosmology,
-            feed1, 
-            split_keys[0], 
-            )
-
-        split_map2 = map_cosmo.MapCosmo(
-            params,
-            mappaths[1], 
-            cosmology,
-            feed2, 
-            split_keys[1], 
-            )
-
         name1 = f"{combination1}_feed{feed1}"
         name2 = f"{combination2}_feed{feed2}"
 
         self.names.append(name1)
         self.names.append(name2)
 
+        self.outname = (
+                "xs_2D_"
+                + self.names[0]
+                + "_and_"
+                + self.names[1]
+                + ".h5"
+        )
+
+
+    def read_map(self, mappaths, cosmology):
+        self.name_of_map = mappaths  
+        if len(self.name_of_map) < 2:
+            raise ValueError("Can only compute cross-spectra when two map paths are provided.")
+        
+        split_map1 = map_cosmo.MapCosmo(
+            self.params,
+            mappaths[0], 
+            cosmology,
+            self.feed1, 
+            self.split_keys[0], 
+            )
+
+        split_map2 = map_cosmo.MapCosmo(
+            self.params,
+            mappaths[1], 
+            cosmology,
+            self.feed2, 
+            self.split_keys[1], 
+            )
+
         self.maps.append(split_map1)
         self.maps.append(split_map2)
-
 
     # NORMALIZE WEIGHTS FOR A GIVEN PAIR OF MAPS
     def normalize_weights(self, i, j):
@@ -415,26 +429,28 @@ class CrossSpectrum_nmaps:
             path = os.path.join(self.params.power_spectrum_dir, path)
 
             tools.ensure_dir_exists(path)
-            outname = (
-                "xs_2D_"
-                + self.names[0]
-                + "_and_"
-                + self.names[1]
-                + ".h5"
-            )
-            outname = os.path.join(path, outname)
+            
+            outname = os.path.join(path, self.outname)
 
         with h5py.File(outname, "w") as outfile:
-            try:
-                outfile.create_dataset("mappath1", data=self.name_of_map[0])
-                outfile.create_dataset("mappath2", data=self.name_of_map[1])
-                outfile.create_dataset("xs_2D", data=self.xs[0])
-                outfile.create_dataset("k", data=self.k[0])
-                outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
-                outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
-                outfile.create_dataset("nmodes", data=self.nmodes[0])
-                outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
-                outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
-            except:
-                raise ValueError("No cross-spectrum calculated.")
-       
+            outfile.create_dataset("mappath1", data=self.name_of_map[0])
+            outfile.create_dataset("mappath2", data=self.name_of_map[1])
+            outfile.create_dataset("xs_2D", data=self.xs[0])
+            outfile.create_dataset("k", data=self.k[0])
+            outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
+            outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
+            outfile.create_dataset("nmodes", data=self.nmodes[0])
+            outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
+            outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
+    
+    def read_spectrum(self, indir, inname = None):
+        if inname is None:
+            path = os.path.join("spectra_2D/", indir)
+            path = os.path.join(self.params.power_spectrum_dir, path)
+            
+            inname = os.path.join(path, self.outname)
+        
+        with h5py.File(inname, "r") as infile:
+            for key, value in infile.items():
+                setattr(self, key, value[()])
+    
