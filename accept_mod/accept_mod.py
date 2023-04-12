@@ -27,6 +27,8 @@ import warnings
 import shutil
 from tqdm import trange, tqdm
 from mpi4py import MPI
+sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+from tools.read_runlist import read_runlist as ext_read_runlist
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 warnings.filterwarnings("ignore", message="invalid value encountered in power")
 warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
@@ -219,8 +221,33 @@ def ensure_dir_exists(path):
 #                     pass
 #     return params
 
-
 def read_runlist(params):
+    fields = {}
+    if rank == 0:
+        scans = {}
+        unique_fields = []
+        runlist = ext_read_runlist(params, ignore_existing=False)
+        for scan in runlist:
+            field = scan[4]
+            if not field in unique_fields:
+                unique_fields.append(field)
+        for field in unique_fields:
+            fields[field] = []
+            obsids_in_this_field = []
+            n_scans_in_this_field = 0
+            for scan in runlist:
+                if scan[4] == field:
+                    obsid = str(scan[0]//100)
+                    if not obsid in scans:
+                        obsids_in_this_field.append(obsid)
+                        scans[obsid] = []
+                    scans[obsid].append(f"{scan[0]:08d}")
+                    n_scans_in_this_field += 1
+            fields[field] = [obsids_in_this_field, scans, n_scans_in_this_field]
+    fields = comm.bcast(fields, root=0)
+    return fields
+
+def read_runlist_old(params):
     filename = params['runlist']
     obsid_start = int(params['obsid_start'])
     obsid_stop = int(params['obsid_stop'])
@@ -280,7 +307,7 @@ def get_scan_stats(filepath, map_grid=None):
     n_stats = len(stats_list)
     try:
         with h5py.File(filepath, mode="r") as my_file:
-            pass
+            freq_decimation_factor = my_file["decimation_nu"][()]
     except:
         print(f"CANNOT OPEN CORRUPT OR NON-EXISTING FILE: {filepath}")
     with h5py.File(filepath, mode="r") as my_file:
@@ -997,8 +1024,8 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
     DIE_TAG = 2
 
     if rank == 0:
-        l2_path = params['level2_dir']
-        n_freqs = params["decimation_freqs"]
+        l2_path = params.level2_dir
+        n_freqs = params.decimation_freqs
         field = fields[fieldname]
         tot_scans = field[2]
         n_feeds = 20
@@ -1033,7 +1060,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             print(f"Spawning worker {iproc} (thread {proc_order[iproc]}) of {Nproc}.")
             comm.send(obsid_infos[tasks_started], dest=proc_order[iproc], tag=WORK_TAG)
             if params.distributed_starting:
-                time.sleep(2)
+                time.sleep(1)
             # print(f"Sent work to worker {iproc} for task {tasks_started}.", flush=True)
             tasks_started += 1
 
@@ -1042,6 +1069,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             scan_data_list = comm.recv(source=MPI.ANY_SOURCE, status=status)
             tasks_done += 1
             workerID = status.Get_source()
+            print(f"Recieved work from worker {workerID}. ({tasks_done} / {n_tasks})", flush=True)
             # print(f"Recieved work from worker {workerID}.", flush=True)
             comm.send(obsid_infos[tasks_started], dest=workerID, tag=WORK_TAG)
             tasks_started += 1
@@ -1056,7 +1084,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             scan_data_list = comm.recv(source=MPI.ANY_SOURCE, status=status)
             tasks_done += 1
             workerID = status.Get_source()
-            # print(f"Recieved work from worker {workerID}.", flush=True)
+            print(f"Recieved work from worker {workerID}. ({tasks_done} / {n_tasks})", flush=True)
             n_scans = len(scan_data_list)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
             i_scan += n_scans
@@ -1661,31 +1689,31 @@ if __name__ == "__main__":
     if not params.runlist:
         raise ValueError("A runlist must be specified in parameter file or terminal.")
     param_file = params.param
-    params = vars(params)  # Accept-mod was written with params as a dict, so we just do Namespace -> dict so I don't have to rewrite stuff.
+    #params = vars(params)  # Accept-mod was written with params as a dict, so we just do Namespace -> dict so I don't have to rewrite stuff.
 
-    spec = importlib.util.spec_from_file_location(params['accept_mod_params'][:-3], params['accept_param_folder'] + params['accept_mod_params'])
+    spec = importlib.util.spec_from_file_location(params.accept_mod_params[:-3], params.accept_param_folder + params.accept_mod_params)
     accept_params = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(accept_params)
-    spec = importlib.util.spec_from_file_location(params['stats_list'][:-3], params['accept_param_folder'] + params['stats_list'])    
+    spec = importlib.util.spec_from_file_location(params.stats_list[:-3], params.accept_param_folder + params.stats_list)    
     stats_list = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(stats_list)
     stats_list = stats_list.stats_list
     fields = read_runlist(params)
 
-    patch_filepath = params['patch_definition_file']
+    patch_filepath = params.patch_definition_file
     patch_info = get_patch_info(patch_filepath)
 
-    weather_filepath = params['weather_filepath']
-    data_folder = params['accept_data_folder']
-    id_string = params['accept_data_id_string'] + '_'
-    jk_string = params['jk_data_string'] + '_'
+    weather_filepath = params.weather_filepath
+    data_folder = params.accept_data_folder
+    id_string = params.accept_data_id_string + '_'
+    jk_string = params.jk_data_string + '_'
     if id_string == '_':
         id_string = ''
     if jk_string == '_':
         jk_string = ''
-    data_from_file = params['scan_stats_from_file'] # False #True
-    jk_param_list_file = params['jk_def_file']
-    show_plot = params['show_accept_plot']
+    data_from_file = params.scan_stats_from_file # False #True
+    jk_param_list_file = params.jk_def_file
+    show_plot = params.show_accept_plot
 
     scan_data_data_name_list = []
     jk_data_name_list   = []
@@ -1729,15 +1757,15 @@ if __name__ == "__main__":
             plt.tight_layout()
             plt.show()
 
-        accept_params_name = params['accept_param_folder'] + params['accept_mod_params']
-        stats_list_name    = params['accept_param_folder'] + params['stats_list']
+        accept_params_name = params.accept_param_folder + params.accept_mod_params
+        stats_list_name    = params.accept_param_folder + params.stats_list
         
-        accept_params_name_raw = params['accept_mod_params'][:-3]
-        stats_list_name_raw = params['stats_list'][:-3]
+        accept_params_name_raw = params.accept_mod_params[:-3]
+        stats_list_name_raw = params.stats_list[:-3]
 
         # param_file_copy_raw = param_file.split("/")
         # param_file_copy_raw = param_file_copy_raw[-1][:-4]
-        runlist_name    = params['runlist']
+        runlist_name    = params.runlist
         runlist_copy_raw    = runlist_name.split("/")[-1][:-4]
         jk_def_raw    = jk_param_list_file.split("/")[-1][:-4]
 
@@ -1849,7 +1877,7 @@ if __name__ == "__main__":
             ax[i].axvline(stat_cut[1], ls="--", c="k")
             ax[i].set_title(stat)
         plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, params['accept_data_id_string'] + "_histograms.png"), bbox_inches="tight", dpi=200)
+        plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_histograms.png"), bbox_inches="tight", dpi=200)
         
         
         def downsample(mjd, data, bin_size_days=1):
@@ -1881,4 +1909,4 @@ if __name__ == "__main__":
             ax[i].plot(bins_weeks, data_weeks)
             ax[i].set_title(stat)
         plt.tight_layout()
-        plt.savefig(os.path.join(plot_folder, params['accept_data_id_string'] + "_time_plot.png"), bbox_inches="tight", dpi=200)
+        plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_time_plot.png"), bbox_inches="tight", dpi=200)

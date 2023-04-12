@@ -327,7 +327,6 @@ class Mapmaker:
 
                 time_array[5] += time.perf_counter() - ti
 
-                break 
 
         # Get frequency bin centers and edges from last level2 file.
         full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
