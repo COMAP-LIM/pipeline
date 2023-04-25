@@ -559,11 +559,33 @@ parser.add_argument(
 
 
 parser.add_argument(
+    "--psx_null_diffmap",
+    type=str2bool,
+    default=False,
+    help="(comap2fpxs) If True compute difference map feed-feed pseudo cross-spectrum null tests. Default False."
+)
+
+parser.add_argument(
     "--psx_noise_sim_number",
     type=int,
     default=50,
     help="(comap2fpxs) Number of noise simulations to run to get power spectrum error bars.",
 )
+
+parser.add_argument(
+    "--psx_number_of_k_bins",
+    type=int,
+    default=14,
+    help="(comap2fpxs) Number of k bins (centers) to use for computing binned power spectra.",
+)
+
+parser.add_argument(
+    "--psx_chi2_cut_limit",
+    type=float,
+    default=5,
+    help="(comap2fpxs) Which chi2 to use when cutting bad cross-spectra.",
+)
+
 
 ###### Physics ######
 parser.add_argument(

@@ -27,7 +27,8 @@ class COmap:
     _data: dict[str, npt.ArrayLike] = field(default_factory=dict)
 
     def read_map(self) -> None:
-        """Function for reading map data from file and fill data dictionary of Map class"""
+        """Function for reading map data from file and fill data dictionary of Map class.
+        """
 
         # Empty data dict
         self._data = {}
@@ -71,6 +72,18 @@ class COmap:
                 self._data["is_pca_subtr"] = False
 
         self.keys = self._data.keys()
+
+    def read_and_append(self, key_list: list) -> None:
+        """Function for reading map data from file and append to data dictionary of Map class.
+
+        Args:
+            key_list: List of keys to data to read in from file and append to data dict. Defaults to None.
+        """
+
+        with h5py.File(self.path, "r") as infile:
+            for key in key_list:
+                self._data[key] = infile[key][()]
+        
 
     def init_emtpy_map(
         self,

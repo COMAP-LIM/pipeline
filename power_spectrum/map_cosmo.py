@@ -36,7 +36,6 @@ class MapCosmo:
             params (FlatLambdaCDM): Paramter file object argparse Namspace object containing run parameters.
             field (str): Field name string, should be one of ["co2", "co7", "co6"]
             feed (Optional[int], optional): Index of feed to use. Defaults to None results in feed-coadded map.
-            jk (Optional[int], optional): DEPRICATED. Jackknife index. Defaults to None.
             split (Optional[str], optional): Key of split map to use.
             Defaults to None results in feed or feed-coadded map being used.
 
@@ -49,7 +48,14 @@ class MapCosmo:
         
         mapdata = COmap(mappath)
 
-        mapdata.read_map()
+        key_list = [
+            "ra_centers",
+            "dec_centers",
+            "ra_edges",
+            "dec_edges",
+        ]
+
+        mapdata.read_and_append(key_list)
 
         self.x = mapdata["ra_centers"]
         self.y = mapdata["dec_centers"]
@@ -63,23 +69,58 @@ class MapCosmo:
                     "Can only make cosmological map if both split and feed are specified."
                 )
 
-            if "map" not in split:
-                raise ValueError(
+            if params.psx_null_diffmap:
+                split1, split2 = split
+
+                if "map" not in split1 or "map" not in split2:
+                    raise ValueError(
                     "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                 )
-            self.map = np.array(mapdata[split][feed])
-            sigma_key = re.sub(
-                r"map",
-                "sigma_wn",
-                split,
-            )
-            self.rms = np.array(mapdata[sigma_key][feed])
+
+                mapdata.read_and_append([split1, split2])
+
+                self.map = (np.array(mapdata[split1][feed]) - np.array(mapdata[split2][feed])) / 2
+                sigma_key1 = re.sub(
+                    r"map",
+                    "sigma_wn",
+                    split1,
+                )
+                sigma_key2 = re.sub(
+                    r"map",
+                    "sigma_wn",
+                    split2,
+                )
+
+                mapdata.read_and_append([sigma_key1, sigma_key2])
+
+                self.rms = np.sqrt(np.array(mapdata[sigma_key1][feed]) ** 2 + np.array(mapdata[sigma_key2][feed]) ** 2) / 2
+
+            else:
+                if "map" not in split:
+                    raise ValueError(
+                        "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
+                    )
+                
+                mapdata.read_and_append([split])
+                self.map = np.array(mapdata[split][feed])
+                sigma_key = re.sub(
+                    r"map",
+                    "sigma_wn",
+                    split,
+                )
+
+                mapdata.read_and_append([sigma_key])
+                self.rms = np.array(mapdata[sigma_key][feed])
 
         elif feed is not None:
+            mapdata.read_and_append(["map", "sigma_wn"])
+            
             self.map = np.array(mapdata["map"][feed])
             self.rms = np.array(mapdata["sigma_wn"][feed])
 
         else:
+            mapdata.read_and_append(["map_coadd", "sigma_wn_coadd"])
+
             self.map = np.array(mapdata["map_coadd"][:])
             self.rms = np.array(mapdata["sigma_wn_coadd"][:])
 
