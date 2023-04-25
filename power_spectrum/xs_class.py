@@ -40,11 +40,19 @@ class CrossSpectrum_nmaps:
 
         self.how_many_combinations = len(all_different_possibilities)
 
-        combination1 = split_keys[0]
-        combination1 = combination1.split("/map_")[-1]
-        combination2 = split_keys[1]
-        combination2 = combination2.split("/map_")[-1]
-        
+        if params.psx_null_diffmap:
+            combination1 = split_keys[0]
+            self.null_variable = combination1[0].split("/map_")[-1][:4]
+            combination1 = combination1[0].split("/map_")[-1][5:]
+
+            combination2 = split_keys[1]
+            combination2 = combination2[0].split("/map_")[-1][5:]
+
+        else:
+            combination1 = split_keys[0]
+            combination1 = combination1.split("/map_")[-1]
+            combination2 = split_keys[1]
+            combination2 = combination2.split("/map_")[-1]
         
         name1 = f"{combination1}_feed{feed1}"
         name2 = f"{combination2}_feed{feed2}"
@@ -70,7 +78,7 @@ class CrossSpectrum_nmaps:
             self.params,
             mappaths[0], 
             cosmology,
-            self.feed1, 
+            self.feed1 - 1, # feed index to use for loading map is base-0
             self.split_keys[0], 
             )
 
@@ -78,7 +86,7 @@ class CrossSpectrum_nmaps:
             self.params,
             mappaths[1], 
             cosmology,
-            self.feed2, 
+            self.feed2 - 1, # feed index to use for loading map is base-0
             self.split_keys[1], 
             )
 
@@ -429,8 +437,21 @@ class CrossSpectrum_nmaps:
             path = os.path.join(self.params.power_spectrum_dir, path)
 
             tools.ensure_dir_exists(path)
-            
+        
+            # if self.params.psx_null_diffmap:
+            #     path = os.path.join(path, "null_diffmap")
+            #     print(path)
+            #     sys.exit()
+            #     if not os.path.exists(path):
+            #         os.mkdir(path)
+
+            #     path = os.path.join(path, f"{self.null_variable}")
+                
+            #     if not os.path.exists(path):
+            #         os.mkdir(path)
+
             outname = os.path.join(path, self.outname)
+
 
         with h5py.File(outname, "w") as outfile:
             outfile.create_dataset("mappath1", data=self.name_of_map[0])
@@ -448,6 +469,11 @@ class CrossSpectrum_nmaps:
             path = os.path.join("spectra_2D/", indir)
             path = os.path.join(self.params.power_spectrum_dir, path)
             
+            if self.params.psx_null_diffmap:
+                path = os.path.join(path, "null_diffmap")                
+                path = os.path.join(path, f"{self.null_variable}")
+
+
             inname = os.path.join(path, self.outname)
         
         with h5py.File(inname, "r") as infile:

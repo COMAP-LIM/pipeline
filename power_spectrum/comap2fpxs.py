@@ -10,8 +10,6 @@ import itertools
 from mpi4py import MPI
 import matplotlib
 import matplotlib.pyplot as plt
-
-
 import time 
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -35,9 +33,36 @@ class COMAP2FPXS():
     
         self.read_cosmology()
         self.read_jackknife_definition_file()
+
+        if len(self.cross_and_secondary) > 1:
+            #####
+            # CURRENTLY THERE IS NO SUPPORT FOR MORE THAN ONE FEED CROSS-CORRELATION VARIABLE
+            ####
+            raise ValueError("Cannot have more than one feed cross-correlation variable")
+        
+
+        if self.params.psx_null_diffmap:
+            if len(self.secondary_variables) > 1:
+                ######
+                # FOR NOW IF DIFFERENCE MAP NULLTESTS ARE 
+                # PERFORMED ONLY ONE SECONDARY 
+                # SPLIT VARIABLE VAR SUPPORTED. 
+                # ADJUST THIS LATER IF NEEDED 
+                ######
+                raise ValueError("Cannot have more than one primary and secondary split variable when performing difference map null tests.")
+            if self.params.split_base_number > 2:
+                raise ValueError("Cannot currently perform difference map null test with split base number > 2")
+
+
+
         self.generate_split_map_names()
 
     def run(self):
+
+        if self.params.distributed_starting:
+            time.sleep((self.rank%16) * 30.0)
+        time.sleep(self.rank * 0.01)
+
         self.included_feeds = self.params.included_feeds
         feed_combinations = list(itertools.product(self.included_feeds, self.included_feeds))
         self.feed_combinations = feed_combinations
@@ -45,7 +70,7 @@ class COMAP2FPXS():
         mapnames = self.params.psx_map_names
 
         mapnames = [name for name in mapnames]
-
+    
         if self.params.psx_null_cross_field:
             if len(mapnames) == 0:
                 fields = self.params.fields
@@ -70,7 +95,8 @@ class COMAP2FPXS():
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
             print("#" * 70)
-            sys.stdout.flush()
+            
+            self.comm.Barrier()
 
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
@@ -92,15 +118,24 @@ class COMAP2FPXS():
                 outdir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
 
                 if self.verbose:
-                    print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
-                    sys.stdout.flush()
-                
+                    if self.params.psx_null_diffmap:
+                        print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m ({split1[0].split('/map_')[-1]} - {split1[1].split('/map_')[-1]}) X ({split2[0].split('/map_')[-1]} - {split2[1].split('/map_')[-1]}) \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
+                    else:
+                        print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
+                    
+                 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
                         self.params, 
                         splits, 
                         feed1, 
                         feed2,
                     )
+                
+
+
+                if self.params.psx_null_diffmap:
+                    outdir = os.path.join(outdir, f"null_diffmap/{cross_spectrum.null_variable}")
+
 
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
                     continue
@@ -122,15 +157,14 @@ class COMAP2FPXS():
                     cross_spectrum.make_h5_2d(outdir)
 
         self.comm.Barrier()
-
+        
         if self.rank == 0:
             if self.verbose:
                 print("Computing averages:")
-                sys.stdout.flush()
+                
 
             self.compute_averages()
-                
-        return NotImplemented
+        
 
     def compute_averages(self):
         average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra")
@@ -152,7 +186,6 @@ class COMAP2FPXS():
         N_feed = len(self.included_feeds)
         N_splits = len(self.split_map_combinations)
         N_k = self.params.psx_number_of_k_bins
-
 
         for map1, map2 in self.field_combinations:
             mapname1 = map1.split("/")[-1]
@@ -225,10 +258,11 @@ class COMAP2FPXS():
                             if np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit:
                                 xs_sum += xs / xs_sigma ** 2
                                 xs_inv_var += 1 / xs_sigma ** 2
+                
 
                 if self.verbose:
                     print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
-                    sys.stdout.flush()
+                    
 
 
                 xs_mean[i, ...] = xs_sum / xs_inv_var
@@ -276,8 +310,18 @@ class COMAP2FPXS():
 
                 if not os.path.exists(chi2_name):
                     os.mkdir(chi2_name)
-
-                self.plot_chi2_grid(chi2, splits, chi2_name)
+                
+                if self.params.psx_null_diffmap:
+                    chi2_name = os.path.join(chi2_name, "null_diffmap")
+                    if not os.path.exists(chi2_name):
+                        os.mkdir(chi2_name)
+                    
+                    chi2_name = os.path.join(chi2_name, f"{cross_spectrum.null_variable}")
+                    if not os.path.exists(chi2_name):
+                        os.mkdir(chi2_name)
+                
+                
+               self.plot_chi2_grid(chi2, splits, chi2_name)
 
                 average_name = os.path.join(fig_dir, "average_spectra")
                 average_name = os.path.join(average_name, indir)
@@ -285,7 +329,17 @@ class COMAP2FPXS():
                 if not os.path.exists(average_name):
                     os.mkdir(average_name)
 
+                if self.params.psx_null_diffmap:
+                    average_name = os.path.join(average_name, "null_diffmap")
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                    
+                    average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
                 
+                
+
                 self.plot_2D_mean(
                     k_bin_edges_par,
                     k_bin_edges_perp,
@@ -306,7 +360,6 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error)
 
-
     def plot_2D_mean(self,
                     k_bin_edges_par,
                     k_bin_edges_perp,
@@ -316,9 +369,14 @@ class COMAP2FPXS():
                     fields,
                     outname
                     ):
-        
-        split1 = splits[0].split("map_")[-1]
-        split2 = splits[1].split("map_")[-1]
+
+        if self.params.psx_null_diffmap:
+            split1 = splits[0][0].split("map_")[-1][5:]
+            split2 = splits[1][0].split("map_")[-1][5:]
+        else:
+            split1 = splits[0].split("map_")[-1]
+            split2 = splits[1].split("map_")[-1]
+
         outname = os.path.join(
             outname, 
             f"xs_mean_2d_{split1}_X_{split2}.png"
@@ -392,14 +450,21 @@ class COMAP2FPXS():
         ax[0].set_ylabel(r"$k_{\bot}$ [Mpc${}^{-1}$]", fontsize=16)
         ax[1].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
 
-        plt.savefig(outname, bbox_inches = "tight")
+        fig.savefig(outname, bbox_inches = "tight")
         
 
 
     def plot_chi2_grid(self, chi2, splits, outname):
         
-        split1 = splits[0].split("map_")[-1]
-        split2 = splits[1].split("map_")[-1]
+        if self.params.psx_null_diffmap:
+            split1 = splits[0][0].split("map_")[-1][5:]
+            split2 = splits[1][0].split("map_")[-1][5:]
+        else:
+            split1 = splits[0].split("map_")[-1]
+            split2 = splits[1].split("map_")[-1]
+
+
+
         outname = os.path.join(
             outname, 
             f"xs_chi2_grid_{split1}_X_{split2}.png"
@@ -433,6 +498,7 @@ class COMAP2FPXS():
         ax.set_ylabel(f"Feed of {split2}")
         cbar = plt.colorbar(img, ax = ax)
         cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
+        
         fig.savefig(outname, bbox_inches="tight")
 
     def read_params(self):
@@ -559,8 +625,11 @@ class COMAP2FPXS():
         self.cross_and_secondary  = cross_and_secondary 
     
     def generate_split_map_names(self):  
+        primary_variables = self.primary_variables
         secondary_variables = self.secondary_variables
+        
         cross_and_primary = self.cross_and_primary
+        cross_and_secondary = self.cross_and_secondary
         
         split_map_combinations = []
 
@@ -583,10 +652,80 @@ class COMAP2FPXS():
                         (f"multisplits/{primary_variable}/map_{primary_variable}{0}{name}",
                          f"multisplits/{primary_variable}/map_{primary_variable}{1}{name}",)
                     )
+        else:
+            import re
+            number_of_secondary_variables = len(secondary_variables)  
+            
+            # Generate indices for all split combinations
 
-        self.split_map_combinations = split_map_combinations
+            combinations = list(itertools.combinations(range(self.params.split_base_number), r = 2))  
+            secondary_combinations = list(itertools.combinations(range(self.params.split_base_number), r = 2 * len(cross_and_secondary)))  
+
+            secondary_permutations = list(itertools.product(range(self.params.split_base_number), repeat = len(secondary_variables)))
+            
+            secondary_cross_combos = []
+            for permutation in secondary_permutations:
+                secondary_name = ""
+                for i, secondary_variable in enumerate(secondary_variables):
+                    secondary_name += f"{secondary_variable}{permutation[i]}"
+
+                name1 = secondary_name
+                name2 = secondary_name
+                for combo in secondary_combinations:
+                    for cross_variable in cross_and_secondary:
+
+                        name1 = re.sub(rf"{cross_variable}\d", f"{cross_variable}{combo[0]}", name1)
+                        name2 = re.sub(rf"{cross_variable}\d", f"{cross_variable}{combo[1]}", name2)
+                    if not ((name1, name2) in secondary_cross_combos):
+                        secondary_cross_combos.append((name1, name2))
+
+                    
+            for primary_variable in primary_variables:
+                # Generating names of split combinations
+                for primary_bin_number in range(self.params.split_base_number):
+                    if self.params.psx_null_diffmap:
+                        ####################################
+                        # GENERALIZE TO MORE THAN 2 SPLIT BINS LATER
+                        ####################################
+                        
+                        null_name1 = f"multisplits/{primary_variable}/map_{primary_variable}{0}"
+                        null_name2 = f"multisplits/{primary_variable}/map_{primary_variable}{1}"
+
+                        for secondary_cross_combo in secondary_cross_combos:
+                         
+                            secondary_name1, secondary_name2 = secondary_cross_combo
+                            
+                            split_name11 =  f"{null_name1}{secondary_name1}"
+                            split_name22 =  f"{null_name2}{secondary_name2}"
+                            split_name12 =  f"{null_name1}{secondary_name2}"
+                            split_name21 =  f"{null_name2}{secondary_name1}"
+
+                            split_names = (
+                                (split_name11, split_name21),
+                                (split_name12, split_name22),
+                            )
+                            if split_names not in split_map_combinations:
+                                split_map_combinations.append(
+                                    split_names
+                                )
+                            
+                    else:
+                        primary_name = f"{primary_variable}{primary_bin_number}"
+                        primary_name = f"multisplits/{primary_variable}/map_{primary_name}"
+                    
+                        for secondary_cross_combo in secondary_cross_combos:
+                            secondary_name1, secondary_name2 = secondary_cross_combo
+
+                            split_name1 =  f"{primary_name}{secondary_name1}"
+                            split_name2 =  f"{primary_name}{secondary_name2}"
+                            split_map_combinations.append((
+                                split_name1,
+                                split_name2,
+                            ))
+
 
     
+        self.split_map_combinations = split_map_combinations
 
     def log2lin(self, x, k_edges):
         loglen = np.log10(k_edges[-1]) - np.log10(k_edges[0])
