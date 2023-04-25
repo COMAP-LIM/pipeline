@@ -417,6 +417,12 @@ parser.add_argument(
     type=str,
     default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
 )
+parser.add_argument(
+    "--make_accept_mod_plots",
+    type=str2bool,
+    default=False,
+)
+
 
 
 ###### MAPMAKER ######
