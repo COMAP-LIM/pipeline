@@ -27,7 +27,13 @@ import warnings
 import shutil
 from tqdm import trange, tqdm
 from mpi4py import MPI
-sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+# from accept_params import stats_cut as accept_params
+# from stats_list import stats_list
+# sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+print(current, parent_directory)
+sys.path.append(parent_directory)
 from tools.read_runlist import read_runlist as ext_read_runlist
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 warnings.filterwarnings("ignore", message="invalid value encountered in power")
@@ -1700,7 +1706,7 @@ if __name__ == "__main__":
     Nproc = comm.Get_size()
     rank = comm.Get_rank()
 
-    sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+    # sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
     from l2gen_argparser import parser
     params = parser.parse_args()
     if not params.runlist:
@@ -1708,10 +1714,10 @@ if __name__ == "__main__":
     param_file = params.param
     #params = vars(params)  # Accept-mod was written with params as a dict, so we just do Namespace -> dict so I don't have to rewrite stuff.
 
-    spec = importlib.util.spec_from_file_location(params.accept_mod_params[:-3], params.accept_param_folder + params.accept_mod_params)
+    spec = importlib.util.spec_from_file_location(params.accept_mod_params[:-3], os.path.join(current, params.accept_mod_params))
     accept_params = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(accept_params)
-    spec = importlib.util.spec_from_file_location(params.stats_list[:-3], params.accept_param_folder + params.stats_list)    
+    spec = importlib.util.spec_from_file_location(params.stats_list[:-3], os.path.join(current, params.stats_list))    
     stats_list = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(stats_list)
     stats_list = stats_list.stats_list

@@ -401,11 +401,6 @@ parser.add_argument("--show_accept_plot", type=str2bool, default=True)
 
 ### Defaults ###
 parser.add_argument("--stats_list", type=str, default="stats_list.py")
-parser.add_argument(
-    "--accept_param_folder",
-    type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/accept_mod/",
-)
 parser.add_argument("--accept_mod_params", type=str, default="accept_params.py")
 parser.add_argument(
     "--patch_definition_file",
