@@ -32,7 +32,6 @@ from mpi4py import MPI
 # sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
-print(current, parent_directory)
 sys.path.append(parent_directory)
 from tools.read_runlist import read_runlist as ext_read_runlist
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
