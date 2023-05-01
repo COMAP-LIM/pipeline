@@ -23,6 +23,13 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("-v", "--verbose", action="count", help="Enable verbose printing.")
 
+parser.add_argument(
+    "--debug",
+    type=str2bool,
+    default=False,
+    help="Debug mode. If True unit tests are run. Default False.",
+)
+
 ### Parameter file and runlist
 parser.add_argument(
     "-p",
@@ -591,6 +598,13 @@ parser.add_argument(
     help="(comap2fpxs) Which chi2 to use when cutting bad cross-spectra.",
 )
 
+parser.add_argument(
+    "--psx_transfer_function_names",
+    type=str,
+    nargs="+",
+    default = ["tf_feed_pca.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
+    help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
+)
 
 ###### Physics ######
 parser.add_argument(

@@ -11,11 +11,13 @@ from mpi4py import MPI
 import matplotlib
 import matplotlib.pyplot as plt
 import time 
+import scipy.interpolate as interpolate
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
 sys.path.append(parent_directory)
 
+from TransferFunction import TransferFunction
 import xs_class
 
 class COMAP2FPXS():
@@ -30,7 +32,9 @@ class COMAP2FPXS():
 
         self.read_params()
         self.verbose = self.params.verbose == 1
-    
+        
+        self.define_transfer_function()
+
         self.read_cosmology()
         self.read_jackknife_definition_file()
 
@@ -212,14 +216,6 @@ class COMAP2FPXS():
                 
                 chi2 = np.zeros((N_feed, N_feed))
 
-                transfer_function = np.ones_like(xs_sum)
-
-                if self.params.transfer_function_name:
-                    ############################
-                    # CHANGE TO SOME STANDARD FORMAT OF TRANSFER FUNCTION IF TO APPLY TRANSFER FUNCTION TO CUT DETERMINE CHI2 XS CUTS
-                    ############################
-                    pass
-
                 for feed1 in range(N_feed):
                     for feed2 in range(N_feed):
                         cross_spectrum = xs_class.CrossSpectrum_nmaps(
@@ -233,13 +229,13 @@ class COMAP2FPXS():
                         xs = cross_spectrum.xs_2D
                         xs_sigma = cross_spectrum.rms_xs_std_2D
                         
-                        k = cross_spectrum.k
+                        k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
                         k_bin_edges_par = cross_spectrum.k_bin_edges_par
                         
                         k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
 
-                        # ADD OPTIONAL OVERWRITING OF TRANSFER FUNCTION HERE
+                        transfer_function = self.full_trasnfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
 
                         transfer_function_mask = transfer_function > self.params.tf_cutoff
 
@@ -267,7 +263,6 @@ class COMAP2FPXS():
 
                 xs_mean[i, ...] = xs_sum / xs_inv_var
                 xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
-                kx, ky = k
 
                 weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
 
@@ -275,9 +270,9 @@ class COMAP2FPXS():
                 xs_1d /= transfer_function
                 xs_1d *= weights
 
-                k_bin_edges = np.logspace(-2.0, np.log10(1.5), len(kx) + 1)
+                k_bin_edges = np.logspace(-2.0, np.log10(1.5), len(k_bin_centers_perp) + 1)
 
-                kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
+                kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(k_bin_centers_perp, k_bin_centers_par, indexing="ij")))
 
                 Ck_nmodes_1d = np.histogram(
                     kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_1d[kgrid > 0]
@@ -321,7 +316,7 @@ class COMAP2FPXS():
                         os.mkdir(chi2_name)
                 
                 
-               self.plot_chi2_grid(chi2, splits, chi2_name)
+                self.plot_chi2_grid(chi2, splits, chi2_name)
 
                 average_name = os.path.join(fig_dir, "average_spectra")
                 average_name = os.path.join(average_name, indir)
@@ -731,10 +726,59 @@ class COMAP2FPXS():
         loglen = np.log10(k_edges[-1]) - np.log10(k_edges[0])
         logx = np.log10(x) - np.log10(k_edges[0])
         return logx / loglen
+    
+    def define_transfer_function(self):
+        """Method to define full transfer function to be used. Reads in all specified
+        transfer functions, multiplies them and defines an interpolation function.
+        """
 
+        transfer_function_dir = self.params.transfer_function_dir = os.path.join(current, "transfer_functions")
+        
+        # By if now other transfer function is specified use an empty one, i.e. filled with ones
+        empty_transfer_function_path = os.path.join(transfer_function_dir, "tf_all_ones.h5")
 
+        if not os.path.exists(empty_transfer_function_path):
+            raise FileExistsError("Cannot find empty (filled with ones) transfer function file.")
+        
+        full_transfer_function = TransferFunction()
+        full_transfer_function.read(empty_transfer_function_path)
 
+        if len(self.params.psx_transfer_function_names) == 0:
+            print("WARNING: You are running without any transfer function!")
 
+        for filename in self.params.psx_transfer_function_names:
+            
+            if self.params.transfer_function_dir is None:
+                self.params.transfer_function_dir = transfer_function_dir
+
+            path = os.path.join(
+                self.params.transfer_function_dir,
+                filename
+            )
+
+            transfer_function = TransferFunction()
+            transfer_function.read(path)
+
+            # Multiplying together transfer functions
+            full_transfer_function.transfer_function_2D *=  transfer_function.transfer_function_2D
+
+        # Spline transfer function to make it applicable on non-standard grids
+        self.full_trasnfer_function_interp = interpolate.RectBivariateSpline(
+            full_transfer_function.k_bin_centers_perp_2D,
+            full_transfer_function.k_bin_centers_par_2D,
+            full_transfer_function.transfer_function_2D, 
+            s = 0, # No smoothing when splining
+            kx = 3, # Use bi-cubic spline in x-direction
+            ky = 3, # Use bi-cubic spline in x-direction
+            )
+        
+        if self.params.debug:
+            # Unit test to check whether interpolation reproduces input when evaluated at original grid
+            approx = self.full_trasnfer_function_interp(
+                full_transfer_function.k_bin_centers_perp_2D,
+                full_transfer_function.k_bin_centers_par_2D,
+            )
+            np.testing.assert_allclose(approx, full_transfer_function.transfer_function_2D)
         
 if __name__ == "__main__":
     
