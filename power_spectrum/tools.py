@@ -142,7 +142,11 @@ def compute_power_spec_perp_vs_par(
     x, k_bin_edges, dx=1, dy=1, dz=1
 ):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
     n_x, n_y, n_z = x.shape
-    Pk_3D = np.abs(fft.fftn(x, workers = int(os.environ["OMP_NUM_THREADS"]))) ** 2 * dx * dy * dz / (n_x * n_y * n_z)
+   
+    if os.environ.get("OMP_NUM_THREADS") is None:
+        Pk_3D = np.abs(fft.fftn(x)) ** 2 * dx * dy * dz / (n_x * n_y * n_z)
+    else:
+        Pk_3D = np.abs(fft.fftn(x, workers = int(os.environ.get("OMP_NUM_THREADS")))) ** 2 * dx * dy * dz / (n_x * n_y * n_z)
 
     kx = np.fft.fftfreq(n_x, dx) * 2 * np.pi
     ky = np.fft.fftfreq(n_y, dy) * 2 * np.pi
@@ -254,13 +258,24 @@ def compute_cross_spec_perp_vs_par(
     x, k_bin_edges, dx=1, dy=1, dz=1
 ):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
     n_x, n_y, n_z = x[0].shape
-    Ck_3D = (
-        np.real(fft.fftn(x[0], workers = int(os.environ["OMP_NUM_THREADS"])) * np.conj(fft.fftn(x[1], workers = int(os.environ["OMP_NUM_THREADS"]))))
-        * dx
-        * dy
-        * dz
-        / (n_x * n_y * n_z)
-    )
+
+    if os.environ.get("OMP_NUM_THREADS") is None:
+
+        Ck_3D = (
+            np.real(fft.fftn(x[0]) * np.conj(fft.fftn(x[1])))
+            * dx
+            * dy
+            * dz
+            / (n_x * n_y * n_z)
+        )
+    else:
+        Ck_3D = (
+            np.real(fft.fftn(x[0], workers = int(os.environ.get("OMP_NUM_THREADS"))) * np.conj(fft.fftn(x[1], workers = int(os.environ.get("OMP_NUM_THREADS")))))
+            * dx
+            * dy
+            * dz
+            / (n_x * n_y * n_z)
+        )
 
     kx = np.fft.fftfreq(n_x, dx) * 2 * np.pi
     ky = np.fft.fftfreq(n_y, dy) * 2 * np.pi
