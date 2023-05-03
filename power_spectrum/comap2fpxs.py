@@ -138,7 +138,7 @@ class COMAP2FPXS():
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
             print("#" * 70)
-                    
+
         self.comm.Barrier()
 
         # MPI parallel run over all FPXS combinations
@@ -209,9 +209,7 @@ class COMAP2FPXS():
                     cross_spectrum.make_h5_2d(outdir)
 
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
-        print("barrier", self.rank)
         self.comm.Barrier()
-        print("after barrier", self.rank)
         
         if self.rank == 0:
             if self.verbose:
