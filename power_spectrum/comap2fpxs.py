@@ -21,7 +21,20 @@ from TransferFunction import TransferFunction
 import xs_class
 
 class COMAP2FPXS():
-    def __init__(self, omp_num_threads: int = 2):
+    """COMAP feed-feed pseudo cross-spectrum (FPXS) class
+    """
+    def __init__(self, omp_num_threads: int = 1):
+        """Class initializer defining essential class attributes and calls important setup methods.
+
+        Args:
+            omp_num_threads (int, optional): Number of openMP threads to use when computing with scipy.fft. Defaults to 1.
+
+        Raises:
+            ValueError: Error raised when more than one feed-cross-varaiable is used. I.e. can only compute cross-spectrum across one variable currently.
+            ValueError: Error raised when more than one secondary variable is used when computing map-difference null tests.
+            ValueError: Error raised when using a split base larger than 2. May change in the future!
+        """
+        # Number of openMP threads
         self.OMP_NUM_THREADS = omp_num_threads
 
         # Define MPI parameters as class attribites
@@ -29,13 +42,19 @@ class COMAP2FPXS():
         self.Nranks = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
 
-
+        # Read parameter file/command-line
         self.read_params()
+
+        # Whether to verbose print
         self.verbose = self.params.verbose == 1
         
+        # Load and define interpolation of transfer functions
         self.define_transfer_function()
 
+        # Read in pre-defined cosmology from file
         self.read_cosmology()
+
+        # Read and sort splits according to jackknive defenition file
         self.read_jackknife_definition_file()
 
         if len(self.cross_and_secondary) > 1:
@@ -53,114 +72,145 @@ class COMAP2FPXS():
                 # SPLIT VARIABLE VAR SUPPORTED. 
                 # ADJUST THIS LATER IF NEEDED 
                 ######
-                raise ValueError("Cannot have more than one primary and secondary split variable when performing difference map null tests.")
+                raise ValueError("Cannot have more than one secondary split variable when performing difference map null tests.")
             if self.params.split_base_number > 2:
                 raise ValueError("Cannot currently perform difference map null test with split base number > 2")
 
 
-
+        # Generate all combinations of split maps 
         self.generate_split_map_names()
 
     def run(self):
+        """Main run method to perform computation of cross-spectra
+        """
 
+        # Distributed start will slow down some MPI threads in beginning to not overwhelm memory.
         if self.params.distributed_starting:
             time.sleep((self.rank%16) * 30.0)
         time.sleep(self.rank * 0.01)
 
+        # Only want to compute FPXS for included feeds (detectors)
         self.included_feeds = self.params.included_feeds
+
+        # Define all combinations between detectors
         feed_combinations = list(itertools.product(self.included_feeds, self.included_feeds))
         self.feed_combinations = feed_combinations
 
+        # Compute FPXS for maps in psx_map_names list
         mapnames = self.params.psx_map_names
 
         mapnames = [name for name in mapnames]
-    
+
         if self.params.psx_null_cross_field:
+            ##### CURRENTLY NOT IN USE #####
+            # Compute cross-field spectra
+
             if len(mapnames) == 0:
+                # If provided map name file list is empty, just use map-maker map name 
+                # and all included fields (assuming that all fields have same filename pattern).
                 fields = self.params.fields
                 mapnames = [f"{field_name}_{self.params.map_name}.h5" for field_name in fields]
+            
+            # Map file name combinations
             field_combinations = list(itertools.product(mapnames, mapnames))
             
         elif len(mapnames) == 0 and not self.params.psx_null_cross_field:
+            # If now custom map file name list is provided, and no cross-field spectra are computed,
+            # assume that map file name follows mapmaker file name pattern for all fields.
+
             fields = self.params.fields
             field_combinations = [(f"{field_name}_{self.params.map_name}.h5", f"{field_name}_{self.params.map_name}.h5")
                         for field_name in fields]            
         else:
+            # Else use file names from map file name list (when to compute FPXS of custom map list)
             field_combinations = [(name, name) for name in mapnames]
         
         self.field_combinations = field_combinations        
 
+        # Generate tuple of (field/map filename, split map key, feed combination) to use for computing FPXS 
         all_combinations = list(itertools.product(field_combinations, self.split_map_combinations, feed_combinations))
         Number_of_combinations = len(all_combinations)
         
+
         if self.verbose and self.rank == 0:
             print("#" * 70)
             print(f"Primary splits: {self.primary_variables}")
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
-            print("#" * 70)
-            
+            print("#" * 70)        
             self.comm.Barrier()
 
+        # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
                 
+                # Extract file names, split keys and feed combinations from current combination
                 mapnames, splits, feeds = all_combinations[i]
+                
                 map1, map2 = mapnames
-
                 split1, split2 = splits
                 feed1, feed2 = feeds
 
-
+                # Construnct full map file paths
                 mappaths = [
                     os.path.join(self.params.map_dir, map1),
                     os.path.join(self.params.map_dir, map2),
                 ]
 
+                # Generate name of outpute data directory
                 mapname1 = map1.split("/")[-1]
                 mapname2 = map2.split("/")[-1]
                 outdir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
 
                 if self.verbose:
+                    # Print some usefull information while computing FPXS
                     if self.params.psx_null_diffmap:
                         print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m ({split1[0].split('/map_')[-1]} - {split1[1].split('/map_')[-1]}) X ({split2[0].split('/map_')[-1]} - {split2[1].split('/map_')[-1]}) \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
                     else:
-                        print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
-                    
-                 
+                        print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
+                
+                # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
                         self.params, 
                         splits, 
                         feed1, 
                         feed2,
                     )
-                
 
-
+                # If map difference null test is computed the output is saved in separate directory
                 if self.params.psx_null_diffmap:
                     outdir = os.path.join(outdir, f"null_diffmap/{cross_spectrum.null_variable}")
 
-
+                # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
                     continue
                 else:
+
+                    # Read maps from generated map paths, and provide cosmology to translate from
+                    # observational units to cosmological ones.
                     cross_spectrum.read_map(
                         mappaths, 
                         self.cosmology, 
                     )
 
+                    # Compute cross-spectrum for current FPXS combination
                     cross_spectrum.calculate_xs_2d(
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
 
+                    # Run noise simulations to generate FPXS errorbar
                     cross_spectrum.run_noise_sims_2d(
                         self.params.psx_noise_sim_number,
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
 
+                    # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
 
+        # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
+        print("barrier", self.rank)
         self.comm.Barrier()
+        print("after barrier", self.rank)
         
         if self.rank == 0:
             if self.verbose:
@@ -345,9 +395,19 @@ class COMAP2FPXS():
                     average_name,
                 )
 
+                self.plot_1D_mean(
+                    k_1d,
+                    xs_mean_1d[i, ...],
+                    xs_error_1d[i, ...],
+                    splits,
+                    (mapname1, mapname2),
+                    average_name,
+                )
+
             with h5py.File(os.path.join(outdir, indir + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
-                outfile.create_dataset("k_2d", data = k)
+                outfile.create_dataset("k_centers_par", data = k_bin_centers_par)
+                outfile.create_dataset("k_centers_perp", data = k_bin_centers_perp)
                 outfile.create_dataset("k_edges_par", data = k_bin_edges_par)      
                 outfile.create_dataset("k_edges_perp", data = k_bin_edges_perp)     
                 outfile.create_dataset("xs_mean_1d", data = xs_mean_1d)       
@@ -447,10 +507,110 @@ class COMAP2FPXS():
 
         fig.savefig(outname, bbox_inches = "tight")
         
+    def plot_1D_mean(self,
+                    k_1d,
+                    xs_mean,
+                    xs_sigma,
+                    splits,
+                    fields,
+                    outname
+                    ):
 
+        matplotlib.rcParams["xtick.labelsize"] = 16
+        matplotlib.rcParams["ytick.labelsize"] = 16
+
+        if self.params.psx_null_diffmap:
+            split1 = splits[0][0].split("map_")[-1][5:]
+            split2 = splits[1][0].split("map_")[-1][5:]
+        else:
+            split1 = splits[0].split("map_")[-1]
+            split2 = splits[1].split("map_")[-1]
+
+        outname = os.path.join(
+            outname, 
+            f"xs_mean_1d_{split1}_X_{split2}.png"
+            )
+        
+        fig, ax = plt.subplots(2, 1, figsize=(16, 12), sharex=True)
+
+        fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
+        
+        where = np.logical_and(k_1d > 0.04, k_1d < 1.0)
+
+        lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
+        lim = np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
+
+        lim_significance = 2 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
+        
+        ax[0].scatter(
+            k_1d,
+            k_1d * xs_mean,
+            s = 80,
+        )
+
+        ax[0].errorbar(
+            k_1d,
+            k_1d * xs_mean,
+            k_1d * xs_sigma,
+            lw = 3,
+            fmt = " ",
+        )
+
+        if np.isfinite(lim):
+            ax[0].set_ylim(-lim, lim)
+        ax[0].set_ylabel(
+            r"$k\tilde{C}(k)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+            fontsize = 16,
+        )
+
+        ax[1].scatter(
+            k_1d,
+            xs_mean / xs_sigma,
+            s = 80,
+        )
+        ax[1].errorbar(
+            k_1d,
+            xs_mean / xs_sigma,
+            1,
+            lw = 3,
+            fmt = " ",
+        )
+        
+        ax[0].axhline(0, color = "k", alpha = 0.5)
+        ax[1].axhline(0, color = "k", alpha = 0.5)
+
+        if np.isfinite(lim_significance):
+            ax[1].set_ylim(-lim_significance, lim_significance)
+    
+        ax[1].set_ylabel(
+            r"$\tilde{C} / \sigma_\tilde{C}(k)$",
+            fontsize = 16,
+        )
+
+        ax[0].set_xscale("log")
+        ax[1].set_xscale("log")
+
+        klabels = [0.05, 0.1, 0.2, 0.5, 1.0]
+
+        ax[0].set_xticks(klabels)
+        ax[0].set_xticklabels(klabels, fontsize = 16)
+        ax[1].set_xticks(klabels)
+        ax[1].set_xticklabels(klabels, fontsize = 16)
+
+        ax[0].set_xlim(0.04, 1.0)
+        ax[1].set_xlim(0.04, 1.0)
+
+        ax[1].set_xlabel(r"$k [\mathrm{Mpc}^{-1}]$", fontsize = 16)
+
+        ax[0].grid(True)
+        ax[1].grid(True)
+
+        fig.savefig(outname, bbox_inches = "tight")
 
     def plot_chi2_grid(self, chi2, splits, outname):
-        
+        matplotlib.rcParams["xtick.labelsize"] = 10
+        matplotlib.rcParams["ytick.labelsize"] = 10
+
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
             split2 = splits[1][0].split("map_")[-1][5:]
