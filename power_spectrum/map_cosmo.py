@@ -44,7 +44,7 @@ class MapCosmo:
             ValueError: If split key does not contain 'map'.
         """
 
-        self.feed = feed
+        self.feed = feed + 1
         
         mapdata = COmap(mappath)
 
