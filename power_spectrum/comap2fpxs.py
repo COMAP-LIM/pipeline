@@ -137,8 +137,9 @@ class COMAP2FPXS():
             print(f"Primary splits: {self.primary_variables}")
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
-            print("#" * 70)        
-            self.comm.Barrier()
+            print("#" * 70)
+                    
+        self.comm.Barrier()
 
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
