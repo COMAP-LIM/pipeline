@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Sequence
+import numpy.typing as npt
 import h5py
 import numpy as np
 from dataclasses import dataclass, field
@@ -212,10 +213,9 @@ class COMAP2FPXS():
         self.comm.Barrier()
         
         if self.rank == 0:
+            # Compute average FPXS and finished data product plots
             if self.verbose:
                 print("Computing averages:")
-                
-
             self.compute_averages()
         
 
@@ -415,14 +415,28 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_sigma_2d", data = xs_error)
 
     def plot_2D_mean(self,
-                    k_bin_edges_par,
-                    k_bin_edges_perp,
-                    xs_mean,
-                    xs_sigma,
-                    splits,
-                    fields,
-                    outname
+                    k_bin_edges_par: npt.NDArray,
+                    k_bin_edges_perp: npt.NDArray,
+                    xs_mean: npt.NDArray,
+                    xs_sigma: npt.NDArray,
+                    splits: Sequence[str],
+                    fields: Sequence[str],
+                    outname: str,
                     ):
+        """Method that plots 1D, i.e. cylindrically averaged mean FPXS.
+
+        Args:
+            k_bin_edges_par (npt.NDArray): Array of k-bin edges of parallel (line-of-sight) dimension in 1/Mpc
+            k_bin_edges_perp (npt.NDArray): Array of k-bin edges of perpendicular (angular, i.e. perpendicular to line-of-sight) dimension in 1/Mpc.
+            xs_mean (npt.NDArray): Array of mean spherically averaged FPXS 
+            xs_sigma (npt.NDArray): Array of errors of mean spherically averaged FPXS
+            splits (Sequence[str]): Sequence of strings with split names used for as cross-spectrum variable
+            fields (Sequence[str]): Sequence of strings with field names used in cross correlation
+            outname (str): String with output directory for plot
+        """
+
+        matplotlib.rcParams["xtick.labelsize"] = 16
+        matplotlib.rcParams["ytick.labelsize"] = 16
 
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
@@ -507,17 +521,29 @@ class COMAP2FPXS():
         fig.savefig(outname, bbox_inches = "tight")
         
     def plot_1D_mean(self,
-                    k_1d,
-                    xs_mean,
-                    xs_sigma,
-                    splits,
-                    fields,
-                    outname
+                    k_1d: npt.NDArray,
+                    xs_mean: npt.NDArray,
+                    xs_sigma: npt.NDArray,
+                    splits: Sequence[str],
+                    fields: Sequence[str],
+                    outname: str
                     ):
+        """Method that plots 1D, i.e. spherically averaged mean FPXS.
 
+        Args:
+            k_1d (npt.NDArray): Array of k-bin centers in 1/Mpc
+            xs_mean (npt.NDArray): Array of mean spherically averaged FPXS 
+            xs_sigma (npt.NDArray): Array of errors of mean spherically averaged FPXS
+            splits (Sequence[str]): Sequence of strings with split names used for as cross-spectrum variable
+            fields (Sequence[str]): Sequence of strings with field names used in cross correlation
+            outname (str): String with output directory for plot
+        """
+
+        # Define default tick label fontsize
         matplotlib.rcParams["xtick.labelsize"] = 16
         matplotlib.rcParams["ytick.labelsize"] = 16
 
+        # Define the two split names that were cross-correlated
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
             split2 = splits[1][0].split("map_")[-1][5:]
@@ -525,22 +551,28 @@ class COMAP2FPXS():
             split1 = splits[0].split("map_")[-1]
             split2 = splits[1].split("map_")[-1]
 
+        # Add output name to output path
         outname = os.path.join(
             outname, 
             f"xs_mean_1d_{split1}_X_{split2}.png"
             )
         
+        # Plot spherically averaged mean FPXS
         fig, ax = plt.subplots(2, 1, figsize=(16, 12), sharex=True)
 
+        # Figure title
         fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
         
+        # Only want to use points between 0.04 and 1.0 /Mpc
         where = np.logical_and(k_1d > 0.04, k_1d < 1.0)
 
+        # Plot y-limits
         lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
         lim = np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
 
         lim_significance = 2 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
         
+        # Plot scatter and error bars
         ax[0].scatter(
             k_1d,
             k_1d * xs_mean,
@@ -561,12 +593,15 @@ class COMAP2FPXS():
             r"$k\tilde{C}(k)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
             fontsize = 16,
         )
-
+        
+        # Plot scatter and error bar of significance plot
         ax[1].scatter(
             k_1d,
             xs_mean / xs_sigma,
             s = 80,
         )
+
+        # NOTE: that in significance units error bar always has length 1!
         ax[1].errorbar(
             k_1d,
             xs_mean / xs_sigma,
@@ -575,6 +610,7 @@ class COMAP2FPXS():
             fmt = " ",
         )
         
+        # Add some zero line
         ax[0].axhline(0, color = "k", alpha = 0.5)
         ax[1].axhline(0, color = "k", alpha = 0.5)
 
@@ -586,9 +622,11 @@ class COMAP2FPXS():
             fontsize = 16,
         )
 
+        # Logarithmic x-axis
         ax[0].set_xscale("log")
         ax[1].set_xscale("log")
 
+        # Define ticks and ticklabels
         klabels = [0.05, 0.1, 0.2, 0.5, 1.0]
 
         ax[0].set_xticks(klabels)
@@ -601,15 +639,26 @@ class COMAP2FPXS():
 
         ax[1].set_xlabel(r"$k [\mathrm{Mpc}^{-1}]$", fontsize = 16)
 
+        # Enable grid in plot
         ax[0].grid(True)
         ax[1].grid(True)
 
         fig.savefig(outname, bbox_inches = "tight")
 
-    def plot_chi2_grid(self, chi2, splits, outname):
+    def plot_chi2_grid(self, chi2: npt.NDArray, splits: tuple, outname: str):
+        """Method that plots feed-split grid of FPXS chi-squared values
+
+        Args:
+            chi2 (npt.NDArray): Array of chi2 values for all feed and split combinations
+            splits (tuple): Split names that were crossed
+            outname (str): Plot file output path
+        """
+
+        # Define default ticks label sizes
         matplotlib.rcParams["xtick.labelsize"] = 10
         matplotlib.rcParams["ytick.labelsize"] = 10
 
+        # Define the two split names that were cross-correlated
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
             split2 = splits[1][0].split("map_")[-1][5:]
@@ -617,40 +666,43 @@ class COMAP2FPXS():
             split1 = splits[0].split("map_")[-1]
             split2 = splits[1].split("map_")[-1]
 
-
-
+        # Add output name to output path
         outname = os.path.join(
             outname, 
             f"xs_chi2_grid_{split1}_X_{split2}.png"
             )
         
+        # Number of detectors used in cross-correlation combinations
         N_feed = len(self.included_feeds)
 
+        # Define symetric collormap
         cmap = matplotlib.cm.PiYG.reversed()
-    
-        cmap.set_bad("k", 1)
 
-        # chi2[np.abs(chi2) >= vmax] = np.nan
-        #np.fill_diagonal(chi2, np.nan)
-        #chi2[np.abs(chi2) > self.params.psx_chi2_cut_limit] = np.nan
+        # Bad values, i.e. NaN and Inf, are set to black
+        cmap.set_bad("k", 1)
         
+        # Plot chi2 value grid
         fig, ax = plt.subplots()
 
         img = ax.imshow(
             chi2,
-            interpolation="none",
-            vmin=-self.params.psx_chi2_cut_limit,
-            vmax=self.params.psx_chi2_cut_limit,
-            extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
-            cmap=cmap,
-            rasterized=True,
+            interpolation = "none",
+            vmin = -self.params.psx_chi2_cut_limit,
+            vmax = self.params.psx_chi2_cut_limit,
+            extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap = cmap,
+            rasterized = True,
         )
+
         new_tick_locations = np.array(range(N_feed)) + 1
         ax.set_xticks(new_tick_locations)
         ax.set_yticks(new_tick_locations)
+        
         ax.set_xlabel(f"Feed of {split1}")
         ax.set_ylabel(f"Feed of {split2}")
+        
         cbar = plt.colorbar(img, ax = ax)
+        
         cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
         
         fig.savefig(outname, bbox_inches="tight")
@@ -659,21 +711,27 @@ class COMAP2FPXS():
         """Method reading and parsing the parameters from file or command line.
 
         Raises:
-            ValueError: If no power spectrum directory is provided
-            ValueError: if no COMAP map name is provided
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
+            ValueError: If no power spectrum output directory is provided
+            ValueError: If no COMAP mapmaker map name is provided
+            ValueError: If no COMAP mapmaker map directory is provided 
+            ValueError: If no jackknife "split" definition file, that defines what is the primary split, secondary split and cross-spectrum variable.
         """
         from l2gen_argparser import parser
 
+        # Read parameter file/command line arguments
         self.params = parser.parse_args()
 
+        # Define often used parameters as class attributes
+
+        # Power spectrum output directory
         self.power_spectrum_dir = self.params.power_spectrum_dir
+        
+        # Mapmaker map name and directory
         self.map_name = self.params.map_name
         self.map_dir = self.params.map_dir
+
+        # Jackknive "split" definition file path, defining which splits to use 
         self.jk_def_file = self.params.jk_def_file
-        self.accept_data_id_string = self.params.accept_data_id_string
 
         # Raising errors if required parameters are missing
         if self.power_spectrum_dir is None:
@@ -693,11 +751,6 @@ class COMAP2FPXS():
                 "Please specify a jk_def_file in parameter file or terminal."
             )
             
-        if self.accept_data_id_string is None:
-            raise ValueError(
-                "Please specify a accept_data_id_string in parameter file or terminal."
-            )
-
 
     def read_cosmology(self):
         """
@@ -881,7 +934,17 @@ class COMAP2FPXS():
     
         self.split_map_combinations = split_map_combinations
 
-    def log2lin(self, x, k_edges):
+    def log2lin(self, x: npt.NDArray, k_edges: npt.NDArray) -> npt.NDArray:
+        """Method that converts from logarithmic to linear spaced k-bin edges.
+
+        Args:
+            x (npt.NDArray): Input array of k-ticks
+            k_edges (npt.NDArray): k-bin edges
+
+        Returns:
+            npt.NDArray: Linear spaced bin center k-ticks
+        """
+        
         loglen = np.log10(k_edges[-1]) - np.log10(k_edges[0])
         logx = np.log10(x) - np.log10(k_edges[0])
         return logx / loglen
@@ -891,7 +954,7 @@ class COMAP2FPXS():
         transfer functions, multiplies them and defines an interpolation function.
         """
 
-        transfer_function_dir = self.params.transfer_function_dir = os.path.join(current, "transfer_functions")
+        transfer_function_dir = os.path.join(current, "transfer_functions")
         
         # By if now other transfer function is specified use an empty one, i.e. filled with ones
         empty_transfer_function_path = os.path.join(transfer_function_dir, "tf_all_ones.h5")
@@ -899,12 +962,14 @@ class COMAP2FPXS():
         if not os.path.exists(empty_transfer_function_path):
             raise FileExistsError("Cannot find empty (filled with ones) transfer function file.")
         
+        # Define transfer function class instance for full transfer function product
         full_transfer_function = TransferFunction()
         full_transfer_function.read(empty_transfer_function_path)
 
         if len(self.params.psx_transfer_function_names) == 0:
             print("WARNING: You are running without any transfer function!")
 
+        # If other transfer funtions are to be included multiply these into the full (empty) transfer function
         for filename in self.params.psx_transfer_function_names:
             
             if self.params.transfer_function_dir is None:
