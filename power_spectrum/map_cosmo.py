@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from astropy import units as u
 import astropy.cosmology
 
+import time
+
 import argparse
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -44,7 +46,8 @@ class MapCosmo:
             ValueError: If split key does not contain 'map'.
         """
 
-        self.feed = feed + 1
+        if feed is not None:
+            self.feed = feed + 1
         
         mapdata = COmap(mappath)
 
@@ -123,7 +126,26 @@ class MapCosmo:
 
             self.map = np.array(mapdata["map_coadd"][:])
             self.rms = np.array(mapdata["sigma_wn_coadd"][:])
+        
+        # If wanted the maps can be substituted with pure white noise
+        if params.psx_generate_white_noise_sim:
+            seed = params.psx_white_noise_sim_seed
+            
+            if params.psx_null_diffmap:
+                split1, _ = split
+                split_number = split1.split("map_")[-1][5:]
+                split_number = int(split_number[4:])
+            else:
+                split_number = int(split.split("map_")[-1][4:])
 
+            # Make unique seed for any split and feed combination
+            seed += int(self.feed + (split_number + 1)%2 * 1e6 * np.pi) 
+
+            np.random.seed(seed)
+            self.white_noise_seed = seed
+
+            self.map = np.random.randn(*self.rms.shape) * self.rms 
+            
         NSIDEBAND, NCHANNEL, NDEC, NRA = self.map.shape
 
         Z_MID = params.phy_center_redshift  # Middle of the redshift range of map

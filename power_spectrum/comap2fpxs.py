@@ -1,3 +1,5 @@
+
+
 from __future__ import annotations
 from typing import Sequence
 import numpy.typing as npt
@@ -77,9 +79,20 @@ class COMAP2FPXS():
             if self.params.split_base_number > 2:
                 raise ValueError("Cannot currently perform difference map null test with split base number > 2")
 
-
         # Generate all combinations of split maps 
         self.generate_split_map_names()
+
+        if self.params.psx_generate_white_noise_sim:
+
+            # If no seed is provided make base seed from current time
+            if self.params.psx_white_noise_sim_seed is None:
+                if self.rank == 0:
+                    seed = int(time.time())
+                else:
+                    seed = None
+
+                seed = self.comm.bcast(seed, root = 0)
+                self.params.psx_white_noise_sim_seed = seed
 
     def run(self):
         """Main run method to perform computation of cross-spectra
@@ -162,8 +175,14 @@ class COMAP2FPXS():
                 # Generate name of outpute data directory
                 mapname1 = map1.split("/")[-1]
                 mapname2 = map2.split("/")[-1]
-                outdir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+                if self.params.psx_null_cross_field:
+                    outdir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+                else:
+                    outdir = f"{mapname1[:-3]}"
 
+                if self.params.psx_generate_white_noise_sim:
+                    outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+                
                 if self.verbose:
                     # Print some usefull information while computing FPXS
                     if self.params.psx_null_diffmap:
@@ -182,7 +201,8 @@ class COMAP2FPXS():
                 # If map difference null test is computed the output is saved in separate directory
                 if self.params.psx_null_diffmap:
                     outdir = os.path.join(outdir, f"null_diffmap/{cross_spectrum.null_variable}")
-
+                
+                
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
                     continue
