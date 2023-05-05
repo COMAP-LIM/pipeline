@@ -578,6 +578,26 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_generate_white_noise_sim",
+    type=str2bool,
+    default=False,
+    help="(comap2fpxs) If True maps used for FPXS are substituted with white noise from RMS map. Default False."
+)
+
+parser.add_argument(
+    "--psx_white_noise_sim_seed",
+    type=int,
+    help="(comap2fpxs) Seed for generating white noise maps used when running white noise maps through FPXS pipeline. Default None will cause random seed to be used generated from current time."
+)
+
+parser.add_argument(
+    "--psx_null_sim_number",
+    type=int,
+    default=50,
+    help="(comap2fpxs) Number of white noise null test simulations to run.",
+)
+
+parser.add_argument(
     "--psx_noise_sim_number",
     type=int,
     default=50,
