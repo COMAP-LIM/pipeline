@@ -591,6 +591,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_error_bar_seed",
+    type=int,
+    default=None,
+    help="(comap2fpxs) Seed for generating white noise maps used to estimate error bars of power spectra."
+)
+
+parser.add_argument(
     "--psx_null_sim_number",
     type=int,
     default=50,
@@ -603,6 +610,14 @@ parser.add_argument(
     default=50,
     help="(comap2fpxs) Number of noise simulations to run to get power spectrum error bars.",
 )
+
+parser.add_argument(
+    "--psx_monte_carlo_sim_number",
+    type=int,
+    default=0,
+    help="(comap2fpxs) Number of white noise monte carlo simulations to perform.",
+)
+
 
 parser.add_argument(
     "--psx_number_of_k_bins",
