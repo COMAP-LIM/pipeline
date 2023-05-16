@@ -164,6 +164,7 @@ class level2_file:
             f["decimation_time"] = 1
             f["is_sim"] = self.is_sim
             f["git_hash"] = self.git_hash
+            f["l1_filepath"] = self.l1_filename
 
             # Custom data (usually from the filters):
             for key in self.tofile_dict:  

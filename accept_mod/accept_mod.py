@@ -27,7 +27,12 @@ import warnings
 import shutil
 from tqdm import trange, tqdm
 from mpi4py import MPI
-sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+# from accept_params import stats_cut as accept_params
+# from stats_list import stats_list
+# sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+sys.path.append(parent_directory)
 from tools.read_runlist import read_runlist as ext_read_runlist
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 warnings.filterwarnings("ignore", message="invalid value encountered in power")
@@ -1700,7 +1705,7 @@ if __name__ == "__main__":
     Nproc = comm.Get_size()
     rank = comm.Get_rank()
 
-    sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
+    # sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
     from l2gen_argparser import parser
     params = parser.parse_args()
     if not params.runlist:
@@ -1708,10 +1713,10 @@ if __name__ == "__main__":
     param_file = params.param
     #params = vars(params)  # Accept-mod was written with params as a dict, so we just do Namespace -> dict so I don't have to rewrite stuff.
 
-    spec = importlib.util.spec_from_file_location(params.accept_mod_params[:-3], params.accept_param_folder + params.accept_mod_params)
+    spec = importlib.util.spec_from_file_location(params.accept_mod_params[:-3], os.path.join(current, params.accept_mod_params))
     accept_params = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(accept_params)
-    spec = importlib.util.spec_from_file_location(params.stats_list[:-3], params.accept_param_folder + params.stats_list)    
+    spec = importlib.util.spec_from_file_location(params.stats_list[:-3], os.path.join(current, params.stats_list))    
     stats_list = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(stats_list)
     stats_list = stats_list.stats_list
@@ -1801,137 +1806,137 @@ if __name__ == "__main__":
         
 
                 
+            if params.make_accept_mod_plots:
+                ### Making scan data plots ###
+                print("Making scan data plots")
+                plot_folder = os.path.join(data_folder, "plots", fieldname)
+                if not os.path.exists(plot_folder):
+                    os.mkdir(plot_folder)
 
-            ### Making scan data plots ###
-            print("Making scan data plots")
-            plot_folder = os.path.join(data_folder, "plots", fieldname)
-            if not os.path.exists(plot_folder):
-                os.mkdir(plot_folder)
+                lims = {
+                    "obsid" : [6000, 38000],
+                    "scanid" : [600000, 3800000],
+                    "mjd" : [58600, 60500],
+                    "night": [0, 12],
+                    "sidereal" : [0, 360],
+                    "az" : [0, 360],
+                    "el" : [0, 80],
+                    "chi2" : [-6, 6],
+                    "acceptrate" : [0, 1],
+                    "acceptrate_specific" : [0, 1],
+                    "az_chi2" : [-10, 10],
+                    "max_az_chi2" : [-10, 10],
+                    "med_az_chi2" : [-10, 10],
+                    "fbit" : [0, 0],
+                    "az_amp" : [-0.002, 0.002],
+                    "el_amp" : [-1.5, 1.5],
+                    "n_spikes" : [-1, 30],
+                    "n_jumps" : [-0.1, 10.1],
+                    "n_anomalies" : [-0.1, 5.1],
+                    "n_nan" : [-0.1, 10.1],
+                    "tsys" : [0, 120],
+                    "npca" : [-0.1, 12.1],
+                    "npcaf" : [-0.1, 12.1],
+                    "pca1" : [0, 100],
+                    "pca2" : [0, 60],
+                    "pca3" : [0, 40],
+                    "pca4" : [0, 20],
+                    "weather" : [-0.05, 1.05],
+                    "kurtosis" : [-0.05, 0.05],
+                    "skewness" : [-0.04, 0.04],
+                    "scan_length" : [0, 25],
+                    "saddlebag" : [-0.1, 5.1],
+                    "acceptmod_error" : [-0.1, 5.1],
+                    "sigma_poly0" : [0, 0.1],
+                    "fknee_poly0" : [0, 110],
+                    "alpha_poly0" : [-8, 4],
+                    "sigma_poly1" : [0, 0.1],
+                    "fknee_poly1" : [0, 110],
+                    "alpha_poly1" : [-8, 4],
+                    "power_mean" : [-1e9, 1.5e10],
+                    "sigma_mean" : [-10000, 110000],
+                    "fknee_mean" : [0, 110],
+                    "alpha_mean" : [-8, 4],
+                    "airtemp" : [-25, 45],
+                    "dewtemp" : [-30, 60],
+                    "humidity" : [-0.1, 1.1],
+                    "pressure" : [690, 1310],
+                    "rain" : [-0.1, 25.1],
+                    "winddir" : [-1, 361],
+                    "windspeed" : [-1, 21],
+                    "moon_dist" : [20, 200],
+                    "moon_angle" : [-200, 420],
+                    "moon_cent_sl" : [-0.1, 2.1],
+                    "moon_outer_sl" : [-0.1, 2.1],    
+                    "sun_dist" : [0, 181],
+                    "sun_angle" : [-200, 370],
+                    "sun_cent_sl" : [-0.1, 1.1],
+                    "sun_outer_sl" : [-0.1, 2.1],
+                    "sun_el" : [-91, 91],
+                    "ps_chi2" : [-20, 30],
+                    "ps_s_sb_chi2" : [-20, 30],
+                    "ps_s_feed_chi2" : [-20, 100],
+                    "ps_s_chi2" : [-20, 200],
+                    "ps_o_sb_chi2": [-20.0, 30.0],
+                    "ps_o_feed_chi2": [-20.0, 80.0],
+                    "ps_o_chi2": [-20.0, 160.0],
+                    "ps_z_s_sb_chi2": [-60.0, 40.0],
+                    "ps_xy_s_sb_chi2": [-60.0, 40.0]}
+                
+                import sys
+                # sys.path.append("/mn/stornext/d22/cmbco/comap/protodir/accept_mod/")
+                from accept_params import stats_cut
+                
+                Nstats = len(stats_list) - 14
+                
+                
+                def downsample(mjd, data, bin_size_days=1):
+                    mjd_start = int(np.floor(mjd.min()))
+                    mjd_stop = int(np.ceil(mjd.max()))
+                    bins = np.arange(mjd_start, mjd_stop+1, bin_size_days)
+                    Nbins = bins.shape[0]
+                    data_binned = np.zeros((Nbins)) + np.nan
+                    N_binned = np.zeros((Nbins))
+                    for ibin in range(Nbins-1):
+                        data_binned[ibin] = np.nanmean(data[(mjd >= bins[ibin])*(mjd < bins[ibin+1])])
+                        N_binned[ibin] = np.sum((mjd >= bins[ibin])*(mjd < bins[ibin+1]))
+                    data_binned[N_binned < bin_size_days*5*20*4] = np.nan
+                    return bins, data_binned
+                
 
-            lims = {
-                "obsid" : [6000, 38000],
-                "scanid" : [600000, 3800000],
-                "mjd" : [58600, 60500],
-                "night": [0, 12],
-                "sidereal" : [0, 360],
-                "az" : [0, 360],
-                "el" : [0, 80],
-                "chi2" : [-6, 6],
-                "acceptrate" : [0, 1],
-                "acceptrate_specific" : [0, 1],
-                "az_chi2" : [-10, 10],
-                "max_az_chi2" : [-10, 10],
-                "med_az_chi2" : [-10, 10],
-                "fbit" : [0, 0],
-                "az_amp" : [-0.002, 0.002],
-                "el_amp" : [-1.5, 1.5],
-                "n_spikes" : [-1, 30],
-                "n_jumps" : [-0.1, 10.1],
-                "n_anomalies" : [-0.1, 5.1],
-                "n_nan" : [-0.1, 10.1],
-                "tsys" : [0, 120],
-                "npca" : [-0.1, 12.1],
-                "npcaf" : [-0.1, 12.1],
-                "pca1" : [0, 100],
-                "pca2" : [0, 60],
-                "pca3" : [0, 40],
-                "pca4" : [0, 20],
-                "weather" : [-0.05, 1.05],
-                "kurtosis" : [-0.05, 0.05],
-                "skewness" : [-0.04, 0.04],
-                "scan_length" : [0, 25],
-                "saddlebag" : [-0.1, 5.1],
-                "acceptmod_error" : [-0.1, 5.1],
-                "sigma_poly0" : [0, 0.1],
-                "fknee_poly0" : [0, 110],
-                "alpha_poly0" : [-8, 4],
-                "sigma_poly1" : [0, 0.1],
-                "fknee_poly1" : [0, 110],
-                "alpha_poly1" : [-8, 4],
-                "power_mean" : [-1e9, 1.5e10],
-                "sigma_mean" : [-10000, 110000],
-                "fknee_mean" : [0, 110],
-                "alpha_mean" : [-8, 4],
-                "airtemp" : [-25, 45],
-                "dewtemp" : [-30, 60],
-                "humidity" : [-0.1, 1.1],
-                "pressure" : [690, 1310],
-                "rain" : [-0.1, 25.1],
-                "winddir" : [-1, 361],
-                "windspeed" : [-1, 21],
-                "moon_dist" : [20, 200],
-                "moon_angle" : [-200, 420],
-                "moon_cent_sl" : [-0.1, 2.1],
-                "moon_outer_sl" : [-0.1, 2.1],    
-                "sun_dist" : [0, 181],
-                "sun_angle" : [-200, 370],
-                "sun_cent_sl" : [-0.1, 1.1],
-                "sun_outer_sl" : [-0.1, 2.1],
-                "sun_el" : [-91, 91],
-                "ps_chi2" : [-20, 30],
-                "ps_s_sb_chi2" : [-20, 30],
-                "ps_s_feed_chi2" : [-20, 100],
-                "ps_s_chi2" : [-20, 200],
-                "ps_o_sb_chi2": [-20.0, 30.0],
-                "ps_o_feed_chi2": [-20.0, 80.0],
-                "ps_o_chi2": [-20.0, 160.0],
-                "ps_z_s_sb_chi2": [-60.0, 40.0],
-                "ps_xy_s_sb_chi2": [-60.0, 40.0]}
-            
-            import sys
-            # sys.path.append("/mn/stornext/d22/cmbco/comap/protodir/accept_mod/")
-            from accept_params import stats_cut
-            
-            Nstats = len(stats_list) - 14
-            
-            
-            def downsample(mjd, data, bin_size_days=1):
-                mjd_start = int(np.floor(mjd.min()))
-                mjd_stop = int(np.ceil(mjd.max()))
-                bins = np.arange(mjd_start, mjd_stop+1, bin_size_days)
-                Nbins = bins.shape[0]
-                data_binned = np.zeros((Nbins)) + np.nan
-                N_binned = np.zeros((Nbins))
-                for ibin in range(Nbins-1):
-                    data_binned[ibin] = np.nanmean(data[(mjd >= bins[ibin])*(mjd < bins[ibin+1])])
-                    N_binned[ibin] = np.sum((mjd >= bins[ibin])*(mjd < bins[ibin+1]))
-                data_binned[N_binned < bin_size_days*5*20*4] = np.nan
-                return bins, data_binned
-            
+                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*4, Nstats))
+                for i in range(Nstats):
+                    stat = stats_list[i]
+                    stat_cut = stats_cut[stat]
+                    histrange = lims[stat]
+                    _data = scan_data[:,:,:,i].flatten().copy()
+                    _data[_data < histrange[0]] = histrange[0] + 1e-8
+                    _data[_data > histrange[1]] = histrange[1] - 1e-8
 
-            fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*4, Nstats))
-            for i in range(Nstats):
-                stat = stats_list[i]
-                stat_cut = stats_cut[stat]
-                histrange = lims[stat]
-                _data = scan_data[:,:,:,i].flatten().copy()
-                _data[_data < histrange[0]] = histrange[0] + 1e-8
-                _data[_data > histrange[1]] = histrange[1] - 1e-8
+                    bins_weeks, data_weeks = downsample(scan_data[:,:,:,2].flatten(), scan_data[:,:,:,i].flatten(), bin_size_days=7)
+                    data_weeks[data_weeks < histrange[0]] = histrange[0] + 1e-8
+                    data_weeks[data_weeks > histrange[1]] = histrange[1] - 1e-8
 
-                bins_weeks, data_weeks = downsample(scan_data[:,:,:,2].flatten(), scan_data[:,:,:,i].flatten(), bin_size_days=7)
-                data_weeks[data_weeks < histrange[0]] = histrange[0] + 1e-8
-                data_weeks[data_weeks > histrange[1]] = histrange[1] - 1e-8
+                    ax[i//4, i%4].axhline(stat_cut[0], ls="--", c="k")
+                    ax[i//4, i%4].axhline(stat_cut[1], ls="--", c="k")
+                    ax[i//4, i%4].scatter(scan_data[:,:,:,2].flatten()[::10], _data[::10], s=0.01)
+                    ax[i//4, i%4].plot(bins_weeks, data_weeks, c="tab:orange")
+                    ax[i//4, i%4].set_title(stat)
+                plt.tight_layout()
+                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_time_plot.png"), bbox_inches="tight", dpi=200)
+                
 
-                ax[i//4, i%4].axhline(stat_cut[0], ls="--", c="k")
-                ax[i//4, i%4].axhline(stat_cut[1], ls="--", c="k")
-                ax[i//4, i%4].scatter(scan_data[:,:,:,2].flatten()[::10], _data[::10], s=0.01)
-                ax[i//4, i%4].plot(bins_weeks, data_weeks, c="tab:orange")
-                ax[i//4, i%4].set_title(stat)
-            plt.tight_layout()
-            plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_time_plot.png"), bbox_inches="tight", dpi=200)
-            
-
-            fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*4, Nstats))
-            for i in range(Nstats):
-                stat = stats_list[i]
-                stat_cut = stats_cut[stat]
-                histrange = lims[stat]
-                _data = scan_data[:,:,:,i].flatten().copy()
-                _data[_data < histrange[0]] = histrange[0] + 1e-8
-                _data[_data > histrange[1]] = histrange[1] - 1e-8
-                ax[i//4, i%4].hist(_data, density=True, bins=100, range=histrange, histtype="step", lw=2)
-                ax[i//4, i%4].axvline(stat_cut[0], ls="--", c="k")
-                ax[i//4, i%4].axvline(stat_cut[1], ls="--", c="k")
-                ax[i//4, i%4].set_title(stat)
-            plt.tight_layout()
-            plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_histograms.png"), bbox_inches="tight", dpi=200)
+                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*4, Nstats))
+                for i in range(Nstats):
+                    stat = stats_list[i]
+                    stat_cut = stats_cut[stat]
+                    histrange = lims[stat]
+                    _data = scan_data[:,:,:,i].flatten().copy()
+                    _data[_data < histrange[0]] = histrange[0] + 1e-8
+                    _data[_data > histrange[1]] = histrange[1] - 1e-8
+                    ax[i//4, i%4].hist(_data, density=True, bins=100, range=histrange, histtype="step", lw=2)
+                    ax[i//4, i%4].axvline(stat_cut[0], ls="--", c="k")
+                    ax[i//4, i%4].axvline(stat_cut[1], ls="--", c="k")
+                    ax[i//4, i%4].set_title(stat)
+                plt.tight_layout()
+                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_histograms.png"), bbox_inches="tight", dpi=200)
