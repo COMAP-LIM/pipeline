@@ -261,7 +261,7 @@ class CrossSpectrum_nmaps:
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
             index += 1
-            # print ('Computing 2D xs between ' + calculated_xs[index][1] + ' and ' + calculated_xs[index][2])
+
             self.normalize_weights(i, j)  # normalize weights for given xs pair of maps
 
             wi = self.maps[i].w
@@ -271,26 +271,10 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
 
-            # wi[np.isnan(wi)] = 0.0
-            # wj[np.isnan(wj)] = 0.0
-
             full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
             
-            # full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
-            """
-           print("------------------------------------------------")
-           print(wi[(np.isnan(wi) == False) & (np.isinf(wi) == False)])
-           print(wj[(np.isnan(wj) == False) & (np.isinf(wi) == False)])
-           print(np.all(np.log10(wi) < -0.5), np.any(np.log10(wi) < -0.5))
-           print(np.all(np.log10(wj) < -0.5), np.any(np.log10(wj) < -0.5))
-           print(np.allclose(self.maps[i].map, np.zeros_like(self.maps[i].map)))
-           print(np.allclose(self.maps[j].map, np.zeros_like(self.maps[j].map)))
-           print(np.any(np.isnan(wi)), np.any(np.isnan(wj)), np.sum(np.isnan(wi)), np.sum(np.isnan(wi) == False), np.prod(wi.shape), np.sum(np.isnan(wi)), np.sum(np.isnan(wi) == False), np.prod(wi.shape))
            
-           print("isnan maps and weights", np.any(np.isnan(self.maps[i].map* full_weight)), np.any(np.isnan(self.maps[j].map* full_weight)), np.any(np.isnan(full_weight)), np.sum(np.isnan(full_weight)), np.sum(np.isnan(full_weight) == False), np.prod(full_weight.shape))
-           print(np.allclose(wi, np.zeros_like(wi)), np.allclose(wj, np.zeros_like(wj)), np.all(np.isnan(wi)), np.all(np.isnan(wj)), np.any(np.isnan(wi)), np.any(np.isnan(wj)))
-           """
             my_xs, my_k, my_nmodes = tools.compute_cross_spec_perp_vs_par(
                 (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
                 (self.k_bin_edges_perp, self.k_bin_edges_par),
@@ -428,6 +412,7 @@ class CrossSpectrum_nmaps:
 
             self.rms_xs_mean_2D.append(np.mean(rms_xs, axis=2))
             self.rms_xs_std_2D.append(np.std(rms_xs, axis=2))
+            
         return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D)
 
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
@@ -461,8 +446,16 @@ class CrossSpectrum_nmaps:
             outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
             outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
             outfile.create_dataset("nmodes", data=self.nmodes[0])
-            outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
-            outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
+            
+            
+            if self.params.psx_white_noise_sim_seed is not None:
+                outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
+                outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
+                outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
+            else:
+                outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
+                outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
+            
     
     def read_spectrum(self, indir, inname = None):
         if inname is None:
@@ -479,4 +472,21 @@ class CrossSpectrum_nmaps:
         with h5py.File(inname, "r") as infile:
             for key, value in infile.items():
                 setattr(self, key, value[()])
+    
+    def read_and_append_attribute(self, keys, indir, inname = None):
+        if inname is None:
+            path = os.path.join("spectra_2D/", indir)
+            path = os.path.join(self.params.power_spectrum_dir, path)
+            
+            if self.params.psx_null_diffmap:
+                path = os.path.join(path, "null_diffmap")                
+                path = os.path.join(path, f"{self.null_variable}")
+
+
+            inname = os.path.join(path, self.outname)
+
+        with h5py.File(inname, "r") as infile:
+            for key, value in infile.items():
+                if key in keys:
+                    setattr(self, key, value[()])
     

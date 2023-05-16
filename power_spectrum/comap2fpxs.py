@@ -83,16 +83,8 @@ class COMAP2FPXS():
         self.generate_split_map_names()
 
         if self.params.psx_generate_white_noise_sim:
-
-            # If no seed is provided make base seed from current time
             if self.params.psx_white_noise_sim_seed is None:
-                if self.rank == 0:
-                    seed = int(time.time())
-                else:
-                    seed = None
-
-                seed = self.comm.bcast(seed, root = 0)
-                self.params.psx_white_noise_sim_seed = seed
+                self.generate_new_monte_carlo_seed()
 
     def run(self):
         """Main run method to perform computation of cross-spectra
@@ -145,14 +137,12 @@ class COMAP2FPXS():
         all_combinations = list(itertools.product(field_combinations, self.split_map_combinations, feed_combinations))
         Number_of_combinations = len(all_combinations)
         
-
         if self.verbose and self.rank == 0:
             print("#" * 70)
             print(f"Primary splits: {self.primary_variables}")
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
             print("#" * 70)
-
         self.comm.Barrier()
 
         # MPI parallel run over all FPXS combinations
@@ -181,6 +171,7 @@ class COMAP2FPXS():
                     outdir = f"{mapname1[:-3]}"
 
                 if self.params.psx_generate_white_noise_sim:
+                    outdir_data = f"{outdir}"
                     outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
                 
                 if self.verbose:
@@ -220,12 +211,22 @@ class COMAP2FPXS():
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
 
-                    # Run noise simulations to generate FPXS errorbar
-                    cross_spectrum.run_noise_sims_2d(
-                        self.params.psx_noise_sim_number,
-                        no_of_k_bins=self.params.psx_number_of_k_bins + 1,
-                    )
+                    if not self.params.psx_generate_white_noise_sim:
+                        # Run noise simulations to generate FPXS errorbar
+                        
+                        seed = self.params.psx_error_bar_seed
+                        if seed is None:
+                            t = time.time()
+                            seed = int(np.round((t - np.floor(t)) * 1e4))
 
+                        cross_spectrum.run_noise_sims_2d(
+                            self.params.psx_noise_sim_number,
+                            no_of_k_bins=self.params.psx_number_of_k_bins + 1,
+                            seed = seed,
+                        )
+                    else:
+                        cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], outdir_data)
+                    
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
 
@@ -261,12 +262,26 @@ class COMAP2FPXS():
         N_k = self.params.psx_number_of_k_bins
 
         for map1, map2 in self.field_combinations:
+            # Generate name of outpute data directory
             mapname1 = map1.split("/")[-1]
             mapname2 = map2.split("/")[-1]
-            indir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+
+            if self.params.psx_null_cross_field:
+                indir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+            else:
+                indir = f"{mapname1[:-3]}"
+            
+            mapname = f"{indir}"
 
             outdir = os.path.join(average_spectrum_dir, indir)
-            
+            if self.params.psx_generate_white_noise_sim:
+                #outdir_data = f"{outdir}"
+                outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+                        
+            if self.params.psx_generate_white_noise_sim:
+                #indir_data = f"{indir}"
+                indir = f"{indir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+
             if not os.path.exists(outdir):
                 os.mkdir(outdir)
 
@@ -293,7 +308,10 @@ class COMAP2FPXS():
                             self.included_feeds[feed1], 
                             self.included_feeds[feed2],
                         )
+                        #print("hei", indir)
+
                         cross_spectrum.read_spectrum(indir)
+                        #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
                         xs = cross_spectrum.xs_2D
                         xs_sigma = cross_spectrum.rms_xs_std_2D
@@ -307,10 +325,14 @@ class COMAP2FPXS():
                         transfer_function = self.full_trasnfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
 
                         transfer_function_mask = transfer_function > self.params.tf_cutoff
-
-                        chi3 = np.nansum(
-                        (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
-                        )
+                        
+                        try:
+                            chi3 = np.nansum(
+                            (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
+                            )
+                        except:
+                            print(xs.shape, transfer_function_mask.shape, transfer_function.shape, xs_sigma.shape, self.params.psx_white_noise_sim_seed, feed1, feed2, splits)
+                            sys.exit()
 
                         number_of_samples = np.sum(transfer_function_mask)
             
@@ -328,7 +350,6 @@ class COMAP2FPXS():
                 if self.verbose:
                     print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
                     
-
 
                 xs_mean[i, ...] = xs_sum / xs_inv_var
                 xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
@@ -369,61 +390,61 @@ class COMAP2FPXS():
                 xs_error_1d[i, ...] = rms_1d
 
 
-                chi2_name = os.path.join(fig_dir, "chi2_grid")
-                chi2_name = os.path.join(chi2_name, indir)
+                if not self.params.psx_generate_white_noise_sim:
+                    chi2_name = os.path.join(fig_dir, "chi2_grid")
+                    chi2_name = os.path.join(chi2_name, indir)
 
-                if not os.path.exists(chi2_name):
-                    os.mkdir(chi2_name)
-                
-                if self.params.psx_null_diffmap:
-                    chi2_name = os.path.join(chi2_name, "null_diffmap")
                     if not os.path.exists(chi2_name):
                         os.mkdir(chi2_name)
                     
-                    chi2_name = os.path.join(chi2_name, f"{cross_spectrum.null_variable}")
-                    if not os.path.exists(chi2_name):
-                        os.mkdir(chi2_name)
-                
-                
-                self.plot_chi2_grid(chi2, splits, chi2_name)
+                    if self.params.psx_null_diffmap:
+                        chi2_name = os.path.join(chi2_name, "null_diffmap")
+                        if not os.path.exists(chi2_name):
+                            os.mkdir(chi2_name)
+                        
+                        chi2_name = os.path.join(chi2_name, f"{cross_spectrum.null_variable}")
+                        if not os.path.exists(chi2_name):
+                            os.mkdir(chi2_name)
+                    
+                        self.plot_chi2_grid(chi2, splits, chi2_name)
 
-                average_name = os.path.join(fig_dir, "average_spectra")
-                average_name = os.path.join(average_name, indir)
+                    average_name = os.path.join(fig_dir, "average_spectra")
+                    average_name = os.path.join(average_name, indir)
 
-                if not os.path.exists(average_name):
-                    os.mkdir(average_name)
-
-                if self.params.psx_null_diffmap:
-                    average_name = os.path.join(average_name, "null_diffmap")
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
+
+                    if self.params.psx_null_diffmap:
+                        average_name = os.path.join(average_name, "null_diffmap")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
                     
                     average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
                 
                 
+                if not self.params.psx_generate_white_noise_sim:
+                    self.plot_2D_mean(
+                        k_bin_edges_par,
+                        k_bin_edges_perp,
+                        xs_mean[i, ...],
+                        xs_error[i, ...],
+                        splits,
+                        (mapname1, mapname2),
+                        average_name,
+                    )
 
-                self.plot_2D_mean(
-                    k_bin_edges_par,
-                    k_bin_edges_perp,
-                    xs_mean[i, ...],
-                    xs_error[i, ...],
-                    splits,
-                    (mapname1, mapname2),
-                    average_name,
-                )
+                    self.plot_1D_mean(
+                        k_1d,
+                        xs_mean_1d[i, ...],
+                        xs_error_1d[i, ...],
+                        splits,
+                        (mapname1, mapname2),
+                        average_name,
+                    )
 
-                self.plot_1D_mean(
-                    k_1d,
-                    xs_mean_1d[i, ...],
-                    xs_error_1d[i, ...],
-                    splits,
-                    (mapname1, mapname2),
-                    average_name,
-                )
-
-            with h5py.File(os.path.join(outdir, indir + "_average_fpxs.h5"), "w") as outfile:
+            with h5py.File(os.path.join(outdir, mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
                 outfile.create_dataset("k_centers_par", data = k_bin_centers_par)
                 outfile.create_dataset("k_centers_perp", data = k_bin_centers_perp)
@@ -433,6 +454,8 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_mean_2d", data = xs_mean)
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error)
+                if self.params.psx_white_noise_sim_seed is not None:
+                    outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
 
     def plot_2D_mean(self,
                     k_bin_edges_par: npt.NDArray,
@@ -1023,17 +1046,67 @@ class COMAP2FPXS():
                 full_transfer_function.k_bin_centers_par_2D,
             )
             np.testing.assert_allclose(approx, full_transfer_function.transfer_function_2D)
-        
+
+    def generate_new_monte_carlo_seed(self):
+            """Method that generates global Monte Carlo seed from current time.time() used in white noise simulations.
+            """
+            # If no seed is provided make base seed from current time
+            if self.rank == 0:
+                t = time.perf_counter()
+                print(t)
+                # seed = int(t - 1e6 * (t // 1e6))
+                seed = int(t)
+            else:
+                seed = None
+
+            seed = self.comm.bcast(seed, root = 0)
+            self.params.psx_white_noise_sim_seed = seed
+
 if __name__ == "__main__":
     
     comap2fpxs = COMAP2FPXS()
+    run_wn_sim = comap2fpxs.params.psx_generate_white_noise_sim    
     
-    # print(comap2fpxs.primary_variables)
-    # print(comap2fpxs.secondary_variables)
-    # print(comap2fpxs.cross_variables)
-    # print(comap2fpxs.all_variables)
-    # print(comap2fpxs.cross_and_primary)
-    # print(comap2fpxs.cross_and_secondary)
-    # print(comap2fpxs.split_map_combinations)
+    if run_wn_sim:
+        comap2fpxs.params.psx_generate_white_noise_sim = False
     
+    comap2fpxs.params.psx_white_noise_sim_seed = None
     comap2fpxs.run()
+    if run_wn_sim:
+        comap2fpxs.params.psx_generate_white_noise_sim = True
+
+        global_verbose = comap2fpxs.verbose
+        if global_verbose and comap2fpxs.rank == 0:
+            print("#" * 80)
+            print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
+            print("#" * 80)
+
+        basepath = "/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/test/average_spectra/co2_python_poly_debug_null_w_bug/"
+        import glob
+        filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
+        seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
+        
+        #for i in range(comap2fpxs.params.psx_monte_carlo_sim_number):
+        for i, seed in enumerate(seedlist):
+            # try:
+            # Turning this to None will make new seed from time.time() each iteration
+            
+            # comap2fpxs.generate_new_monte_carlo_seed()
+
+            comap2fpxs.params.psx_white_noise_sim_seed = seed
+            
+            comap2fpxs.verbose = False 
+
+            if global_verbose and comap2fpxs.rank == 0:
+                print("-"*40)
+                print(f"\033[91m Simulation # {i + 1} / {comap2fpxs.params.psx_monte_carlo_sim_number}: \033[00m \033[93m Seed = {comap2fpxs.params.psx_white_noise_sim_seed} \033[00m")
+
+            t0 = time.perf_counter()
+            comap2fpxs.run()
+
+            if global_verbose and comap2fpxs.rank == 0:
+                print(f"\033[92m Run time: {time.perf_counter() - t0} sec \033[00m")
+                print("-"*40)
+            # except:
+            #     print("SKIP")
+            #     continue
