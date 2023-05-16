@@ -1779,8 +1779,8 @@ if __name__ == "__main__":
                 plt.tight_layout()
                 plt.show()
 
-            accept_params_name = params.accept_param_folder + params.accept_mod_params
-            stats_list_name    = params.accept_param_folder + params.stats_list
+            accept_params_name = os.path.join(current, params.accept_mod_params)
+            stats_list_name = os.path.join(current, params.stats_list)
             
             accept_params_name_raw = params.accept_mod_params[:-3]
             stats_list_name_raw = params.stats_list[:-3]
