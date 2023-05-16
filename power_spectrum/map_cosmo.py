@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from astropy import units as u
 import astropy.cosmology
 
+import time
+
 import argparse
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -44,7 +46,8 @@ class MapCosmo:
             ValueError: If split key does not contain 'map'.
         """
 
-        self.feed = feed
+        if feed is not None:
+            self.feed = feed + 1
         
         mapdata = COmap(mappath)
 
@@ -76,10 +79,7 @@ class MapCosmo:
                     raise ValueError(
                     "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                 )
-
-                mapdata.read_and_append([split1, split2])
-
-                self.map = (np.array(mapdata[split1][feed]) - np.array(mapdata[split2][feed])) / 2
+                
                 sigma_key1 = re.sub(
                     r"map",
                     "sigma_wn",
@@ -93,7 +93,32 @@ class MapCosmo:
 
                 mapdata.read_and_append([sigma_key1, sigma_key2])
 
-                self.rms = np.sqrt(np.array(mapdata[sigma_key1][feed]) ** 2 + np.array(mapdata[sigma_key2][feed]) ** 2) / 2
+                if params.psx_generate_white_noise_sim:
+                    seed = params.psx_white_noise_sim_seed
+                    
+                    if params.psx_null_diffmap:
+                        split1, _ = split
+                        split_number = split1.split("map_")[-1][5:]
+                        split_number = int(split_number[4:])
+                    else:
+                        split_number = int(split.split("map_")[-1][4:])
+
+                    # Make unique seed for any split and feed combination
+                    seed += int(self.feed + (split_number + 1)%2 * 1e6 * np.pi) 
+
+                    np.random.seed(seed)
+                    self.white_noise_seed = seed
+
+                    self.map = (np.random.randn(*mapdata[sigma_key1][feed].shape) * mapdata[sigma_key1][feed][()] 
+                               -  np.random.randn(*mapdata[sigma_key2][feed].shape) * mapdata[sigma_key2][feed][()]) / 2
+                else:
+
+                    mapdata.read_and_append([split1, split2])
+
+                    self.map = (mapdata[split1][feed] - mapdata[split2][feed]) / 2
+
+                # self.rms = np.sqrt(0.5 * (mapdata[sigma_key1][feed] ** 2 + mapdata[sigma_key2][feed] ** 2))
+                self.rms = np.sqrt(mapdata[sigma_key1][feed] ** 2 + mapdata[sigma_key2][feed] ** 2) / 2
 
             else:
                 if "map" not in split:
@@ -102,7 +127,7 @@ class MapCosmo:
                     )
                 
                 mapdata.read_and_append([split])
-                self.map = np.array(mapdata[split][feed])
+                self.map = mapdata[split][feed]
                 sigma_key = re.sub(
                     r"map",
                     "sigma_wn",
@@ -110,20 +135,39 @@ class MapCosmo:
                 )
 
                 mapdata.read_and_append([sigma_key])
-                self.rms = np.array(mapdata[sigma_key][feed])
+                self.rms = mapdata[sigma_key][feed]
 
         elif feed is not None:
             mapdata.read_and_append(["map", "sigma_wn"])
             
-            self.map = np.array(mapdata["map"][feed])
-            self.rms = np.array(mapdata["sigma_wn"][feed])
+            self.map = mapdata["map"][feed]
+            self.rms = mapdata["sigma_wn"][feed]
 
         else:
             mapdata.read_and_append(["map_coadd", "sigma_wn_coadd"])
 
-            self.map = np.array(mapdata["map_coadd"][:])
-            self.rms = np.array(mapdata["sigma_wn_coadd"][:])
+            self.map = mapdata["map_coadd"][:]
+            self.rms = mapdata["sigma_wn_coadd"][:]
+        
+        # If wanted the maps can be substituted with pure white noise
+        if params.psx_generate_white_noise_sim and not params.psx_null_diffmap:
+            seed = params.psx_white_noise_sim_seed
+            
+            if params.psx_null_diffmap:
+                split1, _ = split
+                split_number = split1.split("map_")[-1][5:]
+                split_number = int(split_number[4:])
+            else:
+                split_number = int(split.split("map_")[-1][4:])
 
+            # Make unique seed for any split and feed combination
+            seed += int(self.feed + (split_number + 1)%2 * 1e6 * np.pi) 
+
+            np.random.seed(seed)
+            self.white_noise_seed = seed
+
+            self.map = np.random.randn(*self.rms.shape) * self.rms 
+            
         NSIDEBAND, NCHANNEL, NDEC, NRA = self.map.shape
 
         Z_MID = params.phy_center_redshift  # Middle of the redshift range of map

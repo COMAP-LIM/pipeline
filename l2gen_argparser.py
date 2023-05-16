@@ -23,6 +23,13 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("-v", "--verbose", action="count", help="Enable verbose printing.")
 
+parser.add_argument(
+    "--debug",
+    type=str2bool,
+    default=False,
+    help="Debug mode. If True unit tests are run. Default False.",
+)
+
 ### Parameter file and runlist
 parser.add_argument(
     "-p",
@@ -572,11 +579,46 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_generate_white_noise_sim",
+    type=str2bool,
+    default=False,
+    help="(comap2fpxs) If True maps used for FPXS are substituted with white noise from RMS map. Default False."
+)
+
+parser.add_argument(
+    "--psx_white_noise_sim_seed",
+    type=int,
+    help="(comap2fpxs) Seed for generating white noise maps used when running white noise maps through FPXS pipeline. Default None will cause random seed to be used generated from current time."
+)
+
+parser.add_argument(
+    "--psx_error_bar_seed",
+    type=int,
+    default=None,
+    help="(comap2fpxs) Seed for generating white noise maps used to estimate error bars of power spectra."
+)
+
+parser.add_argument(
+    "--psx_null_sim_number",
+    type=int,
+    default=50,
+    help="(comap2fpxs) Number of white noise null test simulations to run.",
+)
+
+parser.add_argument(
     "--psx_noise_sim_number",
     type=int,
     default=50,
     help="(comap2fpxs) Number of noise simulations to run to get power spectrum error bars.",
 )
+
+parser.add_argument(
+    "--psx_monte_carlo_sim_number",
+    type=int,
+    default=0,
+    help="(comap2fpxs) Number of white noise monte carlo simulations to perform.",
+)
+
 
 parser.add_argument(
     "--psx_number_of_k_bins",
@@ -592,6 +634,13 @@ parser.add_argument(
     help="(comap2fpxs) Which chi2 to use when cutting bad cross-spectra.",
 )
 
+parser.add_argument(
+    "--psx_transfer_function_names",
+    type=str,
+    nargs="+",
+    default = ["tf_feed_pca.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
+    help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
+)
 
 ###### Physics ######
 parser.add_argument(

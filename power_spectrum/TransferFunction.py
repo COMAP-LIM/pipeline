@@ -129,24 +129,24 @@ class TransferFunction:
             if "transfer_function_2D" in self.__dict__.keys():
                 cyl_avg = "cylindrically_averaged"
                 # Save transfer function from cylindrically averaged power spectrum
-                outfile[f"{cyl_avg}/transfer_function_2D"] = self.transfer_function_2D
+                outfile[f"{cyl_avg}/transfer_function"] = self.transfer_function_2D
 
-                outfile[f"{cyl_avg}/k_bin_edges_par_2D"] = self.k_bin_edges_par_2D
-                outfile[f"{cyl_avg}/k_bin_edges_perp_2D"] = self.k_bin_edges_perp_2D
+                outfile[f"{cyl_avg}/k_bin_edges_par"] = self.k_bin_edges_par_2D
+                outfile[f"{cyl_avg}/k_bin_edges_perp"] = self.k_bin_edges_perp_2D
 
-                outfile[f"{cyl_avg}/k_bin_centers_par_2D"] = self.k_bin_centers_par_2D
-                outfile[f"{cyl_avg}/k_bin_centers_perp_2D"] = self.k_bin_centers_perp_2D
+                outfile[f"{cyl_avg}/k_bin_centers_par"] = self.k_bin_centers_par_2D
+                outfile[f"{cyl_avg}/k_bin_centers_perp"] = self.k_bin_centers_perp_2D
 
                 # Save power spectra going in to the transfer functions
                 # Cylindrically averaged power spectra
                 outfile[
-                    f"{cyl_avg}/power_spectrum/pure_signal_2D"
+                    f"{cyl_avg}/power_spectrum/pure_signal"
                 ] = self.ps_pure_signal_2D
                 outfile[
-                    f"{cyl_avg}/power_spectrum/pure_noise_2D"
+                    f"{cyl_avg}/power_spectrum/pure_noise"
                 ] = self.ps_pure_noise_2D
                 outfile[
-                    f"{cyl_avg}/power_spectrum/injected_with_signal_2D"
+                    f"{cyl_avg}/power_spectrum/injected_with_signal"
                 ] = self.ps_injected_with_signal_2D
 
             if "transfer_function_1D" in self.__dict__.keys():
@@ -180,37 +180,38 @@ class TransferFunction:
             inpath = self.path
 
         with h5py.File(inpath, "r") as infile:
-            if "transfer_function_2D" in self.__dict__.keys():
-                cyl_avg = "cylindrically_averaged"
+            cyl_avg = "cylindrically_averaged"
+            if cyl_avg in infile.keys():
                 # Read transfer function from cylindrically averaged power spectrum
-                self.transfer_function_2D = infile[f"{cyl_avg}/transfer_function_2D"][
+                self.transfer_function_2D = infile[f"{cyl_avg}/transfer_function"][
                     ()
                 ]
 
-                self.k_bin_edges_par_2D = infile[f"{cyl_avg}/k_bin_edges_par_2D"][()]
-                self.k_bin_edges_perp_2D = infile[f"{cyl_avg}/k_bin_edges_perp_2D"][()]
+                self.k_bin_edges_par_2D = infile[f"{cyl_avg}/k_bin_edges_par"][()]
+                self.k_bin_edges_perp_2D = infile[f"{cyl_avg}/k_bin_edges_perp"][()]
 
-                self.k_bin_centers_par_2D = infile[f"{cyl_avg}/k_bin_centers_par_2D"][
+                self.k_bin_centers_par_2D = infile[f"{cyl_avg}/k_bin_centers_par"][
                     ()
                 ]
-                self.k_bin_centers_perp_2D = infile[f"{cyl_avg}/k_bin_centers_perp_2D"][
+                self.k_bin_centers_perp_2D = infile[f"{cyl_avg}/k_bin_centers_perp"][
                     ()
                 ]
-                # Read power spectra going in to the transfer functions
+                
+                if "power_spectrum" in infile[f"{cyl_avg}"]:
+                    # Read power spectra going in to the transfer functions
+                    # Cylindrically averaged power spectra
+                    self.ps_pure_signal_2D = infile[
+                        f"{cyl_avg}/power_spectrum/pure_signal"
+                    ][()]
+                    self.ps_pure_noise_2D = infile[
+                        f"{cyl_avg}/power_spectrum/pure_noise"
+                    ][()]
+                    self.ps_injected_with_signal_2D = infile[
+                        f"{cyl_avg}/power_spectrum/injected_with_signal"
+                    ][()]
 
-                # Cylindrically averaged power spectra
-                self.ps_pure_signal_2D = infile[
-                    f"{cyl_avg}/power_spectrum/pure_signal_2D"
-                ][()]
-                self.ps_pure_noise_2D = infile[
-                    f"{cyl_avg}/power_spectrum/pure_noise_2D"
-                ][()]
-                self.ps_injected_with_signal_2D = infile[
-                    f"{cyl_avg}/power_spectrum/injected_with_signal_2D"
-                ][()]
-
-            if "transfer_function_1D" in self.__dict__.keys():
-                sph_avg = "spherically_averaged"
+            sph_avg = "spherically_averaged"
+            if sph_avg in infile.keys():
 
                 # Read transfer function from spherically averaged power spectrum
                 self.transfer_function_1D = infile[f"{sph_avg}/transfer_function_1D"][
@@ -220,17 +221,21 @@ class TransferFunction:
 
                 self.k_bin_centers_1D = infile[f"{sph_avg}/k_bin_centers_1D"][()]
 
-                # Read power spectra going in to the transfer functions
-                # Spherically averaged power spectra
-                self.ps_pure_signal_1D = infile[
-                    f"{sph_avg}/power_spectrum/pure_signal_1D"
-                ][()]
-                self.ps_pure_noise_1D = infile[
-                    f"{sph_avg}/power_spectrum/pure_noise_1D"
-                ][()]
-                self.ps_injected_with_signal_1D = infile[
-                    f"{sph_avg}/power_spectrum/injected_with_signal_1D"
-                ][()]
+                if "power_spectrum" in infile[f"{sph_avg}"]:
+
+                    # Read power spectra going in to the transfer functions
+                    # Spherically averaged power spectra
+                    self.ps_pure_signal_1D = infile[
+                        f"{sph_avg}/power_spectrum/pure_signal_1D"
+                    ][()]
+                    self.ps_pure_noise_1D = infile[
+                        f"{sph_avg}/power_spectrum/pure_noise_1D"
+                    ][()]
+                    self.ps_injected_with_signal_1D = infile[
+                        f"{sph_avg}/power_spectrum/injected_with_signal_1D"
+                    ][()]
+
+        self.keys = list(self.__dict__.keys())
 
     def __sub__(self, other: TransferFunction):
         """Magic method to compute arithmetic difference between two transfer function objects.
@@ -245,7 +250,11 @@ class TransferFunction:
             _type_: Returning new instance of TransferFunction class
             containing difference between transfer functions
         """
+        keys = list(self.__dict__.keys())
         difference = self.__class__()
+
+        for key in keys:
+            setattr(difference, key, getattr(self, key))
 
         if (
             "transfer_function_1D" in self.__dict__.keys()
@@ -262,7 +271,8 @@ class TransferFunction:
             difference.transfer_function_2D = (
                 self.transfer_function_2D - other.transfer_function_2D
             )
-
+            
+        difference.keys = keys
         return difference
 
     def __mul__(self, other: TransferFunction):
@@ -278,7 +288,11 @@ class TransferFunction:
             _type_: Returning new instance of TransferFunction class
             containing product of transfer functions
         """
+        keys = list(self.__dict__.keys())
         product = self.__class__()
+
+        for key in keys:
+            setattr(product, key, getattr(self, key))
 
         if (
             "transfer_function_1D" in self.__dict__.keys()
@@ -296,6 +310,7 @@ class TransferFunction:
                 self.transfer_function_2D * other.transfer_function_2D
             )
 
+        product.keys = keys
         return product
 
     def __truediv__(self, other: TransferFunction):
@@ -312,6 +327,11 @@ class TransferFunction:
             containing divition of transfer functions
         """
         divition = self.__class__()
+        keys = list(self.__dict__.keys())
+        divition = self.__class__()
+
+        for key in keys:
+            setattr(divition, key, getattr(self, key))
 
         if (
             "transfer_function_1D" in self.__dict__.keys()
@@ -329,7 +349,9 @@ class TransferFunction:
                 self.transfer_function_2D / other.transfer_function_2D
             )
 
+        divition.keys = keys
         return divition
+    
 
 
 if __name__ == "__main__":
