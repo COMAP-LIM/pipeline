@@ -93,7 +93,7 @@ class COMAP2FPXS():
         # Distributed start will slow down some MPI threads in beginning to not overwhelm memory.
         if self.params.distributed_starting:
             time.sleep((self.rank%16) * 30.0)
-        time.sleep(self.rank * 0.01)
+        #time.sleep(self.rank * 0.01)
 
         # Only want to compute FPXS for included feeds (detectors)
         self.included_feeds = self.params.included_feeds
@@ -143,6 +143,7 @@ class COMAP2FPXS():
             print(f"Secondary splits: {self.secondary_variables}")
             print(f"Computing cross-spectra for {Number_of_combinations} combinations with {self.Nranks} MPI processes:")
             print("#" * 70)
+
         self.comm.Barrier()
 
         # MPI parallel run over all FPXS combinations
@@ -196,6 +197,7 @@ class COMAP2FPXS():
                 
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
+                    print("Skip")
                     continue
                 else:
 
@@ -323,6 +325,7 @@ class COMAP2FPXS():
                         k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
 
                         transfer_function = self.full_trasnfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
+                        #print("hei", transfer_function)
 
                         transfer_function_mask = transfer_function > self.params.tf_cutoff
                         
@@ -341,6 +344,8 @@ class COMAP2FPXS():
                             / np.sqrt(2 * number_of_samples)
                         )
 
+                        #print(f"chi2 = {chi2[feed1, feed2]}", self.params.psx_chi2_cut_limit    )
+                        
                         if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
                             if np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit:
                                 xs_sum += xs / xs_sigma ** 2
@@ -418,8 +423,9 @@ class COMAP2FPXS():
                         average_name = os.path.join(average_name, "null_diffmap")
                         if not os.path.exists(average_name):
                             os.mkdir(average_name)
+
+                        average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
                     
-                    average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
                 
@@ -497,8 +503,14 @@ class COMAP2FPXS():
 
         fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
         
-        lim = np.nanmax(np.abs(xs_mean[3:-3, 3:-3]))
-        lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)[3:-3, 3:-3]))
+        limit_idx = int(np.round(3 / 14 * xs_mean.shape[0])) 
+
+        if limit_idx != 0:
+            lim = np.nanmax(np.abs(xs_mean[limit_idx:-limit_idx, limit_idx:-limit_idx]))
+            lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)[limit_idx:-limit_idx, limit_idx:-limit_idx]))
+        else:
+            lim = np.nanmax(np.abs(xs_mean))
+            lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)))
 
         norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
         lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
@@ -612,6 +624,8 @@ class COMAP2FPXS():
         # Plot y-limits
         lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
         lim = np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
+        
+        lim = 2e4
 
         lim_significance = 2 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
         
@@ -1081,19 +1095,19 @@ if __name__ == "__main__":
             print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
             print("#" * 80)
 
-        basepath = "/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/test/average_spectra/co2_python_poly_debug_null_w_bug/"
-        import glob
-        filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
-        seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
+        # basepath = "/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/test/average_spectra/co2_python_poly_debug_null_w_bug/"
+        # import glob
+        # filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
+        # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
         
-        #for i in range(comap2fpxs.params.psx_monte_carlo_sim_number):
-        for i, seed in enumerate(seedlist):
+        for i in range(comap2fpxs.params.psx_monte_carlo_sim_number):
+        # for i, seed in enumerate(seedlist):
             # try:
             # Turning this to None will make new seed from time.time() each iteration
             
-            # comap2fpxs.generate_new_monte_carlo_seed()
+            comap2fpxs.generate_new_monte_carlo_seed()
 
-            comap2fpxs.params.psx_white_noise_sim_seed = seed
+            # comap2fpxs.params.psx_white_noise_sim_seed = seed
             
             comap2fpxs.verbose = False 
 
