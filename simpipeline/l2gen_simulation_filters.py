@@ -164,3 +164,32 @@ class Cube2TOD:
                     self.omp_num_threads,
                 )        
                 
+
+
+
+class Replace_TOD_with_WN:
+    """ Replace the entire time-stream with white noise, from the radiometer equation (using Tsys).
+        NOTE: This filter class should only be used after computing the system temperature
+    """
+
+    name = "cube2tod"
+    name_long = "Signal cube injector filter"
+    run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
+    has_corr_template = False  # Set to True if the template impacts the correlation matrix and must be corrected (through the "get_corr_template" function).
+
+    def __init__(self, params, omp_num_threads=2):
+        self.params = params
+        self.omp_num_threads = omp_num_threads
+
+
+    def run(self, l2file: l2):
+        l2file.is_sim = True
+
+        tsys = l2.Tsys
+
+        if not self.params.wn_sim_seed is None:
+            np.seed(self.params.wn_sim_seed)
+
+        for ifeed in range(l2.Nfeeds):
+            l2.tod[ifeed] = np.random.normal(0, tsys[ifeed], (l2.Nsb, l2.Nfreqs, l2.Ntod))
+        
