@@ -15,7 +15,7 @@ import math
 from scipy.ndimage import gaussian_filter1d
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-from simpipeline.l2gen_simulation_filters import Cube2TOD
+from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_with_WN
 from scipy.interpolate import interp1d
 
 
@@ -1649,6 +1649,7 @@ class Tsys_calc(Filter):
         obsid = l2.obsid_str
         t = l2.tod_times[l2.Ntod//2]  # scan center time.
         l2.Tsys = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
+        l2.Gain = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
         Pcold = np.nanmean(l2.tod, axis=-1)
         Phot_interp = np.zeros(l2.Nfeeds)
         
@@ -1690,9 +1691,11 @@ class Tsys_calc(Filter):
                 Phot_interp = np.zeros_like(Phot[feed-1,:,:,0]) + np.nan
                 Thot_interp = np.zeros_like(Thot[feed-1,0]) + np.nan
 
+            l2.Gain[ifeed,:,:] = (Phot_interp - Pcold[ifeed])/(Thot_interp - Tcmb)
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
 
         l2.tofile_dict["Tsys"] = l2.Tsys
+        l2.tofile_dict["Gain"] = l2.Gain
         l2.tofile_dict["Pcold"] = Pcold
         l2.tofile_dict["Thot"] = Thot[l2.feeds-1]
         l2.tofile_dict["Phot"] = Phot[l2.feeds-1]

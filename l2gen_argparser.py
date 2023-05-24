@@ -1010,3 +1010,12 @@ parser.add_argument(
     default="",
     help="(run_tod2tf) Complete path to signal injected data map file. By default string is empty. If default is used a new signal injected map and populated cube are generated.",
 )
+
+
+###### "Replace_TOD_with_WN" filter ######
+parser.add_argument(
+    "--wn_sim_seed",
+    type=int,
+    default=None,
+    help="(Replace_TOD_with_WN) What seed to use for white noise TOD replacement. None = no seed.",
+)
