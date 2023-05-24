@@ -528,7 +528,7 @@ parser.add_argument(
 
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
-    "--tf_cutoff",
+    "--psx_tf_cutoff",
     type=float,
     default=0.2,
     help="(comap2fpxs) Value of transfer function above which to compute chi2 in feed-feed pseudo cross-spectra.",
@@ -592,6 +592,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_seed_list",
+    type=str,
+    default = "seed_list.txt",
+    help="(comap2fpxs) Name of txt file with seeds to use when running Monte Carlo mode. Default is 'seed_list.txt'.",
+)
+
+parser.add_argument(
+    "--psx_use_seed_list",
+    type=str2bool,
+    default = False,
+    help="(comap2fpxs) Whether to use predefined seed list when running in Monte Carlo mode.",
+)
+
+parser.add_argument(
     "--psx_error_bar_seed",
     type=int,
     default=None,
@@ -608,7 +622,7 @@ parser.add_argument(
 parser.add_argument(
     "--psx_noise_sim_number",
     type=int,
-    default=50,
+    default=500,
     help="(comap2fpxs) Number of noise simulations to run to get power spectrum error bars.",
 )
 
@@ -641,6 +655,8 @@ parser.add_argument(
     default = ["tf_feed_pca.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
     help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
 )
+
+
 
 ###### Physics ######
 parser.add_argument(
