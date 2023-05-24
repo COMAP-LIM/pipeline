@@ -24,7 +24,14 @@ class COmap:
     """COMAP map data class"""
 
     path: str = field(default_factory=str)
-    _data: dict[str, npt.ArrayLike] = field(default_factory=dict)
+    _data: dict[str, npt.NDArray] = field(default_factory=dict)
+
+    saddlebag_feeds: npt.NDArray[int] =  np.array([
+        [1, 4, 5, 12, 13],
+        [6, 14, 15, 16, 17],
+        [2, 7, 18, 19, 20],
+        [3, 8, 9, 10, 11],
+    ])
 
     def read_map(self) -> None:
         """Function for reading map data from file and fill data dictionary of Map class.

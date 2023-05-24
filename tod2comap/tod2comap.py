@@ -273,7 +273,11 @@ class Mapmaker:
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]
                 if len(scan_idx) == 0:
-                    raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
+                    print(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
+                    # raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
+                    rejection_number += 1
+                    continue
+
                 scan_idx = scan_idx[0]
                 if (
                     np.all(~self.splitdata["accept_list"][scan_idx])
@@ -599,8 +603,14 @@ class Mapmaker:
             map_key = re.sub(r"numerator_map", "map", numerator_key)
             sigma_wn_key = re.sub(r"numerator_map", "sigma_wn", numerator_key)
 
+            map_saddlebag_key = re.sub(r"numerator_map", "map_saddlebag", numerator_key)
+            sigma_wn_saddlebag_key = re.sub(r"numerator_map", "sigma_wn_saddlebag", numerator_key)
+            hit_saddlebag_key = re.sub(r"numerator_map", "nhit_saddlebag", numerator_key)
+
+
             if self.params.t2m_rms_mask_factor > 0:
-                self.mask_map(mapdata, numerator_key, denominator_key)
+                if mapdata["n_ra"] * mapdata["n_dec"] > 100: # Need more than 100 pixels to make propper noise mask
+                    self.mask_map(mapdata, numerator_key, denominator_key)
 
             inv_var = mapdata[denominator_key]
 
@@ -698,6 +708,30 @@ class Mapmaker:
             # Deleting numerator and denominator from map object
             del mapdata[numerator_key]
             del mapdata[denominator_key]
+        
+            mapdata[f"{map_saddlebag_key}"] = np.zeros((mapdata.saddlebag_feeds.shape[0], *mapdata["map_coadd"].shape))
+            mapdata[f"{sigma_wn_saddlebag_key}"] = np.zeros((mapdata.saddlebag_feeds.shape[0],  *mapdata["sigma_wn_coadd"].shape))
+            
+            if self.params.make_nhit:
+                mapdata[f"{hit_saddlebag_key}"] = np.zeros((mapdata.saddlebag_feeds.shape[0], *mapdata["nhit_coadd"].shape), dtype = np.int32)
+
+            for i in range(mapdata.saddlebag_feeds.shape[0]):
+                # Current saddle bag feed indices
+                feeds_in_saddlebag = mapdata.saddlebag_feeds[i] - 1
+                
+                weights = 1 / mapdata[f"{sigma_wn_key}"][feeds_in_saddlebag, ...] ** 2 
+                data = mapdata[f"{map_key}"][feeds_in_saddlebag, ...] * weights
+                inv_var = np.nansum(weights, axis = 0)
+
+                mapdata[f"{map_saddlebag_key}"][i] = np.nansum(data, axis = 0) / inv_var
+                mapdata[f"{sigma_wn_saddlebag_key}"][i] = 1 / np.sqrt(inv_var)
+                if self.params.make_nhit:
+                    mapdata[f"{hit_saddlebag_key}"][i] = np.sum( mapdata[f"{hit_key}"][feeds_in_saddlebag, ...], axis = 0)
+            
+            where = ~np.isfinite(mapdata[f"{sigma_wn_saddlebag_key}"])
+            mapdata[f"{sigma_wn_saddlebag_key}"][where] = np.nan
+            
+
 
     def mask_map(self, mapdata: COmap, numerator_key: str, denominator_key) -> None:
         """Method that takes in a map object and masks out the high noise regions. The masking is doing the following;
