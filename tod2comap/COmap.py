@@ -272,6 +272,7 @@ class COmap:
                 primary_header[f"P{idx:07}"] = (param, key)
 
         NFEED = 20  # Number of feeds
+        NSADDLEBAG = self.saddlebag_feeds.shape[0]  # Number of saddlebags
         NSIDEBAND = self._data["n_sidebands"]
         NCHANNEL = self._data["n_channels"]
 
@@ -292,6 +293,19 @@ class COmap:
 
             sigma_wn_data = (
                 self._data[sigma_wn_key].copy().reshape(NSIDEBAND * NCHANNEL, NDEC, NRA)
+            )
+        
+        elif "saddlebag" in map_key:
+            map_data = (
+                self._data[map_key].copy().reshape(NSADDLEBAG, NSIDEBAND * NCHANNEL, NDEC, NRA)
+            )
+
+            nhit_data = (
+                self._data[nhit_key].copy().reshape(NSADDLEBAG, NSIDEBAND * NCHANNEL, NDEC, NRA)
+            )
+
+            sigma_wn_data = (
+                self._data[sigma_wn_key].copy().reshape(NSADDLEBAG, NSIDEBAND * NCHANNEL, NDEC, NRA)
             )
         else:
             map_data = (

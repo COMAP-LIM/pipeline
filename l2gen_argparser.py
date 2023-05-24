@@ -482,9 +482,9 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--no_fits",
+    "--fits",
     action="store_true",
-    help="(tod2comap) If flag is provided no maps are saved as fits files.",
+    help="(tod2comap) If flag is provided maps are saved as fits files.",
 )
 
 parser.add_argument(
