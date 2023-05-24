@@ -182,14 +182,17 @@ class Replace_TOD_with_WN:
         self.omp_num_threads = omp_num_threads
 
 
-    def run(self, l2file: l2):
-        l2file.is_sim = True
+    def run(self, l2):
+        l2.is_sim = True
 
+        Gain = 10000
         tsys = l2.Tsys
+        dt = l2.tod_times_seconds[1] - l2.tod_times_seconds[0]
+        dnu = (l2.freqs[0][1] - l2.freqs[0][0])*1e9
 
         if not self.params.wn_sim_seed is None:
-            np.seed(self.params.wn_sim_seed)
+            np.random.seed(self.params.wn_sim_seed)
 
         for ifeed in range(l2.Nfeeds):
-            l2.tod[ifeed] = np.random.normal(0, tsys[ifeed], (l2.Nsb, l2.Nfreqs, l2.Ntod))
-        
+            radiometer_noise = tsys[ifeed]/np.sqrt(dt*dnu)
+            l2.tod[ifeed] = Gain*(tsys[ifeed][:,:,None] + np.random.normal(0, radiometer_noise[:,:,None], (l2.Nsb, l2.Nfreqs, l2.Ntod)))
