@@ -388,13 +388,13 @@ class Mapmaker:
                     primary_splits=self.primary_splits,
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
-                    save_fits=(not self.params.no_fits),
+                    save_fits=(not self.params.fits),
                 )
             else:
                 full_map.write_map(
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
-                    save_fits=(not self.params.no_fits),
+                    save_fits=(not self.params.fits),
                 )
             finish_time = time.perf_counter()
 
