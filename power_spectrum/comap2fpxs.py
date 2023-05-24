@@ -327,7 +327,9 @@ class COMAP2FPXS():
                         transfer_function = self.full_trasnfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
                         #print("hei", transfer_function)
 
-                        transfer_function_mask = transfer_function > self.params.tf_cutoff
+                        tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
+
+                        transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
                         
                         try:
                             chi3 = np.nansum(
@@ -362,6 +364,9 @@ class COMAP2FPXS():
                 weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
 
                 xs_1d = xs_mean[i, ...].copy()
+
+                weights[~transfer_function_mask] = 0.0
+            
                 xs_1d /= transfer_function
                 xs_1d *= weights
 
@@ -390,7 +395,7 @@ class COMAP2FPXS():
                 rms_1d[np.where(nmodes_1d > 0)] = np.sqrt(
                     1 / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
                 )
-
+                print(Ck_1d, rms_1d)
                 xs_mean_1d[i, ...] = Ck_1d
                 xs_error_1d[i, ...] = rms_1d
 
@@ -436,6 +441,7 @@ class COMAP2FPXS():
                         k_bin_edges_perp,
                         xs_mean[i, ...],
                         xs_error[i, ...],
+                        transfer_function_mask,
                         splits,
                         (mapname1, mapname2),
                         average_name,
@@ -460,6 +466,8 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_mean_2d", data = xs_mean)
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error)
+                outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+
                 if self.params.psx_white_noise_sim_seed is not None:
                     outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
 
@@ -468,6 +476,7 @@ class COMAP2FPXS():
                     k_bin_edges_perp: npt.NDArray,
                     xs_mean: npt.NDArray,
                     xs_sigma: npt.NDArray,
+                    transfer_function_mask: npt.NDArray,
                     splits: Sequence[str],
                     fields: Sequence[str],
                     outname: str,
@@ -479,6 +488,7 @@ class COMAP2FPXS():
             k_bin_edges_perp (npt.NDArray): Array of k-bin edges of perpendicular (angular, i.e. perpendicular to line-of-sight) dimension in 1/Mpc.
             xs_mean (npt.NDArray): Array of mean spherically averaged FPXS 
             xs_sigma (npt.NDArray): Array of errors of mean spherically averaged FPXS
+            transfer_function_mask (npt.NDArray): Array of bools marking where transfer function is below specified level.
             splits (Sequence[str]): Sequence of strings with split names used for as cross-spectrum variable
             fields (Sequence[str]): Sequence of strings with field names used in cross correlation
             outname (str): String with output directory for plot
@@ -486,6 +496,8 @@ class COMAP2FPXS():
 
         matplotlib.rcParams["xtick.labelsize"] = 16
         matplotlib.rcParams["ytick.labelsize"] = 16
+        matplotlib.rcParams["hatch.color"] = "gray"
+        matplotlib.rcParams["hatch.linewidth"] = 0.3
 
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
@@ -523,24 +535,71 @@ class COMAP2FPXS():
             cmap="PiYG_r",
             norm=norm,
             rasterized=True,
+            zorder = 1,
         )
         fig.colorbar(img1, ax=ax[0], fraction=0.046, pad=0.04).set_label(
             r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
             size=16,
         )
 
+        ax[0].fill_between(
+            [0, 1], 
+            0, 
+            1, 
+            hatch='xxxx', 
+            transform = ax[0].transAxes, 
+            alpha = 0, 
+            zorder = 2
+        )
+
+        xs_mean_masked = np.ma.masked_where(~transfer_function_mask, xs_mean)
+        ax[0].imshow(
+            xs_mean_masked,
+            interpolation="none",
+            origin="lower",
+            extent=[0, 1, 0, 1],
+            cmap="PiYG_r",
+            norm=norm,
+            rasterized=True,
+            zorder = 3,
+        )
+        
         img2 = ax[1].imshow(
-            xs_mean / (xs_sigma),
+            xs_mean / xs_sigma,
             interpolation="none",
             origin="lower",
             extent=[0, 1, 0, 1],
             cmap="PiYG_r",
             norm=lim_significance,
             rasterized=True,
+            zorder = 1,
         )
         fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.04).set_label(
             r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
             size=16,
+        )
+
+        ax[1].fill_between(
+            [0, 1], 
+            0, 
+            1, 
+            hatch='xxxx', 
+            transform = ax[1].transAxes, 
+            alpha = 0, 
+            zorder = 2
+        )
+
+        xs_sigma_masked = np.ma.masked_where(~transfer_function_mask, xs_sigma)
+
+        ax[1].imshow(
+            xs_mean_masked / xs_sigma_masked,
+            interpolation="none",
+            origin="lower",
+            extent=[0, 1, 0, 1],
+            cmap="PiYG_r",
+            norm=lim_significance,
+            rasterized=True,
+            zorder = 3,
         )
 
         ticks = [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
@@ -1099,15 +1158,23 @@ if __name__ == "__main__":
         # import glob
         # filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
         # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
-        
-        for i in range(comap2fpxs.params.psx_monte_carlo_sim_number):
-        # for i, seed in enumerate(seedlist):
+        seed_list = []
+        if comap2fpxs.params.psx_use_seed_list:
+            seed_list = np.load(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list))
+        else:
+            seed_list = range(comap2fpxs.params.psx_monte_carlo_sim_number)
+
+        for i, seed in enumerate(seed_list):
             # try:
             # Turning this to None will make new seed from time.time() each iteration
             
-            comap2fpxs.generate_new_monte_carlo_seed()
+            if comap2fpxs.params.psx_use_seed_list
+                comap2fpxs.params.psx_white_noise_sim_seed = seed
+            else:
+                comap2fpxs.generate_new_monte_carlo_seed()
+                
+                seed_list.append(comap2fpxs.params.psx_white_noise_sim_seed)
 
-            # comap2fpxs.params.psx_white_noise_sim_seed = seed
             
             comap2fpxs.verbose = False 
 
@@ -1117,10 +1184,14 @@ if __name__ == "__main__":
 
             t0 = time.perf_counter()
             comap2fpxs.run()
-
+        
             if global_verbose and comap2fpxs.rank == 0:
                 print(f"\033[92m Run time: {time.perf_counter() - t0} sec \033[00m")
                 print("-"*40)
             # except:
             #     print("SKIP")
             #     continue
+            
+        if not comap2fpxs.params.psx_use_seed_list
+            seed_list = np.array(seed_list)
+            np.savetxt(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list), seed_list)
