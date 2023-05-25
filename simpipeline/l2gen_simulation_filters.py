@@ -172,8 +172,8 @@ class Replace_TOD_with_WN:
         NOTE: This filter class should only be used after computing the system temperature
     """
 
-    name = "cube2tod"
-    name_long = "Signal cube injector filter"
+    name = "wn2tod"
+    name_long = "White noise TOD generator"
     run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
     has_corr_template = False  # Set to True if the template impacts the correlation matrix and must be corrected (through the "get_corr_template" function).
 
