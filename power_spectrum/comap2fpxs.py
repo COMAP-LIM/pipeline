@@ -1168,7 +1168,7 @@ if __name__ == "__main__":
             # try:
             # Turning this to None will make new seed from time.time() each iteration
             
-            if comap2fpxs.params.psx_use_seed_list
+            if comap2fpxs.params.psx_use_seed_list:
                 comap2fpxs.params.psx_white_noise_sim_seed = seed
             else:
                 comap2fpxs.generate_new_monte_carlo_seed()
@@ -1192,6 +1192,6 @@ if __name__ == "__main__":
             #     print("SKIP")
             #     continue
             
-        if not comap2fpxs.params.psx_use_seed_list
+        if not comap2fpxs.params.psx_use_seed_list:
             seed_list = np.array(seed_list)
             np.savetxt(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list), seed_list)
