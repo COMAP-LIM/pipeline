@@ -227,6 +227,13 @@ class COMAP2FPXS():
                             seed = seed,
                         )
                     else:
+                        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn.h5", "r") as infile:
+                        #     k_centers_perp = infile["k_centers_perp"][()]
+                        #     k_centers_par = infile["k_centers_par"][()]
+                        #     tf_wn = infile["tf"][()]
+
+                        # cross_spectrum.xs *= tf_wn
+
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], outdir_data)
                     
                     # Save resulting FPXS from current combination to file
@@ -395,7 +402,7 @@ class COMAP2FPXS():
                 rms_1d[np.where(nmodes_1d > 0)] = np.sqrt(
                     1 / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
                 )
-                print(Ck_1d, rms_1d)
+
                 xs_mean_1d[i, ...] = Ck_1d
                 xs_error_1d[i, ...] = rms_1d
 
@@ -420,6 +427,8 @@ class COMAP2FPXS():
 
                     average_name = os.path.join(fig_dir, "average_spectra")
                     average_name = os.path.join(average_name, indir)
+                    
+
 
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
@@ -433,28 +442,43 @@ class COMAP2FPXS():
                     
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
-                
-                
-                if not self.params.psx_generate_white_noise_sim:
-                    self.plot_2D_mean(
-                        k_bin_edges_par,
-                        k_bin_edges_perp,
-                        xs_mean[i, ...],
-                        xs_error[i, ...],
-                        transfer_function_mask,
-                        splits,
-                        (mapname1, mapname2),
-                        average_name,
-                    )
+                else:
+                    average_name = os.path.join(fig_dir, "average_spectra")
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                    average_name = os.path.join(average_name, indir)
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                    average_name = os.path.join(average_name, "null_diffmap")
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
 
-                    self.plot_1D_mean(
-                        k_1d,
-                        xs_mean_1d[i, ...],
-                        xs_error_1d[i, ...],
-                        splits,
-                        (mapname1, mapname2),
-                        average_name,
-                    )
+                    average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+
+                    
+                
+                #if not self.params.psx_generate_white_noise_sim:
+                self.plot_2D_mean(
+                    k_bin_edges_par,
+                    k_bin_edges_perp,
+                    xs_mean[i, ...],
+                    xs_error[i, ...],
+                    transfer_function_mask,
+                    splits,
+                    (mapname1, mapname2),
+                    average_name,
+                )
+
+                self.plot_1D_mean(
+                    k_1d,
+                    xs_mean_1d[i, ...],
+                    xs_error_1d[i, ...],
+                    splits,
+                    (mapname1, mapname2),
+                    average_name,
+                )
 
             with h5py.File(os.path.join(outdir, mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
@@ -1160,15 +1184,15 @@ if __name__ == "__main__":
         # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
         seed_list = []
         if comap2fpxs.params.psx_use_seed_list:
-            seed_list = np.load(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list))
+            seeds_to_run = np.load(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list))
         else:
-            seed_list = range(comap2fpxs.params.psx_monte_carlo_sim_number)
+            seeds_to_run = range(comap2fpxs.params.psx_monte_carlo_sim_number)
 
-        for i, seed in enumerate(seed_list):
+        for i, seed in enumerate(seeds_to_run):
             # try:
             # Turning this to None will make new seed from time.time() each iteration
             
-            if comap2fpxs.params.psx_use_seed_list
+            if comap2fpxs.params.psx_use_seed_list:
                 comap2fpxs.params.psx_white_noise_sim_seed = seed
             else:
                 comap2fpxs.generate_new_monte_carlo_seed()
@@ -1192,6 +1216,6 @@ if __name__ == "__main__":
             #     print("SKIP")
             #     continue
             
-        if not comap2fpxs.params.psx_use_seed_list
+        if not comap2fpxs.params.psx_use_seed_list:
             seed_list = np.array(seed_list)
             np.savetxt(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list), seed_list)
