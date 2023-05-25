@@ -191,7 +191,7 @@ class Replace_TOD_with_WN:
         dnu = (l2.freqs[0][1] - l2.freqs[0][0])*1e9
 
         if not self.params.wn_sim_seed is None:
-            np.random.seed(self.params.wn_sim_seed)
+            np.random.seed(self.params.wn_sim_seed*l2.scanid)
 
         for ifeed in range(l2.Nfeeds):
             radiometer_noise = tsys[ifeed]/np.sqrt(dt*dnu)
