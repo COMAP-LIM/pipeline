@@ -353,6 +353,7 @@ class CrossSpectrum_nmaps:
 
             self.rms_xs_mean.append(np.mean(rms_xs, axis=1))
             self.rms_xs_std.append(np.std(rms_xs, axis=1, ddof = 1))
+            
         return np.array(self.rms_xs_mean), np.array(self.rms_xs_std)
 
     def run_noise_sims_2d(self, n_sims, seed=None, no_of_k_bins=15):

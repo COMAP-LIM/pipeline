@@ -277,10 +277,10 @@ def compute_cross_spec_perp_vs_par(
             / (n_x * n_y * n_z)
         )
 
+
     kx = np.fft.fftfreq(n_x, dx) * 2 * np.pi
     ky = np.fft.fftfreq(n_y, dy) * 2 * np.pi
     kz = np.fft.fftfreq(n_z, dz) * 2 * np.pi
-
     kperp = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
     kperp = kperp[:, :, None] + np.zeros_like(Ck_3D)
 
@@ -293,6 +293,7 @@ def compute_cross_spec_perp_vs_par(
     nmodes = np.histogram2d(kperp.flatten(), kpar.flatten(), bins=k_bin_edges)[0]
     k = [(k_edges[1:] + k_edges[:-1]) / 2.0 for k_edges in k_bin_edges]
     Ck = np.zeros((len(k[0]), len(k[1])))
+
     # print("_-_" * 20)
     # print(np.sum(nmodes))
     # print("isnan kperp:", np.any(np.isnan(kperp.flatten())))

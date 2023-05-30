@@ -145,7 +145,9 @@ class COMAP2FPXS():
             print("#" * 70)
 
         self.comm.Barrier()
-
+        
+        self.params.primary_variables = self.primary_variables
+        
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
@@ -1172,11 +1174,6 @@ if __name__ == "__main__":
     if run_wn_sim:
         comap2fpxs.params.psx_generate_white_noise_sim = True
 
-        global_verbose = comap2fpxs.verbose
-        if global_verbose and comap2fpxs.rank == 0:
-            print("#" * 80)
-            print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
-            print("#" * 80)
 
         # basepath = "/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/test/average_spectra/co2_python_poly_debug_null_w_bug/"
         # import glob
@@ -1184,9 +1181,23 @@ if __name__ == "__main__":
         # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
         seed_list = []
         if comap2fpxs.params.psx_use_seed_list:
-            seeds_to_run = np.load(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list))
+            seed_list_path = os.path.join(comap2fpxs.params.power_spectrum_dir, comap2fpxs.params.psx_seed_list)
+            seeds_to_run = np.loadtxt(seed_list_path)
+
         else:
             seeds_to_run = range(comap2fpxs.params.psx_monte_carlo_sim_number)
+
+        global_verbose = comap2fpxs.verbose
+
+        if comap2fpxs.params.psx_use_seed_list:
+            print("#" * 80)
+            print(f"Running with provided seed list: {seed_list_path}")
+            print(f"Seed list contains {len(seeds_to_run)} Monte Carlo simulations")
+            print("#" * 80)
+        elif global_verbose and comap2fpxs.rank == 0:
+            print("#" * 80)
+            print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
+            print("#" * 80)
 
         for i, seed in enumerate(seeds_to_run):
             # try:
@@ -1215,7 +1226,12 @@ if __name__ == "__main__":
             # except:
             #     print("SKIP")
             #     continue
-            
-        if not comap2fpxs.params.psx_use_seed_list:
+        
+        comap2fpxs.comm.Barrier()
+        if not comap2fpxs.params.psx_use_seed_list and comap2fpxs.rank == 0:
             seed_list = np.array(seed_list)
-            np.savetxt(os.path.join(comap2fpxs.params.power_spectrum_dir, psx_seed_list), seed_list)
+
+            if comap2fpxs.verbose:
+                print(f"Saving Monte Carlo seed list to: {seed_list_path}")
+
+            np.savetxt(seed_list_path, seed_list.astype(int))
