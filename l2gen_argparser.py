@@ -528,6 +528,13 @@ parser.add_argument(
 
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
+    "--psx_mode",
+    type=str,
+    default="feed",
+    help="(comap2fpxs) What the top-level branching in the splits should be. The default is 'feed', current other options are 'saddlebag'"
+)
+
+parser.add_argument(
     "--psx_tf_cutoff",
     type=float,
     default=0.2,

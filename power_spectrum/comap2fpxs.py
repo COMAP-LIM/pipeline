@@ -95,12 +95,16 @@ class COMAP2FPXS():
             time.sleep((self.rank%16) * 30.0)
         #time.sleep(self.rank * 0.01)
 
-        # Only want to compute FPXS for included feeds (detectors)
-        self.included_feeds = self.params.included_feeds
+        if self.params.psx_mode == "feed":
+            # Only want to compute FPXS for included feeds (detectors)
+            self.included_feeds = self.params.included_feeds
 
-        # Define all combinations between detectors
-        feed_combinations = list(itertools.product(self.included_feeds, self.included_feeds))
-        self.feed_combinations = feed_combinations
+            # Define all combinations between detectors
+            feed_combinations = list(itertools.product(self.included_feeds, self.included_feeds))
+            self.feed_combinations = feed_combinations
+        elif self.params.psx_mode == "saddlebag":
+            self.included_feeds = [1,2,3,4]
+            self.feed_combinations = list(itertools.product(self.included_feeds, self.included_feeds))
 
         # Compute FPXS for maps in psx_map_names list
         mapnames = self.params.psx_map_names
@@ -134,7 +138,7 @@ class COMAP2FPXS():
         self.field_combinations = field_combinations        
 
         # Generate tuple of (field/map filename, split map key, feed combination) to use for computing FPXS 
-        all_combinations = list(itertools.product(field_combinations, self.split_map_combinations, feed_combinations))
+        all_combinations = list(itertools.product(self.field_combinations, self.split_map_combinations, self.feed_combinations))
         Number_of_combinations = len(all_combinations)
         
         if self.verbose and self.rank == 0:
@@ -187,7 +191,7 @@ class COMAP2FPXS():
                         self.params, 
                         splits, 
                         feed1, 
-                        feed2,
+                        feed2
                     )
 
                 # If map difference null test is computed the output is saved in separate directory

@@ -54,8 +54,8 @@ class CrossSpectrum_nmaps:
             combination2 = split_keys[1]
             combination2 = combination2.split("/map_")[-1]
         
-        name1 = f"{combination1}_feed{feed1}"
-        name2 = f"{combination2}_feed{feed2}"
+        name1 = f"{combination1}_{self.params.psx_mode}{feed1}"
+        name2 = f"{combination2}_{self.params.psx_mode}{feed2}"
 
         self.names.append(name1)
         self.names.append(name2)
@@ -79,7 +79,7 @@ class CrossSpectrum_nmaps:
             mappaths[0], 
             cosmology,
             self.feed1 - 1, # feed index to use for loading map is base-0
-            self.split_keys[0], 
+            self.split_keys[0],
             )
 
         split_map2 = map_cosmo.MapCosmo(
@@ -87,7 +87,7 @@ class CrossSpectrum_nmaps:
             mappaths[1], 
             cosmology,
             self.feed2 - 1, # feed index to use for loading map is base-0
-            self.split_keys[1], 
+            self.split_keys[1],
             )
 
         self.maps.append(split_map1)

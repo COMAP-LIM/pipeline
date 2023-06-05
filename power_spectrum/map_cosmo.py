@@ -31,7 +31,9 @@ class MapCosmo:
         cosmology: astropy.cosmology.flrw.FlatLambdaCDM,
         feed: Optional[int] = None,
         split: Optional[str] = None,
+
     ):
+        print("Init of map_cosmo")
         """Init method to set up needed class attributes.
 
         Args:
@@ -59,6 +61,7 @@ class MapCosmo:
         ]
 
         mapdata.read_and_append(key_list)
+        print("read and append")
 
         self.x = mapdata["ra_centers"]
         self.y = mapdata["dec_centers"]
@@ -67,6 +70,7 @@ class MapCosmo:
         y_edges = mapdata["dec_edges"]
 
         if split is not None:
+            print("split is not none")
             if feed is None:
                 raise ValueError(
                     "Can only make cosmological map if both split and feed are specified."
@@ -125,7 +129,12 @@ class MapCosmo:
                     raise ValueError(
                         "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                     )
-                
+
+                if params.psx_mode == "saddlebag":
+                    print(split)
+                    split = re.sub(r"map", "map_saddlebag", split)
+                    print(split)
+
                 mapdata.read_and_append([split])
                 self.map = mapdata[split][feed]
                 sigma_key = re.sub(
@@ -137,13 +146,22 @@ class MapCosmo:
                 mapdata.read_and_append([sigma_key])
                 self.rms = mapdata[sigma_key][feed]
 
-        elif feed is not None:
+        elif feed is not None and self.params.psx_mode == "feed":
+            print("feed")
             mapdata.read_and_append(["map", "sigma_wn"])
             
             self.map = mapdata["map"][feed]
             self.rms = mapdata["sigma_wn"][feed]
-
+        
+        elif feed is not None and self.params.psx_mode == "saddlebag":
+            print("Saddlebag")
+            mapdata.read_and_append(["map_saddlebag", "sigma_wn_saddlebag"])
+            
+            self.map = mapdata["map_saddlebag"][feed]
+            self.rms = mapdata["sigma_wn_saddlebag"][feed]
+            
         else:
+            print("none")
             mapdata.read_and_append(["map_coadd", "sigma_wn_coadd"])
 
             self.map = mapdata["map_coadd"][:]
