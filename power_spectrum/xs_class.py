@@ -154,7 +154,6 @@ class CrossSpectrum_nmaps:
                 dy=self.maps[i].dy,
                 dz=self.maps[i].dz,
             )
-
             self.reverse_normalization(
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
@@ -264,15 +263,17 @@ class CrossSpectrum_nmaps:
 
             self.normalize_weights(i, j)  # normalize weights for given xs pair of maps
 
-            wi = self.maps[i].w
-            wj = self.maps[j].w
+            wi = self.maps[i].w.copy()
+            wj = self.maps[j].w.copy()
+            
             wh_i = np.where((np.log10(wi) < -0.5))
             wh_j = np.where((np.log10(wj) < -0.5))
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
 
-            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
             
+            full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
            
             my_xs, my_k, my_nmodes = tools.compute_cross_spec_perp_vs_par(
@@ -351,7 +352,8 @@ class CrossSpectrum_nmaps:
             )  # go back to the previous state to normalize again with a different map-pair
 
             self.rms_xs_mean.append(np.mean(rms_xs, axis=1))
-            self.rms_xs_std.append(np.std(rms_xs, axis=1))
+            self.rms_xs_std.append(np.std(rms_xs, axis=1, ddof = 1))
+            
         return np.array(self.rms_xs_mean), np.array(self.rms_xs_std)
 
     def run_noise_sims_2d(self, n_sims, seed=None, no_of_k_bins=15):
@@ -362,17 +364,26 @@ class CrossSpectrum_nmaps:
 
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
+
+        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn.h5", "r") as infile:
+        #     k_centers_perp = infile["k_centers_perp"][()]
+        #     k_centers_par = infile["k_centers_par"][()]
+        #     tf_wn = infile["tf"][()]
+
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
 
             self.normalize_weights(i, j)
-            wi = self.maps[i].w
-            wj = self.maps[j].w
+            wi = self.maps[i].w.copy()
+            wj = self.maps[j].w.copy()
+            
             wh_i = np.where(np.log10(wi) < -0.5)
             wh_j = np.where(np.log10(wj) < -0.5)
+            
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
-            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
+            
+            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
 
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -406,12 +417,15 @@ class CrossSpectrum_nmaps:
                     dz=self.maps[i].dz,
                 )[0]
 
+                ## MAY CHANGE IN THE FUTURE!!! THIS IS TO CORRECT WN SIMS TO GET SAME PIPELINE BIAS AS DATA
+                # rms_xs[:, :, g] *= tf_wn
+
             self.reverse_normalization(
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
 
             self.rms_xs_mean_2D.append(np.mean(rms_xs, axis=2))
-            self.rms_xs_std_2D.append(np.std(rms_xs, axis=2))
+            self.rms_xs_std_2D.append(np.std(rms_xs, axis=2, ddof=1))
             
         return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D)
 

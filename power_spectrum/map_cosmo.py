@@ -103,7 +103,8 @@ class MapCosmo:
                     if params.psx_null_diffmap:
                         split1, _ = split
                         split_number = split1.split("map_")[-1][5:]
-                        split_number = int(split_number[4:])
+                        null_var = split1.split("map_")[-1][:4]
+                        split_number = int(split_number[4:]) + params.primary_variables.index(null_var)
                     else:
                         split_number = int(split.split("map_")[-1][4:])
 
@@ -215,6 +216,9 @@ class MapCosmo:
         ).to(u.Mpc)
         y = ((self.y - y_edges[NDEC // 2]) * u.deg * angle2Mpc).to(u.Mpc)
 
+        x_edges = (x_edges * np.abs(np.cos(np.radians(y_edges[NDEC // 2]))) * u.deg * angle2Mpc).to(u.Mpc)
+        y_edges = (y_edges * u.deg * angle2Mpc).to(u.Mpc)
+
         # Cosmological distance corresponding to redshift width in middle of box
         dz = cosmology.comoving_distance(Z_MID + dredshift / 2) - cosmology.comoving_distance(
             Z_MID - dredshift / 2
@@ -224,10 +228,10 @@ class MapCosmo:
         z = np.arange(0, N_FREQ) * dz
 
         # Spacial resolutions
-        dx = np.abs(x[1] - x[0])
-        dy = np.abs(y[1] - y[0])
+        dx = np.abs(x_edges[1] - x_edges[0]) 
+        dy = np.abs(y_edges[1] - y_edges[0]) 
         dz = np.abs(z[1] - z[0])
-        
+
         # Grid sizes
         nx = len(x)
         ny = len(y)

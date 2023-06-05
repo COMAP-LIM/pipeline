@@ -54,7 +54,7 @@ class PCA_SubTractor:
 
         # List of keys to perform PCA on (only per feed hence remove "map" and "sigma_wn")
         self.keys_to_pca = [
-            key for key in map.keys if ("map" in key) and ("coadd" not in key)
+            key for key in map.keys if (("map" in key) and ("coadd" not in key)) and ("saddlebag" not in key)
         ]
 
     def get_svd_basis(
@@ -157,6 +157,62 @@ class PCA_SubTractor:
             return (map_coadd, nhit_coadd, rms_coadd)
         else:
             return (map_coadd, rms_coadd)
+        
+
+    def get_coadded_saddlebags(self, key) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Coadd feed maps into saddlebag maps
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]: Tuple of coadded saddlebag map, hit map and rms map.
+        """
+        # Make keys for rms and nhit datasets that corresponds to map dataset
+        rms_key = re.sub(r"map", "sigma_wn", key)
+        nhit_key = re.sub(r"map", "nhit", key)
+
+        # Get feed map data
+        inmap = self.map[key]
+        inrms = self.map[rms_key]
+        if nhit_key in self.map.keys:
+            innhit = self.map[nhit_key]
+
+        # Define inverse variance
+        inv_var = 1 / inrms**2
+
+
+        # Mask zero hit regions
+        mask = ~np.isfinite(inv_var)
+        inv_var[mask] = 0
+
+
+        # Define feed-coadded map
+        map_saddlebag = np.zeros((self.map.saddlebag_feeds.shape[0], *self.map["map_coadd"].shape))
+
+        sigma_wn_saddlebag = np.zeros((self.map.saddlebag_feeds.shape[0],  *self.map["sigma_wn_coadd"].shape))
+        
+        if nhit_key in self.map.keys:
+            nhit_saddlebag = np.zeros((self.map.saddlebag_feeds.shape[0], *self.map["nhit_coadd"].shape), dtype = np.int32)
+
+        for i in range(self.map.saddlebag_feeds.shape[0]):
+            # Current saddle bag feed indices
+            feeds_in_saddlebag = self.map.saddlebag_feeds[i] - 1
+
+            weights = 1 / inrms[feeds_in_saddlebag, ...] ** 2 
+            data = inmap[feeds_in_saddlebag, ...] * weights
+            inv_var = np.nansum(weights, axis = 0)
+
+            map_saddlebag[i] = np.nansum(data, axis = 0) / inv_var
+            sigma_wn_saddlebag[i] = 1 / np.sqrt(inv_var)
+            if nhit_key in self.map.keys:
+                nhit_saddlebag[i] = np.sum(innhit[feeds_in_saddlebag, ...], axis = 0)
+        
+        where = ~np.isfinite(sigma_wn_saddlebag)
+        map_saddlebag[where] = np.nan
+        sigma_wn_saddlebag[where] = np.nan
+    
+        if nhit_key in self.map.keys:
+            return (map_saddlebag, nhit_saddlebag, sigma_wn_saddlebag)
+        else:
+            return (map_saddlebag, sigma_wn_saddlebag)
 
     def define_normalization_exponent(self, norm: str = "sigma_wn"):
         """Methode that maps name of normalization to exponent number
@@ -321,40 +377,6 @@ class PCA_SubTractor:
                 rms_key = re.sub(r"map", "sigma_wn", key)
                 nhit_key = re.sub(r"map", "nhit", key)
 
-                # nfeed, nsb, nchannel, nra, ndec = self.map[rms_key].shape
-                # sorted_rms = self.map[rms_key].reshape(nfeed, nsb, nchannel, nra * ndec)
-
-                # bottom100_idx = np.argpartition(sorted_rms, 100, axis=-1)[..., :100]
-                # bottom100 = np.take_along_axis(sorted_rms, bottom100_idx, axis=-1)
-
-                # mean_bottom100_rms = np.nanmean(bottom100, axis=-1)
-
-                # noise_lim = mean_bottom100_rms * self.maskrms
-
-                # self.map[key] = np.where(
-                #     self.map[rms_key] < noise_lim[..., None, None],
-                #     self.map[key],
-                #     np.nan,
-                # )
-
-                # fig, ax = plt.subplots(figsize = (10, 10))
-                # ax.imshow(
-                #     self.map[key]
-
-                # )
-
-                # if nhit_key in self.map.keys:
-                #     self.map[nhit_key] = np.where(
-                #         self.map[rms_key] < noise_lim[..., None, None],
-                #         self.map[nhit_key],
-                #         np.nan,
-                #     )
-
-                # self.map[rms_key] = np.where(
-                #     self.map[rms_key] < noise_lim[..., None, None],
-                #     self.map[rms_key],
-                #     np.nan,
-                # )
 
                 feed_noise_freq_coadded = 1 / self.map[rms_key] ** 2
                 mask = ~np.isfinite(feed_noise_freq_coadded)
@@ -422,6 +444,21 @@ class PCA_SubTractor:
                 self.map.pca_reconstruction[f"{key}"] = map_reconstruction
                 self.map.full_pca_reconstruction[f"{key}"] = full_map_reconstruction
             
+                map_saddlebag_key = re.sub(r"map", "map_saddlebag", key)
+                rms_saddlebag_key = re.sub(r"map", "sigma_wn_saddlebag", key)
+                nhit_saddlebag_key = re.sub(r"map", "nhit_saddlebag", key)
+                print(map_saddlebag_key)
+                if "nhit" in self.map.keys:
+                    map_saddlebag, nhit_saddlebag, rms_saddlebag = self.get_coadded_saddlebags(key)
+                    self.map[nhit_saddlebag_key] = nhit_saddlebag
+                else:
+                    map_saddlebag, rms_saddlebag = self.get_coadded_saddlebags(key)
+
+
+                self.map[map_saddlebag_key] = map_saddlebag
+                self.map[rms_saddlebag_key] = rms_saddlebag
+
+
         if self.clean:
             # Coadd feed map
             if "nhit" in self.map.keys:
@@ -448,7 +485,6 @@ class PCA_SubTractor:
 
             self.map["sigma_wn_coadd"] = rms_coadd
 
-        
         # Assigning parameter specifying that map object is PCA subtracted
         # and what norm was used
         self.map["is_pca_subtr"] = True

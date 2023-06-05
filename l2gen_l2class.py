@@ -184,6 +184,13 @@ class level2_file:
                 f["hk_winddir"]     = l1file["hk/array/weather/windDirection"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
                 f["hk_windspeed"]   = l1file["hk/array/weather/windSpeed"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
                 f["hk_mjd"]         = l1file["hk/array/weather/utc"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_pressure"]  = l1file["hk/antenna0/cryostat/pressure"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_temp1"]  = l1file["hk/antenna0/cryostat/temp1"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_temp2"]  = l1file["hk/antenna0/cryostat/temp2"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_temp3"]  = l1file["hk/antenna0/cryostat/temp3"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_temp4"]  = l1file["hk/antenna0/cryostat/temp4"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_temp5"]  = l1file["hk/antenna0/cryostat/temp5"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+                f["hk_cryostat_temp6"]  = l1file["hk/antenna0/cryostat/temp6"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
             # pix2ind_python = np.zeros(20, dtype=int) + 999
             pix2ind_fortran = np.zeros(20, dtype=int)
             for ifeed in range(self.Nfeeds):
