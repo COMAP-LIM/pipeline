@@ -167,13 +167,13 @@ class Cube2TOD:
 
 
 
-class Replace_TOD_with_WN:
+class Replace_TOD_with_Tsys_WN:
     """ Replace the entire time-stream with white noise, from the radiometer equation (using Tsys).
         NOTE: This filter class should only be used after computing the system temperature
     """
 
-    name = "wn2tod"
-    name_long = "White noise TOD generator"
+    name = "tsysWNsim"
+    name_long = "Tsys white noise simulation"
     run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
     has_corr_template = False  # Set to True if the template impacts the correlation matrix and must be corrected (through the "get_corr_template" function).
 
@@ -196,3 +196,30 @@ class Replace_TOD_with_WN:
         for ifeed in range(l2.Nfeeds):
             radiometer_noise = tsys[ifeed]/np.sqrt(dt*dnu)
             l2.tod[ifeed] = Gain*(tsys[ifeed][:,:,None] + np.random.normal(0, radiometer_noise[:,:,None], (l2.Nsb, l2.Nfreqs, l2.Ntod)))
+
+
+
+
+class Replace_TOD_with_WN:
+    """ Replace the entire time-stream with pure white noise, centered around zero, without using Tsys.
+        NOTE: This filter should not be used in combination with normalization!
+    """
+
+    name = "WNsim"
+    name_long = "White noise simulation"
+    run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
+    has_corr_template = False  # Set to True if the template impacts the correlation matrix and must be corrected (through the "get_corr_template" function).
+
+    def __init__(self, params, omp_num_threads=2):
+        self.params = params
+        self.omp_num_threads = omp_num_threads
+
+
+    def run(self, l2):
+        l2.is_sim = True
+
+        if not self.params.wn_sim_seed is None:
+            np.random.seed(self.params.wn_sim_seed*l2.scanid)
+
+        for ifeed in range(l2.Nfeeds):
+            l2.tod[ifeed] = np.random.normal(0, 17.0, (l2.Nsb, l2.Nfreqs, l2.Ntod))

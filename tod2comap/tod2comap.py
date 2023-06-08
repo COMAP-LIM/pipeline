@@ -1062,6 +1062,48 @@ class Mapmaker:
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
+                temporal_mask = l2data["mask_temporal"].copy()
+
+
+                if "$azdir0" in numerator_key:
+                    az = l2data["point_tel"][0,:,0]  # All pixels have same pointing behavior, so we simply use feed 1.
+                    temporal_mask[:,0] = False
+                    temporal_mask[:,1:] = (az[1:] - az[:-1]) > 0
+                elif "$azdir1" in numerator_key:
+                    az = l2data["point_tel"][0,:,0]
+                    temporal_mask[:,0] = False
+                    temporal_mask[:,1:] = (az[1:] - az[:-1]) < 0
+                
+                if "$azmed0" in numerator_key:
+                    az = l2data["point_tel"][0,:,0]
+                    az_median = np.median(az)
+                    temporal_mask[:,:] = az > az_median
+                elif "$azmed1" in numerator_key:
+                    az = l2data["point_tel"][0,:,0]
+                    az_median = np.median(az)
+                    temporal_mask[:,:] = az < az_median
+                
+                if "$scanhalf0" in numerator_key:
+                    Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
+                    temporal_mask[:,Ntod//2:] = False
+                elif "$scanhalf1" in numerator_key:
+                    Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
+                    temporal_mask[:,:Ntod//2] = False
+                
+                if "$azmeddist0" in numerator_key:
+                    az = l2data["point_tel"][0,:,0]
+                    az_median = np.median(az)
+                    az_dist_from_median = np.abs(az - az_median)
+                    az_median_dist_from_median = np.median(az_dist_from_median)
+                    temporal_mask[:,az_median_dist_from_median < az_dist_from_median] = False
+                elif "$azmeddist1" in numerator_key:
+                    az = l2data["point_tel"][0,:,0]
+                    az_median = np.median(az)
+                    az_dist_from_median = np.abs(az - az_median)
+                    az_median_dist_from_median = np.median(az_dist_from_median)
+                    temporal_mask[:,az_median_dist_from_median > az_dist_from_median] = False
+
+
                 # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_nhit_and_map(
                     l2data["tod"],
