@@ -7,6 +7,7 @@ import re
 from mpi4py import MPI
 import datetime
 from copy import copy, deepcopy
+import itertools
 
 from COmap import COmap
 from L2file import L2file
@@ -134,6 +135,7 @@ class Mapmaker:
                 self.scandata[key] = value[()]
 
         split_data_path = os.path.join(self.accept_dir, split_data_path)
+
         with h5py.File(split_data_path, "r") as splitfile:
             self.splitdata = {}
             for key, value in splitfile.items():
@@ -151,23 +153,40 @@ class Mapmaker:
                 split_types_dict = {}
                 N_primary_splits = 0
                 N_secondary_splits = 0
+                N_temporal_splits = 0
 
                 primary_splits = []
                 secondary_splits = []
+                temporal_splits = []
 
                 # Read split definition file
                 for line in split_def_file.readlines()[2:]:
                     split_name, split_type = line.split()[:2]
                     split_types_dict[split_name] = int(split_type)
+                    
+                    extra = line.split()[-1]
+                    if extra == "$":
+                        # Temporal splits should be marked by dollar sign
+                        N_temporal_splits += 1
 
                     # Count number of primary and secondary splits
                     if int(split_type) == 2:
-                        N_primary_splits += 1
+                        if extra == "$":
+                            temporal_splits.append(split_name)
+                            split_name =  "$" + split_name
+                        else:
+                            N_primary_splits += 1
                         primary_splits.append(split_name)
+                        
                     elif int(split_type) == 3:
-                        N_secondary_splits += 1
+                        if extra == "$":
+                            temporal_splits.append(split_name)
+                            split_name = "$" + split_name
+                        else:
+                            N_secondary_splits += 1
                         secondary_splits.append(split_name)
 
+  
             split_names = self.splitdata["split_list"].astype(str)
             Nsplits = len(split_names)
             split_list = self.splitdata["jk_list"]
@@ -199,14 +218,22 @@ class Mapmaker:
             for i, number in enumerate(unique_numbers):
                 # For each unique number generate mapping between number and split name
                 for p, primary in enumerate(primary_splits):
-                    # Begin mapping name with primary key
-                    key = f"{primary}"
-                    key += f"{bits[i, N_secondary_splits + p]:d}"
+
+                    if "$" in primary:
+                        key = f"{primary}"
+                    else:
+                        # Begin mapping name with primary key
+                        key = f"{primary}"
+                        key += f"{bits[i, N_secondary_splits + p]:d}"
 
                     # Add secondary keys to primary key
                     for s, secondary in enumerate(secondary_splits[::-1]):
-                        key += f"{secondary}"
-                        key += f"{bits[i,N_secondary_splits - 1 - s]:d}"
+                        
+                        if "$" in secondary:
+                            key += f"{secondary}"
+                        else:
+                            key += f"{secondary}"
+                            key += f"{bits[i,N_secondary_splits - 1 - s]:d}"
 
                     # Save mapping in dictionary
                     if key not in split_key_mapping.keys():
@@ -216,7 +243,31 @@ class Mapmaker:
                             split_key_mapping[key], [number]
                         )
 
-            self.split_key_mapping = split_key_mapping
+
+            temporal_combinations = list(itertools.product(
+                *(N_temporal_splits * [range(2)])
+                ))
+            
+            temporal_splits = temporal_splits[::-1]
+
+            # Adding temporal splits to key name but do not change bit flag
+            # since bit flag only should map scan based splits. The temporal splits are implemented 
+            # inside mapmaker at later stage based on the contained keys.
+            _split_key_mapping = {}
+            for key, num in split_key_mapping.items():
+                for i, combos in enumerate(temporal_combinations):
+                    sub_key = ""
+                    sub_pattern = ""
+
+                    # subtitute raw temporal key pattern with temporal keys 
+                    for j, combo in enumerate(combos):
+                        sub_key += f"{temporal_splits[j]}{combo}"
+                        sub_pattern += fr"\${temporal_splits[j]}"
+                    
+                    new_key = re.sub(rf"{sub_pattern}", f"{sub_key}", key)
+                    _split_key_mapping[new_key] = num
+
+            self.split_key_mapping = _split_key_mapping
             split_keys = list(self.split_key_mapping.keys())
 
             # Generating list of map keys that are to be binned up into maps
@@ -227,6 +278,7 @@ class Mapmaker:
             ]
 
             self.primary_splits = primary_splits
+        
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
