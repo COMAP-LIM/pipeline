@@ -1535,18 +1535,21 @@ def make_accept_list(params, accept_params, scan_data):
 
 def read_jk_param(filepath):
     with open(filepath) as my_file:
-        lines = [line.split()[:2] for line in my_file]
-        n_split = int(lines[0][0])
+        raw_lines = [line.split()[:3] for line in my_file]
+        lines = [line for line in raw_lines if "$" not in line]
+        n_temporal_splits = len(raw_lines) - len(lines)
+        n_split = int(lines[0][0]) - n_temporal_splits
         lines = lines[2:n_split+1]
         strings = [l[0] for l in lines]
         types = [int(l[1]) for l in lines]
+
     return strings, types, n_split
 
 
 def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
     strings, types, n_split = read_jk_param(jk_param)
     
-    cutoff_list = np.zeros((n_split-1), dtype='f')
+    cutoff_list = np.zeros((n_split-1, 20, 4), dtype='f')
     
     n_scans, n_det, n_sb, _ = scan_data.shape
     jk_list = np.zeros((n_scans, n_det, n_sb), dtype=np.int32)
@@ -1576,7 +1579,6 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
     elif string == 'dayn':
         # day/night split
         closetonight = extract_data_from_array(scan_data, 'night')
-        
         cutoff = np.percentile(closetonight[accept_list], 50.0)
         jk_list[np.where(closetonight > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
@@ -1601,12 +1603,19 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
     elif string == 'cesc':
         fbit = extract_data_from_array(scan_data, 'fbit')
         jk_list[np.where(fbit == 32)] += int(2 ** n) 
-        cutoff_list[n-1] = 0.0 # placeholder
+        cutoff_list[n-1] = 0.0 # placeholder'
     elif string == 'ambt':
         # ambient temperature split 
         ambt = extract_data_from_array(scan_data, 'airtemp')
         cutoff = np.percentile(ambt[accept_list], 50.0)
         jk_list[np.where(ambt > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+    elif string == 'dtmp':
+        # dew temperature
+        #  temperature split 
+        dtmp = extract_data_from_array(scan_data, 'dewtemp')
+        cutoff = np.percentile(dtmp[accept_list], 50.0)
+        jk_list[np.where(dtmp > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
     elif string == 'elev':
         # elevation split 
@@ -1659,10 +1668,56 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         cutoff_list[n-1] = cutoff
 
     elif string == 'fpol':  ## fknee of second polyfilter component
-        fknee = extract_data_from_array(scan_data, 'fknee_poly1')
+        fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy() 
         cutoff = np.percentile(fknee[accept_list], 50.0)
         jk_list[np.where(fknee > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
+
+    elif string == 'fpoO':  ## fknee of first polyfilter component
+        fknee = extract_data_from_array(scan_data, 'fknee_poly0').copy()
+        fknee[~accept_list] = np.nan 
+        print((~accept_list).shape)
+        cutoff = np.nanpercentile(fknee, 50.0, axis = 0)
+        jk_list[np.where(fknee > cutoff)] += int(2 ** n)
+        print((cutoff).shape, cutoff_list.shape)
+        
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'fpoI':  ## fknee of second polyfilter component
+        fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy()
+        fknee[~accept_list] = np.nan 
+        cutoff = np.nanpercentile(fknee[accept_list], 50, axis = 0)
+        jk_list[np.where(fknee > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'apoO':  ## alpha of second polyfilter component
+        alpha = extract_data_from_array(scan_data, 'alpha_poly0').copy()
+        alpha[~accept_list] = np.nan
+        cutoff = np.nanpercentile(alpha, 50.0, axis = 0)
+        jk_list[np.where(alpha > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'apoI':  ## alpha of first polyfilter component
+        alpha = extract_data_from_array(scan_data, 'alpha_poly1').copy()
+        alpha[~accept_list] = np.nan
+        cutoff = np.nanpercentile(alpha, 50.0, axis = 0)
+        jk_list[np.where(alpha > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'spoO':  ## sigma of second polyfilter component
+        sigma = extract_data_from_array(scan_data, 'sigma_poly0').copy()
+        sigma[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sigma, 50.0, axis = 0)
+        jk_list[np.where(sigma > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+    
+    elif string == 'spoI':  ## sigma of first polyfilter component
+        sigma = extract_data_from_array(scan_data, 'sigma_poly1').copy()
+        sigma[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sigma, 50.0, axis = 0)
+        jk_list[np.where(sigma > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
 
         ######## Here you can add new jack-knives  ############
         ### elif .......:
