@@ -173,7 +173,7 @@ class Mapmaker:
                     if int(split_type) == 2:
                         if extra == "$":
                             temporal_splits.append(split_name)
-                            split_name =  "$" + split_name
+                            split_name = split_name
                         else:
                             N_primary_splits += 1
                         primary_splits.append(split_name)
@@ -181,7 +181,7 @@ class Mapmaker:
                     elif int(split_type) == 3:
                         if extra == "$":
                             temporal_splits.append(split_name)
-                            split_name = "$" + split_name
+                            split_name = split_name
                         else:
                             N_secondary_splits += 1
                         secondary_splits.append(split_name)
@@ -219,7 +219,7 @@ class Mapmaker:
                 # For each unique number generate mapping between number and split name
                 for p, primary in enumerate(primary_splits):
 
-                    if "$" in primary:
+                    if primary in temporal_splits:
                         key = f"{primary}"
                     else:
                         # Begin mapping name with primary key
@@ -229,7 +229,7 @@ class Mapmaker:
                     # Add secondary keys to primary key
                     for s, secondary in enumerate(secondary_splits[::-1]):
                         
-                        if "$" in secondary:
+                        if secondary in temporal_splits:
                             key += f"{secondary}"
                         else:
                             key += f"{secondary}"
@@ -262,7 +262,7 @@ class Mapmaker:
                     # subtitute raw temporal key pattern with temporal keys 
                     for j, combo in enumerate(combos):
                         sub_key += f"{temporal_splits[j]}{combo}"
-                        sub_pattern += fr"\${temporal_splits[j]}"
+                        sub_pattern += fr"{temporal_splits[j]}"
                     
                     new_key = re.sub(rf"{sub_pattern}", f"{sub_key}", key)
                     _split_key_mapping[new_key] = num
@@ -277,7 +277,10 @@ class Mapmaker:
                 for i in range(len(split_keys))
             ]
 
+            # Removing dollar signs
             self.primary_splits = primary_splits
+
+            
         
 
     def run(self):
@@ -900,7 +903,7 @@ class Mapmaker:
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
 
-    def get_temporal_mask(self, l2data: L2file) -> npt.NDArray:
+    def get_temporal_mask(self, l2data: L2file, numerator_key: str) -> npt.NDArray:
         """Method to use to extend defualt level 2 file mask with for example
         a directional scan mask or to cut the beginning and end of scans.
 
@@ -912,49 +915,46 @@ class Mapmaker:
         Returns:
             npt.NDArray: Additonal temporal mask array.
         """
-        az_percentile = self.params.az_mask_percentile  # Between 0 and 100
+        temporal_mask = np.zeros_like(l2data["mask_temporal"], dtype = bool)
 
-        if az_percentile > 0.0:
+        if "azdr0" in numerator_key:
+            az = l2data["point_tel"][0,:,0]  # All pixels have same pointing behavior, so we simply use feed 1.
+            temporal_mask = np.logical_and(temporal_mask, np.gradient(az)[:, None] > 0)
 
-            el_cut = self.params.el_mask_cut  # Degrees
+        elif "azdr1" in numerator_key:
+            az = l2data["point_tel"][0,:,0]  # All pixels have same pointing behavior, so we simply use feed 1.
+            temporal_mask = np.logical_and(temporal_mask, np.gradient(az)[:, None] < 0)
+        
+        if "azmd0" in numerator_key:
+            az = l2data["point_tel"][0,:,0]
+            az_median = np.median(az)
+            temporal_mask = np.logical_and(temporal_mask, az > az_median)
+        elif "azmd1" in numerator_key:
+            az = l2data["point_tel"][0,:,0]
+            az_median = np.median(az)
+            temporal_mask = np.logical_and(temporal_mask, az < az_median)
+            
+        if "schf0" in numerator_key:
+            Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
+            temporal_mask[:,Ntod//2:] = False
+        elif "schf1" in numerator_key:
+            Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
+            temporal_mask[:,:Ntod//2] = False
+        
+        if "azdi0" in numerator_key:
+            az = l2data["point_tel"][0,:,0]
+            az_median = np.median(az)
+            az_dist_from_median = np.abs(az - az_median)
+            az_median_dist_from_median = np.median(az_dist_from_median)
+            temporal_mask[:,az_median_dist_from_median < az_dist_from_median] = False
+        elif "azdi1" in numerator_key:
+            az = l2data["point_tel"][0,:,0]
+            az_median = np.median(az)
+            az_dist_from_median = np.abs(az - az_median)
+            az_median_dist_from_median = np.median(az_dist_from_median)
+            temporal_mask[:,az_median_dist_from_median > az_dist_from_median] = False
 
-            if az_percentile < 0 or az_percentile > 100:
-                raise ValueError(
-                    "Azimuth masking percentile must be between 0 and 100."
-                )
-
-            # Since the time of turn around should be the same for all detectors,
-            # only the azimuth of feed index 0 is used.
-            az = l2data["point_tel"][0, :, 0]
-            el = l2data["point_tel"][0, :, 1]
-
-            # Define aximuth and elevation limits
-            az_lims = [
-                np.percentile(az, 100 - az_percentile),
-                np.percentile(az, az_percentile),
-            ]
-
-            el_lims = [
-                np.median(el) - el_cut,
-                np.median(el) + el_cut,
-            ]
-
-            az_mask = np.logical_and(az > az_lims[0], az < az_lims[1])
-            el_mask = np.logical_and(el > el_lims[0], el < el_lims[1])
-
-            temporal_mask = np.logical_and(az_mask, el_mask)
-
-        if self.params.directional:
-            az_grad = np.gradient(l2data["point_tel"][0, :, 0])
-            temporal_mask = np.sign(az_grad) == self.which_az_direction
-
-        # Manually removing 0.5 seconds of the data at the scan edges
-        # to avoid potential repointing leakage
-        sample_time = 3600 * 24 * (l2data["time"][1] - l2data["time"][0])
-        Ncut = np.round(30 / sample_time).astype(np.int32)
-
-        temporal_mask[:Ncut] = False
-        temporal_mask[-Ncut:] = False
+        temporal_mask = np.logical_and(temporal_mask, l2data["mask_temporal"])
 
         return temporal_mask
 
@@ -1062,47 +1062,7 @@ class Mapmaker:
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
-                temporal_mask = l2data["mask_temporal"].copy()
-
-
-                if "azdr0" in numerator_key:
-                    az = l2data["point_tel"][0,:,0]  # All pixels have same pointing behavior, so we simply use feed 1.
-                    temporal_mask[:,0] = False
-                    temporal_mask[:,1:] = (az[1:] - az[:-1]) > 0
-                elif "azdr1" in numerator_key:
-                    az = l2data["point_tel"][0,:,0]
-                    temporal_mask[:,0] = False
-                    temporal_mask[:,1:] = (az[1:] - az[:-1]) < 0
-                
-                if "azmd0" in numerator_key:
-                    az = l2data["point_tel"][0,:,0]
-                    az_median = np.median(az)
-                    temporal_mask[:,:] = az > az_median
-                elif "azmd1" in numerator_key:
-                    az = l2data["point_tel"][0,:,0]
-                    az_median = np.median(az)
-                    temporal_mask[:,:] = az < az_median
-                
-                if "schf0" in numerator_key:
-                    Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
-                    temporal_mask[:,Ntod//2:] = False
-                elif "schf1" in numerator_key:
-                    Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
-                    temporal_mask[:,:Ntod//2] = False
-                
-                if "azdi0" in numerator_key:
-                    az = l2data["point_tel"][0,:,0]
-                    az_median = np.median(az)
-                    az_dist_from_median = np.abs(az - az_median)
-                    az_median_dist_from_median = np.median(az_dist_from_median)
-                    temporal_mask[:,az_median_dist_from_median < az_dist_from_median] = False
-                elif "azdi1" in numerator_key:
-                    az = l2data["point_tel"][0,:,0]
-                    az_median = np.median(az)
-                    az_dist_from_median = np.abs(az - az_median)
-                    az_median_dist_from_median = np.median(az_dist_from_median)
-                    temporal_mask[:,az_median_dist_from_median > az_dist_from_median] = False
-
+                temporal_mask = self.get_temporal_mask(l2data, numerator_key)
 
                 # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_nhit_and_map(
@@ -1111,7 +1071,7 @@ class Mapmaker:
                     freqmask,
                     l2data["pointing_ra_index"],
                     l2data["pointing_dec_index"],
-                    l2data["mask_temporal"],
+                    temporal_mask,
                     mapdata[hit_key],
                     mapdata[numerator_key],
                     mapdata[denominator_key],
@@ -1183,6 +1143,8 @@ class Mapmaker:
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
+                temporal_mask = self.get_temporal_mask(l2data, numerator_key)
+
                 # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_map(
                     l2data["tod"],
@@ -1190,7 +1152,7 @@ class Mapmaker:
                     freqmask,
                     l2data["pointing_ra_index"],
                     l2data["pointing_dec_index"],
-                    l2data["mask_temporal"],
+                    temporal_mask,
                     mapdata[numerator_key],
                     mapdata[denominator_key],
                     NFREQ,
