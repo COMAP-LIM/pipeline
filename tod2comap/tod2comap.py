@@ -443,13 +443,13 @@ class Mapmaker:
                     primary_splits=self.primary_splits,
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
-                    save_fits=(not self.params.fits),
+                    save_fits=(self.params.fits),
                 )
             else:
                 full_map.write_map(
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
-                    save_fits=(not self.params.fits),
+                    save_fits=(self.params.fits),
                 )
             finish_time = time.perf_counter()
 
@@ -915,7 +915,7 @@ class Mapmaker:
         Returns:
             npt.NDArray: Additonal temporal mask array.
         """
-        temporal_mask = np.zeros_like(l2data["mask_temporal"], dtype = bool)
+        temporal_mask = l2data["mask_temporal"].copy()
 
         if "azdr0" in numerator_key:
             az = l2data["point_tel"][0,:,0]  # All pixels have same pointing behavior, so we simply use feed 1.
@@ -953,8 +953,6 @@ class Mapmaker:
             az_dist_from_median = np.abs(az - az_median)
             az_median_dist_from_median = np.median(az_dist_from_median)
             temporal_mask[:,az_median_dist_from_median > az_dist_from_median] = False
-
-        temporal_mask = np.logical_and(temporal_mask, l2data["mask_temporal"])
 
         return temporal_mask
 
