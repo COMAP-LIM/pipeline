@@ -1629,6 +1629,43 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         cutoff = np.percentile(wind[accept_list], 50.0)
         jk_list[np.where(wind > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
+
+    elif string == 'widr':
+        # north-south wind direction split 
+        winddir = extract_data_from_array(scan_data, 'winddir')
+        cutoff = np.percentile(np.cos(np.radians(winddir[accept_list])), 50.0)
+        jk_list[np.where(winddir > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'hmty':
+        # humidity split 
+        humidity = extract_data_from_array(scan_data, 'humidity')
+        cutoff = np.percentile(humidity[accept_list], 50.0)
+        jk_list[np.where(humidity > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'pres':
+        # pressure split 
+        pressure = extract_data_from_array(scan_data, 'pressure')
+        cutoff = np.percentile(pressure[accept_list], 50.0)
+        jk_list[np.where(pressure > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'rain':
+        # rain split 
+        rain = extract_data_from_array(scan_data, 'rain')
+        cutoff = np.percentile(rain[accept_list], 50.0)
+        jk_list[np.where(rain > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'wthr':
+        # weather split 
+        weather = extract_data_from_array(scan_data, 'weather')
+        cutoff = np.percentile(weather[accept_list], 50.0)
+        jk_list[np.where(weather > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+
+
     elif string == 'sune':
         # sun_elevation split 
         sunel = extract_data_from_array(scan_data, 'sun_el')
@@ -1641,6 +1678,20 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         sunel = extract_data_from_array(scan_data, 'sun_el')
         jk_list[np.where(sunel > -5.0)] += int(2 ** n) 
         cutoff_list[n-1] = 0.0 # placeholder
+
+    elif string == 'modi':
+        # distance to moon split 
+        moondist = extract_data_from_array(scan_data, 'moon_dist')
+        cutoff = np.percentile(moondist[accept_list], 50.0)
+        jk_list[np.where(moondist > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'sudi':
+        # distance to sun split 
+        sundist = extract_data_from_array(scan_data, 'sun_dist')
+        cutoff = np.percentile(sundist[accept_list], 50.0)
+        jk_list[np.where(sundist > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
 
     elif string == 'wint':
         mjd = extract_data_from_array(scan_data, 'mjd')
@@ -1667,6 +1718,12 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         jk_list[np.where(sid < cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
+    elif string == 'azmp':  ## fknee of second polyfilter component
+        az_amp = extract_data_from_array(scan_data, 'az_amp').copy() 
+        cutoff = np.percentile(az_amp[accept_list], 50.0)
+        jk_list[np.where(az_amp > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
     elif string == 'fpol':  ## fknee of second polyfilter component
         fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy() 
         cutoff = np.percentile(fknee[accept_list], 50.0)
@@ -1676,17 +1733,15 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
     elif string == 'fpoO':  ## fknee of first polyfilter component
         fknee = extract_data_from_array(scan_data, 'fknee_poly0').copy()
         fknee[~accept_list] = np.nan 
-        print((~accept_list).shape)
         cutoff = np.nanpercentile(fknee, 50.0, axis = 0)
         jk_list[np.where(fknee > cutoff)] += int(2 ** n)
-        print((cutoff).shape, cutoff_list.shape)
         
         cutoff_list[n-1] = cutoff
 
     elif string == 'fpoI':  ## fknee of second polyfilter component
         fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy()
         fknee[~accept_list] = np.nan 
-        cutoff = np.nanpercentile(fknee[accept_list], 50, axis = 0)
+        cutoff = np.nanpercentile(fknee, 50, axis = 0)
         jk_list[np.where(fknee > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
