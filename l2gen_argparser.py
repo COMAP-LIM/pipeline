@@ -272,6 +272,13 @@ parser.add_argument(
 
 ### PCA filter
 parser.add_argument(
+    "--load_PCA_path",
+    type=str,
+    default="",
+    help="(pca) Path to l2files to load PCA components from. Leave empty to calculate PCA components from current data (which is what you usually want to do)."
+)
+
+parser.add_argument(
     "--max_pca_comp",
     type=int,
     default=12,
@@ -527,6 +534,13 @@ parser.add_argument(
 )
 
 ###### Cross-Spectrum stuff ######
+parser.add_argument(
+    "--psx_only_feed_splits",
+    type=str,
+    default=False,
+    help="(comap2fpxs) Hacky solution to ignore all other splits than the primary split across feeds/saddlebags, to get 2x sensitivity in PSX."
+)
+
 parser.add_argument(
     "--psx_mode",
     type=str,

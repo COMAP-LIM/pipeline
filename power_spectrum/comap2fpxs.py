@@ -138,6 +138,8 @@ class COMAP2FPXS():
         self.field_combinations = field_combinations        
 
         # Generate tuple of (field/map filename, split map key, feed combination) to use for computing FPXS 
+        if self.params.psx_only_feed_splits:
+            self.split_map_combinations = [(None, None)]
         all_combinations = list(itertools.product(self.field_combinations, self.split_map_combinations, self.feed_combinations))
         
         Number_of_combinations = len(all_combinations)
@@ -183,11 +185,18 @@ class COMAP2FPXS():
                     outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
                 
                 if self.verbose:
+                    print(mapname1, mapname2)
                     # Print some usefull information while computing FPXS
                     if self.params.psx_null_diffmap:
-                        print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m ({split1[0].split('/map_')[-1]} - {split1[1].split('/map_')[-1]}) X ({split2[0].split('/map_')[-1]} - {split2[1].split('/map_')[-1]}) \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
+                        if split1 is None or split2 is None:
+                            print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
+                        else:
+                            print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m ({split1[0].split('/map_')[-1]} - {split1[1].split('/map_')[-1]}) X ({split2[0].split('/map_')[-1]} - {split2[1].split('/map_')[-1]}) \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")
                     else:
-                        print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
+                        if split1 is None or split2 is None:
+                            print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
+                        else:
+                            print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
                 
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
@@ -531,11 +540,19 @@ class COMAP2FPXS():
         matplotlib.rcParams["hatch.linewidth"] = 0.3
 
         if self.params.psx_null_diffmap:
-            split1 = splits[0][0].split("map_")[-1][5:]
-            split2 = splits[1][0].split("map_")[-1][5:]
+            try:
+                split1 = splits[0][0].split("map_")[-1][5:]
+                split2 = splits[1][0].split("map_")[-1][5:]
+            except:
+                split1 = ""
+                split2 = ""
         else:
-            split1 = splits[0].split("map_")[-1]
-            split2 = splits[1].split("map_")[-1]
+            try:
+                split1 = splits[0].split("map_")[-1]
+                split2 = splits[1].split("map_")[-1]
+            except:
+                split1 = ""
+                split2 = ""
 
         outname = os.path.join(
             outname, 
@@ -690,11 +707,19 @@ class COMAP2FPXS():
 
         # Define the two split names that were cross-correlated
         if self.params.psx_null_diffmap:
-            split1 = splits[0][0].split("map_")[-1][5:]
-            split2 = splits[1][0].split("map_")[-1][5:]
+            try:
+                split1 = splits[0][0].split("map_")[-1][5:]
+                split2 = splits[1][0].split("map_")[-1][5:]
+            except:
+                split1 = ""
+                split2 = ""
         else:
-            split1 = splits[0].split("map_")[-1]
-            split2 = splits[1].split("map_")[-1]
+            try:
+                split1 = splits[0].split("map_")[-1]
+                split2 = splits[1].split("map_")[-1]
+            except:
+                split1 = ""
+                split2 = ""
 
         # Add output name to output path
         outname = os.path.join(

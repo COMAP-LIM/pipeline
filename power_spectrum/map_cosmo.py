@@ -142,13 +142,13 @@ class MapCosmo:
                 mapdata.read_and_append([sigma_key])
                 self.rms = mapdata[sigma_key][feed]
 
-        elif feed is not None and self.params.psx_mode == "feed":
+        elif feed is not None and params.psx_mode == "feed":
             mapdata.read_and_append(["map", "sigma_wn"])
             
             self.map = mapdata["map"][feed]
             self.rms = mapdata["sigma_wn"][feed]
         
-        elif feed is not None and self.params.psx_mode == "saddlebag":
+        elif feed is not None and params.psx_mode == "saddlebag":
             mapdata.read_and_append(["map_saddlebag", "sigma_wn_saddlebag"])
             
             self.map = mapdata["map_saddlebag"][feed]

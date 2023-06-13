@@ -50,9 +50,15 @@ class CrossSpectrum_nmaps:
 
         else:
             combination1 = split_keys[0]
-            combination1 = combination1.split("/map_")[-1]
+            try:
+                combination1 = combination1.split("/map_")[-1]
+            except:
+                pass
             combination2 = split_keys[1]
-            combination2 = combination2.split("/map_")[-1]
+            try:
+                combination2 = combination2.split("/map_")[-1]
+            except:
+                pass
         
         name1 = f"{combination1}_{self.params.psx_mode}{feed1}"
         name2 = f"{combination2}_{self.params.psx_mode}{feed2}"
