@@ -33,7 +33,6 @@ class MapCosmo:
         split: Optional[str] = None,
 
     ):
-        print("Init of map_cosmo")
         """Init method to set up needed class attributes.
 
         Args:
@@ -47,7 +46,7 @@ class MapCosmo:
             ValueError: If no feed is specified and split key is provided.
             ValueError: If split key does not contain 'map'.
         """
-
+        self.params = params
         if feed is not None:
             self.feed = feed + 1
         
