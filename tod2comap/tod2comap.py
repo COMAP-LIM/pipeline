@@ -151,13 +151,15 @@ class Mapmaker:
             # Parse split definition file and save definitions to dictionary
             with open(self.params.jk_def_file, "r") as split_def_file:
                 split_types_dict = {}
-                N_primary_splits = 0
-                N_secondary_splits = 0
-                N_temporal_splits = 0
+                # N_primary_splits = 0
+                # N_secondary_splits = 0
+                # N_temporal_splits = 0
 
                 primary_splits = []
                 secondary_splits = []
                 temporal_splits = []
+                temporal_primary_splits = []
+                temporal_secondary_splits = []
 
                 # Read split definition file
                 for line in split_def_file.readlines()[2:]:
@@ -165,28 +167,34 @@ class Mapmaker:
                     split_types_dict[split_name] = int(split_type)
                     
                     extra = line.split()[-1]
-                    if extra == "$":
-                        # Temporal splits should be marked by dollar sign
-                        N_temporal_splits += 1
 
                     # Count number of primary and secondary splits
                     if int(split_type) == 2:
                         if extra == "$":
+                            # Temporal splits should be marked by dollar sign
                             temporal_splits.append(split_name)
-                            split_name = split_name
-                        else:
-                            N_primary_splits += 1
+                            temporal_primary_splits.append(split_name)
+                            # N_temporal_splits += 1
+                        # else:
+                            # N_primary_splits += 1
                         primary_splits.append(split_name)
                         
                     elif int(split_type) == 3:
                         if extra == "$":
+                            # Temporal splits should be marked by dollar sign
                             temporal_splits.append(split_name)
-                            split_name = split_name
-                        else:
-                            N_secondary_splits += 1
+                            temporal_secondary_splits.append(split_name)
+                            # N_temporal_splits += 1
+                        # else:
+                            # N_secondary_splits += 1
                         secondary_splits.append(split_name)
 
-  
+            N_primary_splits = len(primary_splits)
+            N_secondary_splits = len(secondary_splits)
+            N_temporal_splits = len(temporal_splits)
+            N_temporal_primary_splits = len(temporal_primary_splits)
+            N_temporal_secondary_splits = len(temporal_secondary_splits)
+            
             split_names = self.splitdata["split_list"].astype(str)
             Nsplits = len(split_names)
             split_list = self.splitdata["jk_list"]
@@ -243,29 +251,48 @@ class Mapmaker:
                             split_key_mapping[key], [number]
                         )
 
-
-            temporal_combinations = list(itertools.product(
-                *(N_temporal_splits * [range(2)])
+            temporal_secondary_combinations = list(itertools.product(
+                *(N_temporal_secondary_splits * [range(2)])
                 ))
-            
-            temporal_splits = temporal_splits[::-1]
+
+            temporal_secondary_splits = temporal_secondary_splits[::-1]
 
             # Adding temporal splits to key name but do not change bit flag
             # since bit flag only should map scan based splits. The temporal splits are implemented 
             # inside mapmaker at later stage based on the contained keys.
             _split_key_mapping = {}
             for key, num in split_key_mapping.items():
-                for i, combos in enumerate(temporal_combinations):
-                    sub_key = ""
-                    sub_pattern = ""
+                if N_temporal_secondary_splits == 0:
+                    new_keys = [key]
+                else:
+                    new_keys = []
+                    for i, combos in enumerate(temporal_secondary_combinations):
+                        sub_key = ""
+                        sub_pattern = ""
 
-                    # subtitute raw temporal key pattern with temporal keys 
-                    for j, combo in enumerate(combos):
-                        sub_key += f"{temporal_splits[j]}{combo}"
-                        sub_pattern += fr"{temporal_splits[j]}"
-                    
-                    new_key = re.sub(rf"{sub_pattern}", f"{sub_key}", key)
-                    _split_key_mapping[new_key] = num
+                        # subtitute raw temporal key pattern with temporal keys 
+                        for j, combo in enumerate(combos):
+                            sub_key += f"{temporal_secondary_splits[j]}{combo}"
+                            sub_pattern += fr"{temporal_secondary_splits[j]}"
+                            # sub_key = f"{temporal_splits[j]}{combo}"
+                            # sub_pattern = fr"{temporal_splits[j]}"
+                        
+                        new_keys.append(re.sub(rf"{sub_pattern}", f"{sub_key}", key))
+
+
+                # subtitute raw temporal key pattern with temporal keys 
+                for j in range(2):
+                    for i, temp_split in enumerate(temporal_primary_splits):
+                        
+                        sub_key = ""
+                        sub_pattern = ""
+                        sub_key = f"{temp_split}{j}"
+                        sub_pattern = fr"{temp_split}"
+
+                        for new_key in new_keys:
+                            new_key2 = re.sub(rf"{sub_pattern}", f"{sub_key}", new_key)
+                            if sub_key in new_key2:
+                                _split_key_mapping[new_key2] = num
 
             self.split_key_mapping = _split_key_mapping
             split_keys = list(self.split_key_mapping.keys())
@@ -279,9 +306,7 @@ class Mapmaker:
 
             # Removing dollar signs
             self.primary_splits = primary_splits
-
             
-        
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -928,11 +953,11 @@ class Mapmaker:
         if "azmd0" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
-            temporal_mask = np.logical_and(temporal_mask, az > az_median)
+            temporal_mask = np.logical_and(temporal_mask, (az > az_median)[:, None])
         elif "azmd1" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
-            temporal_mask = np.logical_and(temporal_mask, az < az_median)
+            temporal_mask = np.logical_and(temporal_mask, (az > az_median)[:, None])
             
         if "schf0" in numerator_key:
             Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
@@ -946,13 +971,13 @@ class Mapmaker:
             az_median = np.median(az)
             az_dist_from_median = np.abs(az - az_median)
             az_median_dist_from_median = np.median(az_dist_from_median)
-            temporal_mask[:,az_median_dist_from_median < az_dist_from_median] = False
+            temporal_mask[az_median_dist_from_median < az_dist_from_median, :] = False
         elif "azdi1" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
             az_dist_from_median = np.abs(az - az_median)
             az_median_dist_from_median = np.median(az_dist_from_median)
-            temporal_mask[:,az_median_dist_from_median > az_dist_from_median] = False
+            temporal_mask[az_median_dist_from_median > az_dist_from_median, :] = False
 
         return temporal_mask
 
