@@ -51,6 +51,7 @@ def read_runlist(params, ignore_existing):
     with open(params.runlist) as my_file:
         lines = [line.split() for line in my_file]
     i = 0
+    runlist_all = []
     runlist = []
     n_fields = int(lines[i][0])
     i = i + 1
@@ -84,9 +85,8 @@ def read_runlist(params, ignore_existing):
                             mjd_stop = float(lines[i+k+1][2]) - params.time_stop_cut/(60*60*24)
                             scan_length_seconds = (mjd_stop - mjd_start)*60*60*24
                             if scan_length_seconds > params.min_allowed_scan_length:
-                                if not scanid in existing_scans:
-                                    runlist.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename])
-                                else:
+                                runlist_all.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename])
+                                if scanid in existing_scans:
                                     n_scans_already_processed += 1
                             else:
                                 n_scans_too_short += 1
@@ -94,32 +94,35 @@ def read_runlist(params, ignore_existing):
                             n_scans_outside_range += 1
             i = i + n_scans + 1
 
-        
         if fieldname in params.fields:
             print(f"Field name:                 {fieldname}")
-            print(f"Obsids in runlist file:     {n_obsids}")
-            print(f"Scans in runlist file:      {n_scans_tot}")
-            print(f"Scans of right scantype:    {n_right_scantype}")
-            print(f"Scans included in run:      {len(runlist)}")
-            print(f"Scans too short:            {n_scans_too_short}")
-            print(f"Scans outside obsid range:  {n_scans_outside_range}")
-            print(f"Scans already processed:    {n_scans_already_processed}")
+    print(f"RUNLIST STATS")
+    print(f"Obsids in runlist file:     {n_obsids}")
+    print(f"Scans in runlist file:      {n_scans_tot}")
+    print(f"Scans of right scantype:    {n_right_scantype}")
+    print(f"Scans included in run:      {len(runlist)}")
+    print(f"Scans too short:            {n_scans_too_short}")
+    print(f"Scans outside obsid range:  {n_scans_outside_range}")
+    print(f"Scans already processed:    {n_scans_already_processed}")
 
     random.seed(42)
-    random.shuffle(runlist)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.        
+    random.shuffle(runlist_all)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.
+    runlist = [scan for scan in runlist_all if scan[0] not in existing_scans]
+
 
     ### Runlist splitting options ###
     if params.runlist_split_num_i >= params.runlist_split_in_n:
         raise ValueError(f"--runlist_split_num_i (currently {params.runlist_split_num_i}) cannot be equal or larger than --runlist_split_in_n (currently {params.runlist_split_in_n}).")
     if params.runlist_split_in_n > 1:
-        len_runlist = len(runlist)
+        len_runlist = len(runlist_all)
         runlist_start_idx = (len_runlist*params.runlist_split_num_i)//params.runlist_split_in_n
         runlist_stop_idx = (len_runlist*(params.runlist_split_num_i+1))//params.runlist_split_in_n
-        print(runlist_start_idx, runlist_stop_idx)
         if params.runlist_split_num_i == params.runlist_split_in_n - 1:
             runlist_stop_idx = len_runlist
-        runlist = runlist[runlist_start_idx:runlist_stop_idx]
+        runlist_i = runlist_all[runlist_start_idx:runlist_stop_idx]
+        runlist_i = [scan for scan in runlist_i if scan[0] not in existing_scans]
         print(f"Runlist splitting enabled: Running part {params.runlist_split_num_i} of {params.runlist_split_in_n}.")
-        print(f"Runlist cut: [{runlist_start_idx}:{runlist_stop_idx}], {runlist_stop_idx-runlist_start_idx} scans.")
-
-    return runlist
+        print(f"Runlist cut: [{runlist_start_idx}:{runlist_stop_idx}], {runlist_stop_idx-runlist_start_idx} scans, of which {len(runlist_i)} are not yet processed.")
+        return runlist_i
+    else:
+        return runlist
