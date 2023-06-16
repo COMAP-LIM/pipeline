@@ -15,7 +15,7 @@ import math
 from scipy.ndimage import gaussian_filter1d
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_with_WN
+from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
 from scipy.interpolate import interp1d
 
 
@@ -940,6 +940,30 @@ class PCA_filter(Filter):
         self.params = params
     
     def run(self, l2, masking_run=False):
+        if len(self.params.load_PCA_path) > 0:  # This parameter option indicates that we should not calculate PCA components, but gather them from the scans in this folder.
+            path = os.path.join(self.params.load_PCA_path, l2.fieldname)
+            filename = os.path.join(path, l2.l2_filename + ".h5")
+            if not os.path.isfile(filename):
+                raise ValueError(f"Specified l2 file for loading PCA components does not exist: {filename}.")
+            logging.debug(f"Using imported PCA components from {filename}.")
+            with h5py.File(filename, "r") as f:
+                comps = f["pca_comp"][()]
+                n_pca_comp = f["n_pca_comp"][()]
+                pca_eigvals = f["pca_eigvals"][()]
+
+            pca_ampl = np.zeros((n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            for ifeed in range(l2.Nfeeds):
+                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*np.transpose(comps, (1,0)), axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*np.transpose(comps, (1,0))[None,None,:,:], axis=-1)
+                pca_ampl[:,ifeed] = np.transpose(ak, (2,0,1))
+            
+            l2.tofile_dict["pca_ampl"] = pca_ampl
+            l2.tofile_dict["pca_comp"] = comps
+            l2.tofile_dict["n_pca_comp"] = n_pca_comp
+            l2.tofile_dict["pca_eigvals"] = pca_eigvals
+            return
+
+
         if not self.use_ctypes:
             pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
@@ -1084,7 +1108,38 @@ class PCA_feed_filter(Filter):
         self.params = params
         self.use_ctypes = use_ctypes
     
+
     def run(self, l2, masking_run=False):
+        if len(self.params.load_PCA_path) > 0:  # This parameter option indicates that we should not calculate PCA components, but gather them from the scans in this folder.
+            l2.tofile_dict["pca_feed_ampl"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            l2.tofile_dict["pca_feed_comp"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Ntod))
+            l2.tofile_dict["n_pca_feed_comp"] = np.zeros((l2.Nfeeds), dtype=int)
+            l2.tofile_dict["pca_feed_eigvals"] = np.zeros((l2.Nfeeds, self.max_pca_comp))
+
+            path = os.path.join(self.params.load_PCA_path, l2.fieldname)
+            filename = os.path.join(path, l2.l2_filename + ".h5")
+            if not os.path.isfile(filename):
+                raise ValueError(f"Specified l2 file for loading PCAf components does not exist: {filename}.")
+            logging.debug(f"Using imported PCAf components from {filename}.")
+            with h5py.File(filename, "r") as f:
+                comps = f["pca_feed_comp"][()]
+                n_pca_comp = f["n_pca_feed_comp"][()]
+                pca_eigvals = f["pca_feed_eigvals"][()]
+
+            for ifeed in range(l2.Nfeeds):
+                comp = comps[:n_pca_comp[ifeed],ifeed]
+                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comp.T, axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comp.T[None,None,:,:], axis=-1)
+
+                l2.tofile_dict["pca_feed_ampl"][:n_pca_comp[ifeed],ifeed] = np.transpose(ak, (2,0,1))
+
+            l2.tofile_dict["pca_feed_comp"] = comps
+            l2.tofile_dict["n_pca_feed_comp"] = n_pca_comp
+            l2.tofile_dict["pca_feed_eigvals"] = pca_eigvals
+
+            return
+
+
         self.N_deci_freqs = l2.Nfreqs//self.deci_factor
 
         l2.tofile_dict["pca_feed_ampl"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
