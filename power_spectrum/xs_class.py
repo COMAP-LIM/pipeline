@@ -310,6 +310,70 @@ class CrossSpectrum_nmaps:
         # print("all close to zero", np.allclose(self.xs, np.zeros_like(self.xs)))
         return self.xs, self.k, self.nmodes
 
+    # COMPUTE ALL THE XS IN 2D
+    def calculate_xs_ra_dec_nu(
+        self, no_of_k_bins=15
+    ):  # here take the number of k-bins as an argument
+        n_k = no_of_k_bins
+        self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), n_k)
+        self.k_bin_edges_ra = np.logspace(-2.0 + np.log10(2), np.log10(1.5), n_k)
+        self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
+
+        calculated_xs = self.get_information()
+
+        # store each cross-spectrum and corresponding k and nmodes by appending to these lists:
+        self.xs = []
+        self.k = []
+        self.nmodes = []
+        index = -1
+        for i in range(0, len(self.maps) - 1, 2):
+            j = i + 1
+            index += 1
+
+            self.normalize_weights(i, j)  # normalize weights for given xs pair of maps
+
+            wi = self.maps[i].w.copy()
+            wj = self.maps[j].w.copy()
+            
+            wh_i = np.where((np.log10(wi) < -0.5))
+            wh_j = np.where((np.log10(wj) < -0.5))
+            wi[wh_i] = 0.0
+            wj[wh_j] = 0.0
+
+            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            
+            full_weight[wi * wj == 0] = 0.0
+            full_weight[np.isnan(full_weight)] = 0.0
+           
+            my_xs, my_k, my_nmodes = tools.compute_cross_spec_angular2d_vs_par(
+                (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
+                (self.k_bin_edges_ra, self.k_bin_edges_dec, self.k_bin_edges_par),
+                dx=self.maps[i].dx,
+                dy=self.maps[i].dy,
+                dz=self.maps[i].dz,
+            )
+
+            self.reverse_normalization(
+                i, j
+            )  # go back to the previous state to normalize again with a different map-pair
+
+            self.xs.append(my_xs)
+            self.k.append(my_k)
+            self.nmodes.append(my_nmodes)
+
+            # print(np.allclose(my_xs, np.zeros_like(my_xs)))
+            # print(np.any(np.isnan(my_xs)))
+
+            # print("------------------------------------------------")
+
+        self.xs = np.array(self.xs)
+        self.k = np.array(self.k)
+        self.nmodes = np.array(self.nmodes)
+
+        # print("all close to zero", np.allclose(self.xs, np.zeros_like(self.xs)))
+        return self.xs, self.k, self.nmodes
+
+
     # RUN NOISE SIMULATIONS (for all combinations of n maps, to match xs)
     def run_noise_sims(self, n_sims, seed=None):
         self.rms_xs_mean = []
@@ -359,7 +423,7 @@ class CrossSpectrum_nmaps:
 
             self.rms_xs_mean.append(np.mean(rms_xs, axis=1))
             self.rms_xs_std.append(np.std(rms_xs, axis=1, ddof = 1))
-            
+
         return np.array(self.rms_xs_mean), np.array(self.rms_xs_std)
 
     def run_noise_sims_2d(self, n_sims, seed=None, no_of_k_bins=15):
@@ -371,7 +435,7 @@ class CrossSpectrum_nmaps:
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
 
-        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn.h5", "r") as infile:
+        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
         #     k_centers_perp = infile["k_centers_perp"][()]
         #     k_centers_par = infile["k_centers_par"][()]
         #     tf_wn = infile["tf"][()]

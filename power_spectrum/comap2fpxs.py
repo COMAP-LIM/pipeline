@@ -141,6 +141,7 @@ class COMAP2FPXS():
         if self.params.psx_only_feed_splits:
             self.split_map_combinations = [(None, None)]
         all_combinations = list(itertools.product(self.field_combinations, self.split_map_combinations, self.feed_combinations))
+        
         Number_of_combinations = len(all_combinations)
         
         if self.verbose and self.rank == 0:
@@ -242,7 +243,7 @@ class COMAP2FPXS():
                             seed = seed,
                         )
                     else:
-                        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn.h5", "r") as infile:
+                        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
                         #     k_centers_perp = infile["k_centers_perp"][()]
                         #     k_centers_par = infile["k_centers_par"][()]
                         #     tf_wn = infile["tf"][()]

@@ -310,6 +310,68 @@ def compute_cross_spec_perp_vs_par(
     return Ck, k, nmodes
 
 
+def compute_cross_spec_angular2d_vs_par(
+    x, k_bin_edges, dx=1, dy=1, dz=1
+):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
+    n_x, n_y, n_z = x[0].shape
+
+    if os.environ.get("OMP_NUM_THREADS") is None:
+
+        Ck_3D = (
+            np.real(fft.fftn(x[0]) * np.conj(fft.fftn(x[1])))
+            * dx
+            * dy
+            * dz
+            / (n_x * n_y * n_z)
+        )
+    else:
+        Ck_3D = (
+            np.real(fft.fftn(x[0], workers = int(os.environ.get("OMP_NUM_THREADS"))) * np.conj(fft.fftn(x[1], workers = int(os.environ.get("OMP_NUM_THREADS")))))
+            * dx
+            * dy
+            * dz
+            / (n_x * n_y * n_z)
+        )
+
+    print(Ck_3D.shape, x[0].shape)
+
+    kx = np.fft.fftfreq(n_x, dx) * 2 * np.pi
+    ky = np.fft.fftfreq(n_y, dy) * 2 * np.pi
+    kz = np.fft.fftfreq(n_z, dz) * 2 * np.pi
+
+    kra  = np.abs(kx)
+    kdec = np.abs(ky)
+    kpar = np.abs(kz)
+
+    kra = kra[:, None, None] + np.zeros_like(Ck_3D)
+    kdec = kdec[None, :, None] + np.zeros_like(Ck_3D)
+    kpar = kpar[None, None, :] + np.zeros_like(Ck_3D)
+
+    Ck_nmodes = np.histogramdd(
+        (kra.flatten(), kdec.flatten(), kpar.flatten()), bins=k_bin_edges, weights=Ck_3D.flatten()
+    )[0]
+    nmodes = np.histogramdd(
+        (kra.flatten(), kdec.flatten(), kpar.flatten()), bins=k_bin_edges,
+    )[0]
+    k = [(k_edges[1:] + k_edges[:-1]) / 2.0 for k_edges in k_bin_edges]
+    Ck = np.zeros((len(k[0]), len(k[1]), len(k[2])))
+
+    # print("_-_" * 20)
+    # print(np.sum(nmodes))
+    # print("isnan kperp:", np.any(np.isnan(kperp.flatten())))
+    # print("isnan kpar:", np.any(np.isnan(kpar.flatten())))
+    # print("isnan Ck_3D:", np.any(np.isnan(Ck_3D)))
+    # print(np.any(np.isnan(kx)), np.any(np.isnan(ky)), np.any(np.isnan(kz)))
+    # print(dx * dy * dz , (n_x * n_y * n_z), np.any(np.isnan(fft.fftn(x[0]))), np.any(np.isnan(np.conj(fft.fftn(x[1])))), np.any(np.isnan(x[0])), np.any(np.isnan(x[1])))
+    # print(np.all(nmodes > 0), np.any(nmodes > 0))
+
+    # print("_-_" * 20)
+    Ck[np.where(nmodes > 0)] = (
+        Ck_nmodes[np.where(nmodes > 0)] / nmodes[np.where(nmodes > 0)]
+    )
+    return Ck, k, nmodes
+
+
 def distribute_indices(n_indices, n_processes, my_rank):
     divide = n_indices // n_processes
     leftovers = n_indices % n_processes
