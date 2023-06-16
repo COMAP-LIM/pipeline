@@ -195,6 +195,8 @@ class Replace_TOD_with_Tsys_WN:
 
         for ifeed in range(l2.Nfeeds):
             radiometer_noise = tsys[ifeed]/np.sqrt(dt*dnu)
+            l2.freqmask[ifeed, radiometer_noise < 0] = False
+            radiometer_noise[radiometer_noise < 0] = 1.0
             l2.tod[ifeed] = Gain*(tsys[ifeed][:,:,None] + np.random.normal(0, radiometer_noise[:,:,None], (l2.Nsb, l2.Nfreqs, l2.Ntod)))
 
 
