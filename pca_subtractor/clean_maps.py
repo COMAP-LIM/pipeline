@@ -6,6 +6,7 @@ import sys
 
 
 from pca_subtractor import PCA_SubTractor
+from pca_subtractor_experimental import PCA_SubTractor_Experimental
 
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -96,7 +97,7 @@ def main():
 
     try:
         rmsnorm = args.rmsnorm
-        assert rmsnorm in ["approx", "sigma_wn", "var", "three", "weightless"]
+        assert rmsnorm in ["approx", "sigma_wn", "var", "three", "weightless", "exper"]
     except:
         message = """Please choose a normalisation to apply prior to PCA;  -n approx, -n rms or -n var."""
         raise NameError(message)
@@ -128,14 +129,25 @@ def main():
     mymap.read_map()
 
     # Define PCA subtractor object
-    pca_sub = PCA_SubTractor(
-        map=mymap,
-        ncomps=ncomps,
-        maskrms=maskrms,
-        verbose=is_verbose,
-        subtract_mean=subtract_mean,
-        approx_noise=approx_noise,
-    )
+    if rmsnorm == "exper":
+        pca_sub = PCA_SubTractor_Experimental(
+            map=mymap,
+            ncomps=ncomps,
+            maskrms=maskrms,
+            verbose=is_verbose,
+            subtract_mean=subtract_mean,
+            approx_noise=approx_noise,
+        )
+    else:
+        pca_sub = PCA_SubTractor(
+            map=mymap,
+            ncomps=ncomps,
+            maskrms=maskrms,
+            verbose=is_verbose,
+            subtract_mean=subtract_mean,
+            approx_noise=approx_noise,
+        )
+
 
     # PCA mode subtracted cleaned map object
     mymap_clean = pca_sub.compute_pca(norm=rmsnorm)
