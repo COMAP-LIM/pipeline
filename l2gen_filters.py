@@ -15,7 +15,7 @@ import math
 from scipy.ndimage import gaussian_filter1d
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
+from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_With_Signal, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
 from scipy.interpolate import interp1d
 
 
@@ -180,8 +180,6 @@ class Normalize_Gain(Filter):
                     l2.tod[ifeed,isb] = l2.tod[ifeed,isb]/tod_lowpass - 1
             del(tod_lowpass)
 
-
-
 class Normalize_Gain_Old(Filter):
     name = "norm_old"
     name_long = "normalization_old"
@@ -284,6 +282,7 @@ class Decimation(Filter):
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.Nfreqs_lowres = params.decimation_freqs
+        self.params = params
 
     def run(self, l2):
         # Set up the lowres frequency bins.
@@ -293,7 +292,7 @@ class Decimation(Filter):
             self.freq_bin_edges_lowres[isb] = np.linspace(26+isb*2, 28+isb*2, self.Nfreqs_lowres+1)
             for ifreq in range(self.Nfreqs_lowres):
                 self.freq_bin_centers_lowres[isb,ifreq] = np.mean(self.freq_bin_edges_lowres[isb, ifreq:ifreq+2])
-        
+
         freq_idxs_included = np.zeros((l2.Nsb, self.Nfreqs_lowres, l2.Nfreqs), dtype=bool)  # An array saying whether each high-res frequency (dimension 3) is a part of a low-res bin (dimension 2).
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
@@ -304,8 +303,16 @@ class Decimation(Filter):
         self.dnu = l2.Nfreqs//self.Nfreqs_lowres
         l2.Nfreqs_highres = l2.Nfreqs
         l2.Nfreqs = self.Nfreqs_lowres
+        
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
+        
+        # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
+        if "Replace_TOD_With_Signal" in self.params.filters:
+            print("Overwriting weights in decimation with ones due to signal only TOD being processed!")
+            weight = np.ones_like(weight)
+
         weight[~l2.freqmask] = 0
+
         tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=np.float32)
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
@@ -313,6 +320,7 @@ class Decimation(Filter):
                 tod_decimated[:,isb,ifreq,:] /= np.nansum(weight[:,isb,freq_idxs_included[isb,ifreq]], axis=1)[:,None]
         l2.tod = tod_decimated
         l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs_lowres), dtype=bool)
+
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
                 l2.freqmask_decimated[:,isb,ifreq] = l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]].any(axis=-1)
@@ -436,8 +444,6 @@ class Pointing_Template_Subtraction(Filter):
                     l2.tofile_dict["el_az_amp"][ifeed,:,:,0] = g_est
                     l2.tofile_dict["el_az_amp"][ifeed,:,:,1] = d_est
                     l2.tofile_dict["el_az_amp"][ifeed,:,:,2] = c_est
-
-
 
 class Polynomial_filter(Filter):
     name = "poly"
@@ -1688,8 +1694,6 @@ class Masking(Filter):
         logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
-
-
 class Tsys_calc(Filter):
     name = "tsys"
     name_long = "Tsys calculation"
@@ -1822,7 +1826,6 @@ class Calibration(Filter):
         l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys > running median max")
         
-
 
 class Mask_Az_Edges(Filter):
     name = "az-cut"

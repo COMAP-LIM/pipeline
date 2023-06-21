@@ -145,6 +145,7 @@ class l2gen:
                 logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
+
         logging.debug(f"[{self.rank}] Writing level2 file...")
         self.l2file.write_level2_data()
         logging.debug(f"[{self.rank}] Finished l2 file write.")

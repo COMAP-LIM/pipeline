@@ -39,6 +39,7 @@ parser.add_argument(
     help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.",
 )
 parser.add_argument("--runlist", type=str, help="(REQUIRED) Path to runlist.")
+
 parser.add_argument(
     "-f",
     "--filters",
@@ -554,6 +555,13 @@ parser.add_argument(
     default=0.2,
     help="(comap2fpxs) Value of transfer function above which to compute chi2 in feed-feed pseudo cross-spectra.",
 )
+
+parser.add_argument(
+    "--psx_noise_map_path",
+    type=str,
+    help="(comap2fpxs) The path to the binned white noise (no filtering) map, used to generate error bars in power spectra.",
+)
+
 
 parser.add_argument(
     "--from_file",
