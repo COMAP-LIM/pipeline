@@ -991,8 +991,9 @@ class PCA_filter(Filter):
 
             N_actual = np.sum(M.shape[0])
             sigma0 = 1.0/np.sqrt(1.0/50*(2e9/1024))
-            lambda_threshold = (np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
+            lambda_threshold = self.params.pca_lambda_threshold*(np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
             self.n_pca_comp = np.sum(singular_values**2 > lambda_threshold)
+            self.n_pca_comp = min(self.n_pca_comp, self.params.min_pca_comp)
             comps = comps[:,:self.n_pca_comp]
             del(M)
 
@@ -1185,8 +1186,9 @@ class PCA_feed_filter(Filter):
                 N_actual = M.shape[0]
                 sigma0 = np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2)
                 sigma0 = np.nanmean(sigma0)
-                lambda_threshold = 1.0*(np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
+                lambda_threshold = self.params.pca_lambda_threshold*(np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
                 self.n_pca_comp = np.sum(singular_values**2 > lambda_threshold)
+                self.n_pca_comp = min(self.n_pca_comp, self.params.min_feed_pca_comp)
                 comps = comps[:,:self.n_pca_comp]
                 del(M, pca)
                 
