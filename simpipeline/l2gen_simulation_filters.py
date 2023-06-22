@@ -74,7 +74,6 @@ class Cube2TOD:
 
         # Reading simulation cube data from file
         simdata.read()
-        # print("Time read cube:", time.perf_counter() - t0, "s")
 
         # Testing if frequency array in new simulation format has same bin centers as level2 data
         if ".npz" in self.simpath:
@@ -223,7 +222,6 @@ class Replace_TOD_With_Signal:
 
         # Reading simulation cube data from file
         simdata.read()
-        # print("Time read cube:", time.perf_counter() - t0, "s")
 
         # Testing if frequency array in new simulation format has same bin centers as level2 data
         if ".npz" in self.simpath:

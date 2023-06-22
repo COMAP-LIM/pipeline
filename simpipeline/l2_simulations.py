@@ -271,8 +271,6 @@ class SimCube:
         ra_edges = self._data["x_edges"]
         dec_edges = self._data["y_edges"]
         
-        print(ra_edges.shape)
-
         box = (
             np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
             * utils.degree
@@ -317,7 +315,6 @@ class SimCube:
         # Number of hits per target geometry pixel
         hits = np.bincount(px_idx, minlength=NDEC * NRA * NFREQ)
 
-        print(px_idx.shape, self.simdata.size)
         # Binned up simulation data per target geometry pixel
         new_simdata = np.bincount(
             px_idx, minlength=NDEC * NRA * NFREQ, weights=self.simdata.flatten()
