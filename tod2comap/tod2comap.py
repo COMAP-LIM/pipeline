@@ -279,7 +279,6 @@ class Mapmaker:
                         
                         new_keys.append(re.sub(rf"{sub_pattern}", f"{sub_key}", key))
                 
-
                 # subtitute raw temporal key pattern with temporal keys 
                 for j in range(2):
                     if N_temporal_primary_splits == 0:                        
@@ -296,8 +295,9 @@ class Mapmaker:
 
                         for new_key in new_keys:
                             new_key2 = re.sub(rf"{sub_pattern}", f"{sub_key}", new_key)
-                            if sub_key in new_key2:
+                            if len(new_key2) == 5 * (1 + N_secondary_splits):   # Igniring all new keys that miss the split bin number
                                 _split_key_mapping[new_key2] = num
+                            
 
             self.split_key_mapping = _split_key_mapping
             split_keys = list(self.split_key_mapping.keys())
@@ -311,6 +311,8 @@ class Mapmaker:
 
             # Removing dollar signs
             self.primary_splits = primary_splits
+            
+            # print(self.maps_to_bin)
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -1253,7 +1255,7 @@ class Mapmaker:
                     for i in range(4):
                         mask = np.isfinite(mapdata[key][i, ...])
                         mapdata[key][i][mask] = signal[mask]
-                        
+
             # Providing name of primary splits to make group names
             mapdata.write_map(primary_splits=self.primary_splits, params=self.params)
         else:
