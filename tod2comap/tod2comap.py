@@ -278,12 +278,17 @@ class Mapmaker:
                             # sub_pattern = fr"{temporal_splits[j]}"
                         
                         new_keys.append(re.sub(rf"{sub_pattern}", f"{sub_key}", key))
-
+                
 
                 # subtitute raw temporal key pattern with temporal keys 
                 for j in range(2):
+                    if N_temporal_primary_splits == 0:                        
+                        new_key = new_keys[0]
+                        _split_key_mapping[new_key] = num 
+                        continue
+
                     for i, temp_split in enumerate(temporal_primary_splits):
-                        
+                
                         sub_key = ""
                         sub_pattern = ""
                         sub_key = f"{temp_split}{j}"
@@ -306,7 +311,6 @@ class Mapmaker:
 
             # Removing dollar signs
             self.primary_splits = primary_splits
-            
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -1241,11 +1245,15 @@ class Mapmaker:
         # Fill in split maps with simulation data
         if self.perform_splits:
             for key in mapdata.keys:
-                if "/" in key and "map" in key:
+                if "/" in key and ("map" in key and "saddlebag" not in key):
                     for i in range(NFEED):
                         mask = np.isfinite(mapdata[key][i, ...])
                         mapdata[key][i][mask] = signal[mask]
-
+                if "/" in key and ("map" in key and "saddlebag" in key):
+                    for i in range(4):
+                        mask = np.isfinite(mapdata[key][i, ...])
+                        mapdata[key][i][mask] = signal[mask]
+                        
             # Providing name of primary splits to make group names
             mapdata.write_map(primary_splits=self.primary_splits, params=self.params)
         else:
