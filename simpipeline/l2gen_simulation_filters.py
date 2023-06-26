@@ -238,7 +238,7 @@ class Replace_TOD_With_Signal:
         # Back to original shape {feed, time samples}
         rotated_ra = rotated_ra.reshape(l2file.ra.shape)
         rotated_dec = rotated_dec.reshape(l2file.dec.shape)
-                
+        
         # Defining pointers for arrays to send to C++ modules
         float32_array4 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_float, ndim=4, flags="contiguous"
@@ -255,7 +255,8 @@ class Replace_TOD_With_Signal:
             dtype=ctypes.c_double, ndim=2, flags="contiguous"
         )  
 
-        self.injector.replace_tod_with_signal.argtypes = [
+        # self.injector.replace_tod_with_signal.argtypes = [
+        self.injector.replace_tod_with_nearest_neighbor_signal.argtypes = [
                         float32_array4,  # tod
                         float64_array4,  # simdata
                         float64_array2,  # ra
@@ -266,9 +267,9 @@ class Replace_TOD_With_Signal:
                         ctypes.c_float,  # dec0
                         ctypes.c_int,    # nra
                         ctypes.c_int,    # ndec
-                        ctypes.c_int,    # nfreq
-                        ctypes.c_int,    # nfeed
-                        ctypes.c_int,    # nsamp
+                        ctypes.c_long,    # nfreq
+                        ctypes.c_long,    # nfeed
+                        ctypes.c_long,    # nsamp
                         ctypes.c_int,    # nthread
                     ]
 
@@ -291,8 +292,11 @@ class Replace_TOD_With_Signal:
         nsb, nchannel, ndec, nra = simdata["simulation"].shape
         nfreq = nsb * nchannel
 
+        # l2file.tod = np.zeros_like(l2file.tod)
+
         # Call C++ library by reference and inject TOD with signal
-        self.injector.replace_tod_with_signal(
+        # self.injector.replace_tod_with_signal(
+        self.injector.replace_tod_with_nearest_neighbor_signal(
                     l2file.tod,
                     simdata["simulation"],
                     rotated_ra,
@@ -307,8 +311,7 @@ class Replace_TOD_With_Signal:
                     l2file.tod.shape[0],
                     l2file.tod.shape[-1],
                     self.omp_num_threads,
-                )        
-
+                ) 
 
 class Replace_TOD_with_Tsys_WN:
     """ Replace the entire time-stream with white noise, from the radiometer equation (using Tsys).
@@ -368,3 +371,5 @@ class Replace_TOD_with_WN:
 
         for ifeed in range(l2.Nfeeds):
             l2.tod[ifeed] = np.random.normal(0, 17.0, (l2.Nsb, l2.Nfreqs, l2.Ntod))
+
+# %%

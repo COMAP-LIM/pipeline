@@ -128,7 +128,8 @@ class level2_file:
         if "Replace_TOD_With_Signal" in self.params.filters:
             print("Overwriting weights in l2 saver with ones due to signal only TOD being processed!")
 
-            self.sigma0 = np.ones_like(self.sigma0)
+            self.sigma0 = 0.04 * np.ones_like(self.sigma0)
+            self.sigma0[~self.freqmask_decimated] = np.nan
         
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):

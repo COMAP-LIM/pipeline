@@ -8,6 +8,7 @@ from mpi4py import MPI
 import datetime
 from copy import copy, deepcopy
 import itertools
+from pixell import enmap, utils
 
 from COmap import COmap
 from L2file import L2file
@@ -913,23 +914,27 @@ class Mapmaker:
         ra = pointing[:, :, 0].astype(np.float64)
         dec = pointing[:, :, 1].astype(np.float64)
 
-        # Get WCS grid parameters from map
-        DRA = mapdata["wcs"]["CDELT1"].astype(np.float64)
-        DDEC = mapdata["wcs"]["CDELT2"].astype(np.float64)
+        # # Get WCS grid parameters from map
+        # DRA = mapdata["wcs"]["CDELT1"].astype(np.float64)
+        # DDEC = mapdata["wcs"]["CDELT2"].astype(np.float64)
 
-        CRVAL_RA = mapdata["wcs"]["CRVAL1"].astype(np.float64)
-        CRVAL_DEC = mapdata["wcs"]["CRVAL2"].astype(np.float64)
+        # CRVAL_RA = mapdata["wcs"]["CRVAL1"].astype(np.float64)
+        # CRVAL_DEC = mapdata["wcs"]["CRVAL2"].astype(np.float64)
 
-        CRPIX_RA = mapdata["wcs"]["CRPIX1"].astype(np.float64)
-        CRPIX_DEC = mapdata["wcs"]["CRPIX2"].astype(np.float64)
+        # CRPIX_RA = mapdata["wcs"]["CRPIX1"].astype(np.float64)
+        # CRPIX_DEC = mapdata["wcs"]["CRPIX2"].astype(np.float64)
 
-        # Define {RA, DEC} indecies
-        idx_ra_allfeed = (np.round((ra - CRVAL_RA) / DRA + (CRPIX_RA - 1))).astype(
-            np.int32
-        )
-        idx_dec_allfeed = (np.round((dec - CRVAL_DEC) / DDEC + (CRPIX_DEC - 1))).astype(
-            np.int32
-        )
+        # # Define {RA, DEC} indecies
+        # idx_ra_allfeed = (np.round((ra - CRVAL_RA) / DRA + (CRPIX_RA - 1))).astype(
+        #     np.int32
+        # )
+        # idx_dec_allfeed = (np.round((dec - CRVAL_DEC) / DDEC + (CRPIX_DEC - 1))).astype(
+        #     np.int32
+        # )
+
+        coords = np.array((dec, ra))
+        coords = np.deg2rad(coords)
+        idx_dec_allfeed, idx_ra_allfeed = utils.nint(mapdata.standard_geometry.sky2pix(coords)).astype(np.int32)
 
         l2data["pointing_ra_index"] = idx_ra_allfeed
         l2data["pointing_dec_index"] = idx_dec_allfeed
@@ -1014,6 +1019,9 @@ class Mapmaker:
 
         int32_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_int, ndim=2, flags="contiguous"
+        )  # 4D array 32-bit integer pointer object.
+        int64_array2 = np.ctypeslib.ndpointer(
+            dtype=ctypes.c_long, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
 
         bool_array2 = np.ctypeslib.ndpointer(

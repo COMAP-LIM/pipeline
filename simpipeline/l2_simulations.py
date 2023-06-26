@@ -195,6 +195,7 @@ class SimCube:
 
         # Rotation matrix to rotate from field pointing to equator region around {ra, dec} = {0, 0}
         center_ra, center_dec = self.FIELD_CENTER
+
         # Rotation matrix in right ascention
         rotation_ra = utils.rotmatrix(-np.deg2rad(center_ra), raxis="z")
         # Rotation matrix in declination
@@ -204,10 +205,10 @@ class SimCube:
         rotation_matrix = rotation_dec @ rotation_ra
 
         # Rotate pointing
-        new_pointing = np.rad2deg(utils.rect2ang(rotation_matrix @ vector))
+        new_pointing = utils.rect2ang(rotation_matrix @ vector)
         new_ra, new_dec = new_pointing
 
-        return new_ra, new_dec
+        return np.rad2deg(new_ra), np.rad2deg(new_dec)
 
     def rotate_equator_to_field_center(
         self, ra: npt.NDArray, dec: npt.NDArray
@@ -227,6 +228,7 @@ class SimCube:
 
         # Rotation matrix to rotate from field pointing to equator region around {ra, dec} = {0, 0}
         center_ra, center_dec = self.FIELD_CENTER
+
         # Rotation matrix in right ascention
         rotation_ra = utils.rotmatrix(np.deg2rad(center_ra), raxis="z")
         # Rotation matrix in declination
@@ -236,16 +238,16 @@ class SimCube:
         rotation_matrix = rotation_ra @ rotation_dec
 
         # Rotate pointing
-        new_pointing = np.rad2deg(utils.rect2ang(rotation_matrix @ vector))
+        new_pointing = utils.rect2ang(rotation_matrix @ vector)
         new_ra, new_dec = new_pointing
 
-        return new_ra, new_dec
+        return np.rad2deg(new_ra), np.rad2deg(new_dec)
 
     def bin_cube2field_geometry(
         self,
         geometry: enmap.ndmap,
     ) -> enmap.ndmap:
-        """Method that takes simulation cube, rotates its pixel centers to field centerd
+        """Method that takes simulation cube, rotates its pixel centers to field centered
         grid, and bins up simualtion cube to provided map geometry.
 
         Args:
@@ -275,8 +277,9 @@ class SimCube:
             np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
             * utils.degree
         )
+        
         shape, equator_wcs = enmap.geometry(
-            pos=box, res=np.deg2rad(ra_edges[1] - ra_edges[0]), proj="car"
+            pos=box, res=np.deg2rad(ra_edges[1] - ra_edges[0]), proj="car", force = True
         )
         equator_geometry = enmap.zeros(shape, equator_wcs)
 
@@ -295,7 +298,7 @@ class SimCube:
 
         # Find rounded pixel index corresponding to telescope pointing given the simulation map geometry
         y_idx, x_idx = utils.nint(geometry.sky2pix(coords))
-
+        
         # Clipping away all pointings that are outside target geometry patch
         y_idx = np.clip(y_idx.flatten(), 0, NDEC - 1)
         x_idx = np.clip(x_idx.flatten(), 0, NRA - 1)
