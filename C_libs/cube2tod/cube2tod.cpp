@@ -266,8 +266,8 @@ extern "C" void replace_tod_with_bilinear_interp_signal(
             long int time_feed_idx = nsamp * d + t;
 
             // Define pointing index
-            float x = (dec[time_feed_idx] - dec0) / ddec;
-            float y = (ra[time_feed_idx] - ra0) / dra;
+            double x = (dec[time_feed_idx] - dec0) / ddec;
+            double y = (ra[time_feed_idx] - ra0) / dra;
 
             // Previous grid points
             int x0 = std::floor(x);
@@ -296,8 +296,8 @@ extern "C" void replace_tod_with_bilinear_interp_signal(
             }
 
             // Distance from previous grid points
-            float dx = x - x0;
-            float dy = y - y0;
+            double dx = x - x0;
+            double dy = y - y0;
             
             // Defining flattened pixel grid indices
             int x00 = nra * x0 + y0; 
@@ -314,11 +314,11 @@ extern "C" void replace_tod_with_bilinear_interp_signal(
                 int idx_10 = f * npix + x10; 
 
                 // Interpolate in x-direction along to constant y-grid points
-                float signal_xy1 = (1 - dx) * simdata[idx_00] + dx * simdata[idx_01];  
-                float signal_xy2 = (1 - dx) * simdata[idx_11] + dx * simdata[idx_10];  
+                double signal_xy1 = (1 - dx) * simdata[idx_00] + dx * simdata[idx_10];  
+                double signal_xy2 = (1 - dx) * simdata[idx_01] + dx * simdata[idx_11];  
 
                 // Interpolate from previous x-interpolation in y-direction
-                float signal  = (1 - dy) * signal_xy1 + dy * signal_xy2;
+                double signal  = (1 - dy) * signal_xy1 + dy * signal_xy2;
 
                 // Defining frequency-detector-time index for indexing TOD
                 long int idx_tod = nsamp * (d * nfreq + f) + t;
