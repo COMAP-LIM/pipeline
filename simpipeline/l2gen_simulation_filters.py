@@ -107,9 +107,8 @@ class Cube2TOD:
             dtype=ctypes.c_double, ndim=2, flags="contiguous"
         )  
 
-        self.injector.cube2tod.argtypes = [
+        self.injector.replace_tod_with_bilinear_interp_signal.argtypes = [
                         float32_array4,  # tod
-                        float64_array3,  # Tsys
                         float64_array4,  # simdata
                         float64_array2,  # ra
                         float64_array2,  # dec
@@ -124,6 +123,7 @@ class Cube2TOD:
                         ctypes.c_long,    # nsamp
                         ctypes.c_int,    # nthread
                     ]
+
 
         # Grid edges of simulation box
         ra_edges = simdata["x_edges"]
@@ -144,10 +144,11 @@ class Cube2TOD:
         nsb, nchannel, ndec, nra = simdata["simulation"].shape
         nfreq = nsb * nchannel
 
+        signal_tod = np.zeros_like(l2file.tod) 
+
         # Call C++ library by reference and inject TOD with signal
-        self.injector.cube2tod(
-                    l2file.tod,
-                    l2file.Tsys,
+        self.injector.replace_tod_with_bilinear_interp_signal(
+                    signal_tod,
                     simdata["simulation"],
                     rotated_ra,
                     rotated_dec,
@@ -161,10 +162,11 @@ class Cube2TOD:
                     l2file.tod.shape[0],
                     l2file.tod.shape[-1],
                     self.omp_num_threads,
-                )        
-                
+                ) 
 
-
+        l2file.tod *= (1 + signal_tod / l2file.Tsys[..., None])
+        l2file.signal_tod = signal_tod
+    
 class Replace_TOD_With_Signal:
     """General signal cube injection class.
 
@@ -232,7 +234,7 @@ class Replace_TOD_With_Signal:
 
         # Euler rotaion of telescope pointing to equatorial origin
         rotated_ra, rotated_dec = simdata.rotate_pointing_to_equator(
-            l2file.ra.flatten(), l2file.dec.flatten()
+            l2file.ra.flatten().astype(np.float64), l2file.dec.flatten().astype(np.float64)
         )
 
         # Back to original shape {feed, time samples}
@@ -255,8 +257,7 @@ class Replace_TOD_With_Signal:
             dtype=ctypes.c_double, ndim=2, flags="contiguous"
         )  
 
-        # self.injector.replace_tod_with_signal.argtypes = [
-        self.injector.replace_tod_with_nearest_neighbor_signal.argtypes = [
+        self.injector.replace_tod_with_bilinear_interp_signal.argtypes = [
                         float32_array4,  # tod
                         float64_array4,  # simdata
                         float64_array2,  # ra
@@ -274,8 +275,8 @@ class Replace_TOD_With_Signal:
                     ]
 
         # Grid edges of simulation box
-        ra_edges = simdata["x_edges"]
-        dec_edges = simdata["y_edges"]
+        ra_edges = simdata["x_edges"].astype(np.float64)
+        dec_edges = simdata["y_edges"].astype(np.float64)
 
         # From bin edges to centers
         if simdata.npz_format:
@@ -295,8 +296,7 @@ class Replace_TOD_With_Signal:
         # l2file.tod = np.zeros_like(l2file.tod)
 
         # Call C++ library by reference and inject TOD with signal
-        # self.injector.replace_tod_with_signal(
-        self.injector.replace_tod_with_nearest_neighbor_signal(
+        self.injector.replace_tod_with_bilinear_interp_signal(
                     l2file.tod,
                     simdata["simulation"],
                     rotated_ra,
@@ -312,6 +312,7 @@ class Replace_TOD_With_Signal:
                     l2file.tod.shape[-1],
                     self.omp_num_threads,
                 ) 
+        
 
 class Replace_TOD_with_Tsys_WN:
     """ Replace the entire time-stream with white noise, from the radiometer equation (using Tsys).
