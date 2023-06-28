@@ -82,6 +82,9 @@ class Mapmaker:
         ).head.object.hexsha  # Current git commit hash.
         self.params.git_hash = self.git_hash
 
+        # Use unfiltered signal instead of data/data with signal
+        self.use_signal_tod = False
+
     def read_params(self):
         from l2gen_argparser import parser
 
@@ -323,7 +326,7 @@ class Mapmaker:
         # File name of full coadded output map
         full_map_name = f"{self.fieldname}_{self.params.map_name}.h5"
         full_map_name = os.path.join(self.params.map_dir, full_map_name)
-        
+
         if os.path.exists(full_map_name):
             if self.rank == 0:
                 print("Map already exists. Please delete or rename existing map to make new one.")
@@ -370,23 +373,27 @@ class Mapmaker:
                     np.all(~self.splitdata["accept_list"][scan_idx])
                     and not self.params.override_accept
                 ):
-                    # Print in red forground color
-                    print(
-                        f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
-                    )
+                    if self.params.verbose:
+                        # Print in red forground color
+                        print(
+                            f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
+                        )
                     rejection_number += 1
                     continue
 
                 if self.params.drop_first_scans and str(scanid)[-2:] == "02":
                     # Print in red forground color
-                    print(
-                        f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
-                    )
+                    if self.params.verbose:
+                        print(
+                            f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
+                        )
                     rejection_number += 1
                     continue
 
-                # Print in green forground color
-                print(f"\033[92m Processing scan {scan[0]} @ rank {self.rank}\033[00m")
+                if self.params.verbose:
+                    # Print in green forground color
+                    print(f"\033[92m Processing scan {scan[0]} @ rank {self.rank}\033[00m")
+                
                 l2path = scan[-1]
 
                 ti = time.perf_counter()
@@ -588,7 +595,11 @@ class Mapmaker:
             pixels = l2data["feeds"] - 1
 
         # Sort pixels to correct buffer position
-        tod[pixels, ...] = l2data["tod"]
+        if "signal_simulation_tod" in l2data.keys and self.use_signal_tod:
+            tod[pixels, ...] = l2data["signal_simulation_tod"]
+        else:
+            tod[pixels, ...] = l2data["tod"]
+
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
@@ -1313,15 +1324,14 @@ def main():
     else:
         tod2comap.run()
 
+        if tod2comap.params.bin_signal_tod:
+            tod2comap.use_signal_tod = True
+            tod2comap.params.populate_cube = False
+            tod2comap.params.map_name += "_signal_tod" 
+            tod2comap.run()
 
 if __name__ == "__main__":
     main()
 
     # TODO:
     # * Fix documentations
-    # * Implement splits
-    # * Save frequency edges and
-    #   centers when Jonas
-    #   fixes this in l2gen
-    # * HP filter?
-    #
