@@ -174,7 +174,7 @@ class Mapmaker:
 
                     # Count number of primary and secondary splits
                     if int(split_type) == 2:
-                        if extra == "$":
+                        if "$" in line:
                             # Temporal splits should be marked by dollar sign
                             temporal_splits.append(split_name)
                             temporal_primary_splits.append(split_name)
@@ -184,7 +184,7 @@ class Mapmaker:
                         primary_splits.append(split_name)
                         
                     elif int(split_type) == 3:
-                        if extra == "$":
+                        if "$" in line:
                             # Temporal splits should be marked by dollar sign
                             temporal_splits.append(split_name)
                             temporal_secondary_splits.append(split_name)
