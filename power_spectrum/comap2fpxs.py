@@ -968,7 +968,7 @@ class COMAP2FPXS():
             number = split_line[1]
 
             if len(split_line) > 2:
-                extra = split_line[2]
+                extra = split_line[-1]
             
             if len(split_line) < 2 or len(split_line) == 2:
                 extra = "#"
