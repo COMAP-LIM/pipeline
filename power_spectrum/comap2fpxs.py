@@ -250,7 +250,7 @@ class COMAP2FPXS():
 
                         # cross_spectrum.xs *= tf_wn
 
-                        cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], outdir_data)
+                        cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance"], outdir_data)
                     
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
@@ -439,7 +439,7 @@ class COMAP2FPXS():
                         if not os.path.exists(chi2_name):
                             os.mkdir(chi2_name)
                     
-                        self.plot_chi2_grid(chi2, splits, chi2_name)
+                    self.plot_chi2_grid(chi2, splits, chi2_name)
 
                     average_name = os.path.join(fig_dir, "average_spectra")
                     average_name = os.path.join(average_name, indir)
