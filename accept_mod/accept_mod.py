@@ -1063,13 +1063,11 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             scans = field[1][obsid]
             n_scans = len(scans)
             obsid_info = ObsidData()
-            print(scans)
             obsid_info.scans = scans
             obsid_info.n_freqs = n_freqs
             obsid_info.field = fieldname
             obsid_info.l2_path = l2_path
             obsid_infos.append(obsid_info)
-            # scan_list[i_scan:i_scan+n_scans] = scans
             i_scan += n_scans
         
         n_tasks = len(obsid_infos) 
@@ -1099,10 +1097,8 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             print(f"Started task {tasks_started} of {n_tasks}.", flush=True)
             # print(f"Sent work to worker {workerID} for task {tasks_started}.", flush=True)
             n_scans = len(scan_data_list)
-            print(scan_list, i_scan, n_scans)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
             scan_list[i_scan:i_scan+n_scans] = [int(scaninfo[0,0,1]) for scaninfo in scan_data_list]
-            print(scan_list, i_scan, n_scans)
             i_scan += n_scans
 
         while tasks_done < n_tasks:
@@ -1112,10 +1108,8 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             workerID = status.Get_source()
             print(f"Recieved work from worker {workerID}. ({tasks_done} / {n_tasks})", flush=True)
             n_scans = len(scan_data_list)
-            print(scan_list, i_scan, n_scans)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
             scan_list[i_scan:i_scan+n_scans] = [int(scaninfo[0,0,1]) for scaninfo in scan_data_list]
-            print(scan_list, i_scan, n_scans)
             i_scan += n_scans
         
         print("Shutting down workers.")
