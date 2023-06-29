@@ -1140,11 +1140,10 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             comm.send(scan_data_list, dest=0)
     print(f"Done from rank {rank}.")
 
-    sort_idxs = np.argsort(scan_list)
-    scan_list = scan_list[sort_idxs]
-    scan_data = scan_data[sort_idxs]
-
     if rank == 0:
+        sort_idxs = np.argsort(scan_list)
+        scan_list = scan_list[sort_idxs]
+        scan_data = scan_data[sort_idxs]
         return scan_list, scan_data
     else:
         return None, None
