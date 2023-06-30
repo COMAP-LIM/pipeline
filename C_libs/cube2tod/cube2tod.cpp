@@ -10,7 +10,7 @@
 extern "C" void cube2tod(
     float *tod,
     double *Tsys,
-    double *simdata,
+    float *simdata,
     double *ra,
     double *dec,
     float dra,
@@ -108,9 +108,9 @@ extern "C" void cube2tod(
                 int idx_10 = f * npix + x10; 
 
                 // Interpolate in x-direction along to constant y-grid points
-                float signal_xy1 = (1 - dx) * simdata[idx_00] + dx * simdata[idx_01];  
-                float signal_xy2 = (1 - dx) * simdata[idx_11] + dx * simdata[idx_10];  
-
+                double signal_xy1 = (1 - dx) * simdata[idx_00] + dx * simdata[idx_10];  
+                double signal_xy2 = (1 - dx) * simdata[idx_01] + dx * simdata[idx_11]; 
+                
                 // Interpolate from previous x-interpolation in y-direction
                 float signal  = (1 - dy) * signal_xy1 + dy * signal_xy2;
 
@@ -128,7 +128,7 @@ extern "C" void cube2tod(
 
 extern "C" void replace_tod_with_nearest_neighbor_signal(
     float *tod,
-    double *simdata,
+    float *simdata,
     double *ra,
     double *dec,
     float dra,
@@ -217,7 +217,7 @@ extern "C" void replace_tod_with_nearest_neighbor_signal(
 
 extern "C" void replace_tod_with_bilinear_interp_signal(
     float *tod,
-    double *simdata,
+    float *simdata,
     double *ra,
     double *dec,
     float dra,

@@ -1,6 +1,7 @@
 import warnings
 import numpy as np
 import ctypes
+from pixell import enmap, utils
 
 # Ignore RuntimeWarning
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -72,21 +73,62 @@ class Cube2TOD:
         # Setting up simulation cube object
         simdata = SimCube(self.simpath)
 
-        # Reading simulation cube data from file
-        simdata.read()
-
         # Testing if frequency array in new simulation format has same bin centers as level2 data
         if ".npz" in self.simpath:
             np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
             
+        simdata.read_cube_geometry(self.boost)
+
         # Defining simulation cube geometry using standard geometies and boost signal
-        simdata.prepare_geometry(l2file.fieldname, self.boost)
+        simdata.prepare_geometry(l2file.fieldname)
 
         # Euler rotaion of telescope pointing to equatorial origin
         rotated_ra, rotated_dec = simdata.rotate_pointing_to_equator(
             l2file.ra.flatten(), l2file.dec.flatten()
         )
 
+        # Find extrema of rotated equator pointing
+        max_ra = np.deg2rad(np.max(rotated_ra))
+        min_ra = np.deg2rad(np.min(rotated_ra))
+        max_dec = np.deg2rad(np.max(rotated_dec))
+        min_dec = np.deg2rad(np.min(rotated_dec))
+
+        # Find indecies the extrema of rotated pointing correspond to
+        max_dec_idx, min_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((max_dec, max_ra)))
+        min_dec_idx, max_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((min_dec, min_ra)))
+
+        # Expand geometry by four pixels to be sure all needed simualtion pixels are included.
+        max_dec_idx += 4
+        max_ra_idx += 4
+        min_dec_idx -= 4
+        min_ra_idx -= 4
+        
+        # Slice equatorial box geometry. Pixel centers will automatically also be updated
+        # if they are produced by simdata.equator_geometry.posmap or the like. 
+        simdata.equator_geometry = simdata.equator_geometry[min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx]
+
+        # Reading simulation cube data from file
+        simdata.read(
+            self.boost, 
+            (min_dec_idx, max_dec_idx), 
+            (min_ra_idx, max_ra_idx)
+        )
+
+        # Get new pixel centers of sliced equatorial geometry 
+        ra_grid, dec_grid = simdata.get_bin_centers()
+        
+        # Grid resolution
+        dra = ra_grid[1] - ra_grid[0]
+        ddec = dec_grid[1] - dec_grid[0]
+
+        # Box dimentions
+        nsb, nchannel, ndec, nra = simdata["simulation"].shape
+        nfreq = nsb * nchannel
+
+
+        # Emplty signal TOD that is to be filled by C++ module.
+        signal_tod = np.zeros_like(l2file.tod) 
+        
         # Back to original shape {feed, time samples}
         rotated_ra = rotated_ra.reshape(l2file.ra.shape)
         rotated_dec = rotated_dec.reshape(l2file.dec.shape)
@@ -95,21 +137,13 @@ class Cube2TOD:
         float32_array4 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_float, ndim=4, flags="contiguous"
         )  
-        float64_array4 = np.ctypeslib.ndpointer(
-            dtype=ctypes.c_double, ndim=4, flags="contiguous"
-        )  
-
-        float64_array3 = np.ctypeslib.ndpointer(
-            dtype=ctypes.c_double, ndim=3, flags="contiguous"
-        )  
-
         float64_array2 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_double, ndim=2, flags="contiguous"
         )  
 
         self.injector.replace_tod_with_bilinear_interp_signal.argtypes = [
                         float32_array4,  # tod
-                        float64_array4,  # simdata
+                        float32_array4,  # simdata
                         float64_array2,  # ra
                         float64_array2,  # dec
                         ctypes.c_float,  # dra
@@ -123,28 +157,6 @@ class Cube2TOD:
                         ctypes.c_long,    # nsamp
                         ctypes.c_int,    # nthread
                     ]
-
-
-        # Grid edges of simulation box
-        ra_edges = simdata["x_edges"]
-        dec_edges = simdata["y_edges"]
-
-        # From bin edges to centers
-        if simdata.npz_format:
-            ra_grid = simdata["x_centers"]
-            dec_grid = simdata["y_centers"]
-        else:
-            ra_grid, dec_grid = simdata.get_bin_centers(ra_edges, dec_edges)
-        
-        # Grid resolution
-        dra = ra_grid[1] - ra_grid[0]
-        ddec = dec_grid[1] - dec_grid[0]
-        
-        # Box dimentions
-        nsb, nchannel, ndec, nra = simdata["simulation"].shape
-        nfreq = nsb * nchannel
-
-        signal_tod = np.zeros_like(l2file.tod) 
 
         # Call C++ library by reference and inject TOD with signal
         self.injector.replace_tod_with_bilinear_interp_signal(
@@ -222,35 +234,68 @@ class Replace_TOD_With_Signal:
         # Setting up simulation cube object
         simdata = SimCube(self.simpath)
 
-        # Reading simulation cube data from file
-        simdata.read()
-
         # Testing if frequency array in new simulation format has same bin centers as level2 data
         if ".npz" in self.simpath:
             np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
             
+        simdata.read_cube_geometry(self.boost)
+
         # Defining simulation cube geometry using standard geometies and boost signal
-        simdata.prepare_geometry(l2file.fieldname, self.boost)
+        simdata.prepare_geometry(l2file.fieldname)
 
         # Euler rotaion of telescope pointing to equatorial origin
         rotated_ra, rotated_dec = simdata.rotate_pointing_to_equator(
-            l2file.ra.flatten().astype(np.float64), l2file.dec.flatten().astype(np.float64)
+            l2file.ra.flatten(), l2file.dec.flatten()
         )
 
+        # Find extrema of rotated equator pointing
+        max_ra = np.deg2rad(np.max(rotated_ra))
+        min_ra = np.deg2rad(np.min(rotated_ra))
+        max_dec = np.deg2rad(np.max(rotated_dec))
+        min_dec = np.deg2rad(np.min(rotated_dec))
+
+        # Find indecies the extrema of rotated pointing correspond to
+        max_dec_idx, min_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((max_dec, max_ra)))
+        min_dec_idx, max_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((min_dec, min_ra)))
+
+        # Expand geometry by four pixels to be sure all needed simualtion pixels are included.
+        max_dec_idx += 4
+        max_ra_idx += 4
+        min_dec_idx -= 4
+        min_ra_idx -= 4
+        
+        # Slice equatorial box geometry. Pixel centers will automatically also be updated
+        # if they are produced by simdata.equator_geometry.posmap or the like. 
+        simdata.equator_geometry = simdata.equator_geometry[min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx]
+
+        # Reading simulation cube data from file
+        simdata.read(
+            self.boost, 
+            (min_dec_idx, max_dec_idx), 
+            (min_ra_idx, max_ra_idx)
+        )
+
+        # Get new pixel centers of sliced equatorial geometry 
+        ra_grid, dec_grid = simdata.get_bin_centers()
+        
+        # Grid resolution
+        dra = ra_grid[1] - ra_grid[0]
+        ddec = dec_grid[1] - dec_grid[0]
+        
+        # Box dimentions
+        nsb, nchannel, ndec, nra = simdata["simulation"].shape
+        nfreq = nsb * nchannel
+
+        # Emplty signal TOD that is to be filled by C++ module.
+        signal_tod = np.zeros_like(l2file.tod) 
+        
         # Back to original shape {feed, time samples}
         rotated_ra = rotated_ra.reshape(l2file.ra.shape)
         rotated_dec = rotated_dec.reshape(l2file.dec.shape)
-        
+                
         # Defining pointers for arrays to send to C++ modules
         float32_array4 = np.ctypeslib.ndpointer(
             dtype=ctypes.c_float, ndim=4, flags="contiguous"
-        )  
-        float64_array4 = np.ctypeslib.ndpointer(
-            dtype=ctypes.c_double, ndim=4, flags="contiguous"
-        )  
-
-        float64_array3 = np.ctypeslib.ndpointer(
-            dtype=ctypes.c_double, ndim=3, flags="contiguous"
         )  
 
         float64_array2 = np.ctypeslib.ndpointer(
@@ -259,7 +304,7 @@ class Replace_TOD_With_Signal:
 
         self.injector.replace_tod_with_bilinear_interp_signal.argtypes = [
                         float32_array4,  # tod
-                        float64_array4,  # simdata
+                        float32_array4,  # simdata
                         float64_array2,  # ra
                         float64_array2,  # dec
                         ctypes.c_float,  # dra
@@ -273,27 +318,6 @@ class Replace_TOD_With_Signal:
                         ctypes.c_long,    # nsamp
                         ctypes.c_int,    # nthread
                     ]
-
-        # Grid edges of simulation box
-        ra_edges = simdata["x_edges"].astype(np.float64)
-        dec_edges = simdata["y_edges"].astype(np.float64)
-
-        # From bin edges to centers
-        if simdata.npz_format:
-            ra_grid = simdata["x_centers"]
-            dec_grid = simdata["y_centers"]
-        else:
-            ra_grid, dec_grid = simdata.get_bin_centers(ra_edges, dec_edges)
-        
-        # Grid resolution
-        dra = ra_grid[1] - ra_grid[0]
-        ddec = dec_grid[1] - dec_grid[0]
-        
-        # Box dimentions
-        nsb, nchannel, ndec, nra = simdata["simulation"].shape
-        nfreq = nsb * nchannel
-
-        # l2file.tod = np.zeros_like(l2file.tod)
 
         # Call C++ library by reference and inject TOD with signal
         self.injector.replace_tod_with_bilinear_interp_signal(
@@ -372,5 +396,3 @@ class Replace_TOD_with_WN:
 
         for ifeed in range(l2.Nfeeds):
             l2.tod[ifeed] = np.random.normal(0, 17.0, (l2.Nsb, l2.Nfreqs, l2.Ntod))
-
-# %%

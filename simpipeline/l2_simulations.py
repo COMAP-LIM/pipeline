@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
+from typing import Optional
 import h5py
 import scipy.interpolate as interp
 import numpy.typing as ntyping
@@ -96,15 +97,60 @@ class SimCube:
 
     # Private data storage dictionary
     _data: dict[str, ntyping.ArrayLike] = field(default_factory=dict)
+    
+    def read(self, boost: float = 1, dec_indices: Optional[tuple[int, int]] = (None, None), ra_indecies: Optional[tuple[int, int]] = (None, None)):
+        """Method that reads in simulation cube from file
+        
+        Args:
+            boost (float, optional): Boost factor with which signal can be boosted. Defaults to 1.
+            dec_indecies (tuple[int]): Tuple containing min and max of declination index to slice out of simulation cube. 
+            ra_indecies (tuple[int]): Tuple containing min and max of right ascension index to slice out of simulation cube. 
+        """
+        min_dec_idx, max_dec_idx = dec_indices
+        min_ra_idx, max_ra_idx = ra_indecies
 
-    def read(self):
-        """Method that reads in simulation cube from file"""
+        if ".h5" in self.path: 
+            self.npz_format = False
+            with h5py.File(self.path, "r") as infile:
+                self._data["simulation"] = infile["simulation"][..., min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx]
+
+        
+        elif ".npz" in self.path:
+            self.npz_format = True
+            with np.load(self.path) as infile:
+                
+                self._data["simulation"] = infile["map_cube"][min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx, ...]
+                self._data["simulation"] = self._data["simulation"].transpose(2, 0, 1)
+                nfreq, ndec, nra = self._data["simulation"].shape
+                self._data["simulation"] = self._data["simulation"].reshape(4, nfreq // 4, ndec, nra)
+                self._data["simulation"] = np.ascontiguousarray(self._data["simulation"])
+        else:
+            raise NameError("Provided path to simulation cube is not of a valid format. Please use HDF5 or npz format.")
+        
+        self.keys = self._data.keys()
+
+        if self._data["simulation"].dtype != np.int32:
+            self._data["simulation"] = self._data["simulation"].astype(np.float32) 
+
+        # muK to K
+        self._data["simulation"] *= 1e-6
+        # Boost signal
+        self._data["simulation"] *= boost
+
+
+    def read_cube_geometry(self, boost: float = 1):
+        """Method that reads in simulation cube from file
+        
+        Args:
+            boost (float, optional): Boost factor with which signal can be boosted. Defaults to 1.
+        """
 
         if ".h5" in self.path: 
             self.npz_format = False
             with h5py.File(self.path, "r") as infile:
                 for key, value in infile.items():
-                    self._data[key] = value[()]
+                    if "simulation" not in key:
+                        self._data[key] = value[()]
 
             self._data["x_edges"] = self._data["x"]
             self._data["y_edges"] = self._data["y"]
@@ -129,18 +175,23 @@ class SimCube:
                 self._data["y_edges"][:-1] = self._data["y_centers"] - dy / 2
                 self._data["y_edges"][-1] = self._data["y_centers"][-1] + dy / 2
                 
-                self._data["simulation"] = infile["map_cube"].transpose(2, 0, 1)
                 self._data["frequencies"] = infile["map_frequencies"][::-1] 
-                self._data["simulation"] = self._data["simulation"][::-1]
                 nfreq, ndec, nra = self._data["simulation"].shape
-                self._data["simulation"] = self._data["simulation"].reshape(4, nfreq // 4, ndec, nra)
-                self._data["simulation"] = np.ascontiguousarray(self._data["simulation"])
                 self._data["frequencies"] = self._data["frequencies"].reshape(4, nfreq // 4) 
         else:
             raise NameError("Provided path to simulation cube is not of a valid format. Please use HDF5 or npz format.")
-        
-        self.keys = self._data.keys()
 
+        ra_edges = self._data["x_edges"]
+        dec_edges = self._data["y_edges"]
+    
+        box = (
+            np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
+            * utils.degree
+        )
+        shape, equator_wcs = enmap.geometry(
+            pos=box, res=np.deg2rad(ra_edges[1] - ra_edges[0]), proj="car", force = True
+        )
+        self.equator_geometry = enmap.zeros(shape, equator_wcs)
 
     def __getitem__(self, key: str) -> ntyping.ArrayLike:
         """Method for indexing map data as dictionary
@@ -154,25 +205,17 @@ class SimCube:
 
         return self._data[key]
 
-    def get_bin_centers(
-        self, ra_edges: npt.NDArray, dec_edges: npt.NDArray
-    ) -> tuple[npt.NDArray, npt.NDArray]:
-        """Method that takes in bin grid bin edges and returns pixel bin centers.
-
-        Args:
-            ra_edges (npt.NDArray): Right ascention grid bin edges.
-            dec_edges (npt.NDArray): Declination grid bin edges
-
+    def get_bin_centers(self) -> tuple[npt.NDArray, npt.NDArray]:
+        """Method that takes equator geometry and returns pixel bin centers.
         Returns:
             tuple[npt.NDArray, npt.NDArray]: Tuple of npt.NDArray with right ascention and declination pixel centers.
         """
-        # Pixel resolutions
-        dra = ra_edges[1] - ra_edges[0]
-        ddec = dec_edges[1] - dec_edges[0]
+    
+        # Get equatorial origin geometry grid
+        dec_grid, ra_grid = np.rad2deg(self.equator_geometry.posmap())
 
-        # Compute pixel centers
-        ra_centers = ra_edges[:-1] + dra / 2
-        dec_centers = dec_edges[:-1] + ddec / 2
+        ra_centers = ra_grid[0, ::-1]
+        dec_centers = dec_grid[:, 0]
 
         return ra_centers, dec_centers
 
@@ -256,22 +299,22 @@ class SimCube:
         Returns:
             enmap.ndmap: Rotated and binned simulation cube data.
         """
-
+        
         # Get sizes of original simulation cube at equator
-        NSB, NCHANNEL, NDEC_sim, NRA_sim = self.simdata.shape
+        NSB, NCHANNEL, NDEC_sim, NRA_sim = self._data["simulation"].shape
 
         # Total number of frequencies
         NFREQ = NSB * NCHANNEL
 
         # Flipping RA axis to be consistant with geometry
-        self.simdata = self.simdata.reshape(NFREQ, NDEC_sim, NRA_sim)[..., ::-1]
+        self._data["simulation"] = self._data["simulation"].reshape(NFREQ, NDEC_sim, NRA_sim)[..., ::-1]
 
         # Number of angular grid points in target geometry
         NDEC, NRA = geometry.shape
 
         # Define source geometry situated at equatorial origin
-        ra_edges = self._data["x_edges"]
-        dec_edges = self._data["y_edges"]
+        ra_edges = self._data["x_edges"].astype(np.float64)
+        dec_edges = self._data["y_edges"].astype(np.float64)
         
         box = (
             np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
@@ -304,14 +347,14 @@ class SimCube:
         x_idx = np.clip(x_idx.flatten(), 0, NRA - 1)
         y_mask = np.where(~np.logical_and(y_idx >= 0, y_idx < NDEC))
         x_mask = np.where(~np.logical_and(x_idx >= 0, x_idx < NRA))
-        self.simdata[:, y_mask, x_mask] = 0
+        self._data["simulation"][:, y_mask, x_mask] = 0
 
         # Define pixel index from RA and Dec index
         px_idx = (NRA * y_idx + x_idx).flatten()
 
         # Extend pointing index to frequency dimension as well
         px_idx = (
-            NDEC * NRA * np.arange(NFREQ, dtype=np.int32)[:, None] + px_idx[None, :]
+            NDEC * NRA * np.arange(NFREQ, dtype=np.int64)[:, None] + px_idx[None, :]
         )
         px_idx = px_idx.flatten()
 
@@ -320,29 +363,26 @@ class SimCube:
 
         # Binned up simulation data per target geometry pixel
         new_simdata = np.bincount(
-            px_idx, minlength=NDEC * NRA * NFREQ, weights=self.simdata.flatten()
+            px_idx, minlength=NDEC * NRA * NFREQ, weights=self._data["simulation"].flatten()
         )
 
         # New simulation data is average of binned up values
         new_simdata = (new_simdata / hits).reshape(NFREQ, NDEC, NRA)
 
         # Overwrite and return new simulation data as enmap.ndmap object
-        self.simdata = enmap.enmap(
+        self._data["simulation"] = enmap.enmap(
             new_simdata.reshape(NSB, NCHANNEL, NDEC, NRA), geometry.wcs, copy=False
         )
-        return self.simdata
+        return self._data["simulation"]
 
-    def prepare_geometry(self, fieldname: str, boost: float = 1) -> None:
+    def prepare_geometry(self, fieldname: str) -> None:
         """Method that defines the WCS geometry of the signal cube given the
         COMAP standard geometries. The signal cube is then transformed into an
         enmap with the computed WCS geometry and an optional signal boost applied.
 
         Args:
             fieldname (str): Name of field from which to load standard geometry.
-            boost (float, optional): Boost factor with which signal can be boosted. Defaults to 1.
 
-        Returns:
-            enmap.enmap: Simulation cube enmap object which contains geometry and simulated (boosted) signal.
         """
 
         # Path to standard geometry directory
@@ -358,9 +398,9 @@ class SimCube:
         )
 
         # Defining an enmap with geometry equal to upgraded standard geometry
-        self.simdata = enmap.enmap(
-            self._data["simulation"], standard_geometry.wcs, copy=False
-        )
+        # self.simdata = enmap.enmap(
+        #     self._data["simulation"], standard_geometry.wcs, copy=False
+        # )
 
         # Number of pixels in {DEC, RA}
         NSIDE_DEC, NSIDE_RA = standard_geometry.shape
@@ -376,7 +416,4 @@ class SimCube:
         # Flipping frequencies
         # self.simdata[(0, 2), ...] = self.simdata[(0, 2), ::-1, ...]
 
-        # muK to K
-        self.simdata *= 1e-6
-        # Boost signal
-        self.simdata *= boost
+
