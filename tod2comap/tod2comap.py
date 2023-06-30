@@ -315,8 +315,7 @@ class Mapmaker:
 
             # Removing dollar signs
             self.primary_splits = primary_splits
-            
-            # print(self.maps_to_bin)
+        
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -1039,7 +1038,7 @@ class Mapmaker:
             dtype=ctypes.c_bool, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
-
+        
         # If no hit map is needed:
         if self.params.make_nhit:
 
@@ -1090,6 +1089,7 @@ class Mapmaker:
                             split_list, self.split_key_mapping[split_key], invert=True
                         )
                     )
+
                     NCHANNEL = mapdata["n_channels"]
                     NSB = mapdata["n_sidebands"]
 
@@ -1109,6 +1109,7 @@ class Mapmaker:
                         continue
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
+                
 
                 temporal_mask = self.get_temporal_mask(l2data, numerator_key)
 
@@ -1131,6 +1132,7 @@ class Mapmaker:
                     self.OMP_NUM_THREADS,
                     l2data.id,
                 )
+            
         else:
             # If we want to make maps and hit maps
 
