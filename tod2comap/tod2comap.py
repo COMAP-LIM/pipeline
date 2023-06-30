@@ -14,6 +14,7 @@ from COmap import COmap
 from L2file import L2file
 
 import warnings
+import tqdm 
 
 # Ignore RuntimeWarning
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -354,6 +355,14 @@ class Mapmaker:
             time_buffer = None
             rejection_number_buffer = None
 
+        if self.rank == 0:
+            print("\n")
+            progress_bar = tqdm.tqdm(
+                total = len(self.runlist) // self.Nranks, 
+                colour = "green", 
+                ncols = 60
+            )
+        
         for i, scan in enumerate(self.runlist):
 
             scanid = scan[0]
@@ -365,6 +374,8 @@ class Mapmaker:
                     print(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
                     # raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
                     rejection_number += 1
+                    if self.rank == 0:
+                        progress_bar.update(1)
                     continue
 
                 scan_idx = scan_idx[0]
@@ -378,6 +389,8 @@ class Mapmaker:
                             f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
+                    if self.rank == 0:
+                        progress_bar.update(1)
                     continue
 
                 if self.params.drop_first_scans and str(scanid)[-2:] == "02":
@@ -387,6 +400,8 @@ class Mapmaker:
                             f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
+                    if self.rank == 0:
+                        progress_bar.update(1)
                     continue
 
                 if self.params.verbose:
@@ -425,6 +440,10 @@ class Mapmaker:
                 time_array[5] += time.perf_counter() - ti
 
 
+                if not self.params.verbose:
+                    if self.rank == 0:
+                        progress_bar.update(1)
+
         # Get frequency bin centers and edges from last level2 file.
         full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
         full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
@@ -438,16 +457,15 @@ class Mapmaker:
             op=MPI.SUM,
             root=0,
         )
-
         if self.rank == 0:
             time_buffer /= len(self.runlist)
 
-            print("=" * 80)
+            print("\n" * 2 + "-" * 80)
             print(f"Average timing over {len(self.runlist)} scans:")
             print(
                 f"Number of rejected scans {rejection_number_buffer[0]} of {len(self.runlist)}"
             )
-            print("=" * 80)
+            print("-" * 80)
             print("Time to define L2file:", 1e3 * time_buffer[0], "ms")
             print(
                 "Time to read L2 data from HDF5:",
@@ -459,7 +477,7 @@ class Mapmaker:
             print("Time to bin map:", 1e3 * time_buffer[4], "ms")
             print("Total time for scan:", 1e3 * time_buffer[5], "ms")
 
-            print("=" * 80)
+            print("-" * 80)
 
 
         # Perform MPI reduce on map datasets
