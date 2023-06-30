@@ -1000,11 +1000,11 @@ class Mapmaker:
             
         if "schf0" in numerator_key:
             Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
-            temporal_mask[:,Ntod//2:] = False
+            temporal_mask[Ntod//2:,:] = False
         elif "schf1" in numerator_key:
             Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
-            temporal_mask[:,:Ntod//2] = False
-        
+            temporal_mask[:Ntod//2,:] = False
+
         if "azdi0" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
