@@ -61,6 +61,7 @@ def read_runlist(params, ignore_existing):
         n_scans_already_processed = 0
         n_scans_too_short = 0
         n_right_scantype = 0
+        n_scans_included = 0
         fieldname = lines[i][0]
         n_obsids = int(lines[i][1])
         i = i + 1
@@ -88,6 +89,8 @@ def read_runlist(params, ignore_existing):
                                 runlist_all.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename])
                                 if scanid in existing_scans:
                                     n_scans_already_processed += 1
+                                else:
+                                    n_scans_included += 1
                             else:
                                 n_scans_too_short += 1
                         else:
@@ -96,14 +99,13 @@ def read_runlist(params, ignore_existing):
 
         if fieldname in params.fields:
             print(f"Field name:                 {fieldname}")
-    print(f"RUNLIST STATS")
-    print(f"Obsids in runlist file:     {n_obsids}")
-    print(f"Scans in runlist file:      {n_scans_tot}")
-    print(f"Scans of right scantype:    {n_right_scantype}")
-    print(f"Scans included in run:      {len(runlist)}")
-    print(f"Scans too short:            {n_scans_too_short}")
-    print(f"Scans outside obsid range:  {n_scans_outside_range}")
-    print(f"Scans already processed:    {n_scans_already_processed}")
+            print(f"Obsids in runlist file:     {n_obsids}")
+            print(f"Scans in runlist file:      {n_scans_tot}")
+            print(f"Scans of right scantype:    {n_right_scantype}")
+            print(f"Scans too short:            {n_scans_too_short}")
+            print(f"Scans outside obsid range:  {n_scans_outside_range}")
+            print(f"Scans already processed:    {n_scans_already_processed}")
+            print(f"Scans included in run:      {n_scans_included}")
 
     random.seed(42)
     random.shuffle(runlist_all)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.

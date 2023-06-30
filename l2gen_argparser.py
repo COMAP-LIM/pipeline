@@ -21,7 +21,7 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-v", "--verbose", action="count", help="Enable verbose printing.")
+parser.add_argument("-v", "--verbose", type=str2bool, default=True, help="Enable verbose printing.")
 
 parser.add_argument(
     "--debug",
@@ -39,6 +39,7 @@ parser.add_argument(
     help="Path to parameter file. File should have argparse syntax, and overwrites any value listed here.",
 )
 parser.add_argument("--runlist", type=str, help="(REQUIRED) Path to runlist.")
+
 parser.add_argument(
     "-f",
     "--filters",
@@ -577,6 +578,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_noise_map_path",
+    type=str,
+    help="(comap2fpxs) The path to the binned white noise (no filtering) map, used to generate error bars in power spectra.",
+)
+
+
+parser.add_argument(
     "--from_file",
     action="store_true",
     help="(comap2fpxs) If flag is provided already computed spectra are read from file.",
@@ -998,8 +1006,16 @@ parser.add_argument(
 
 parser.add_argument(
     "--populate_cube",
-    action="store_true",
+    type=str2bool,
+    default=False, 
     help="(tod2comap/signal injection) If flag is provided the simulation (only) cube needed to compute TF, with same sigma_wn and footprint as map with signal injected data, is produced.",
+)
+
+parser.add_argument(
+    "--bin_signal_tod",
+    type=str2bool,
+    default=False,    
+    help="(tod2comap/signal injection) If True, signal TOD is binned up to map just like the actual TOD. This serves as unfiltered ground truth.",
 )
 
 parser.add_argument(

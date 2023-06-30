@@ -7,6 +7,7 @@ import warnings
 from tqdm import tqdm, trange
 import os
 import sys
+import ctypes
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
@@ -33,16 +34,37 @@ def PCA_newer(data, map_rms):
         if np.nanmean(np.abs(ai - ai_new)) < 1e-8 and np.nanmean(np.abs(ci - ci_new)) < 1e-8:
             break
         elif i == 599:
-            print(f"Warning: Experimental PCA did not converge. Residuals: {np.nansum(np.abs(ai - ai_new)):.2e} & {np.nansum(np.abs(ci - ci_new)):.2e}")
+            print(f"Warning: Experimental PCA did not converge. Residuals: {np.nanmean(np.abs(ai - ai_new)):.2e} & {np.nanmean(np.abs(ci - ci_new)):.2e}")
             break
         # if i%10 == 0:
             # print(i, np.sum(np.abs(ai - ai_new)), np.sum(np.abs(ci - ci_new)))
             
         ai = ai_new.copy()
         ci = ci_new.copy()
-    # print("--", i, np.nanmean(np.abs(ai - ai_new)), np.nanmean(np.abs(ci - ci_new)))
+    print("--", i, np.nanmean(np.abs(ai - ai_new)), np.nanmean(np.abs(ci - ci_new)))
     return ai_new, ci_new
 
+
+def PCA_experimental_ctypes(data, map_rms):
+    map_signal = data.copy().reshape((256, 120*120))
+    map_signal[~np.isfinite(map_signal)] = 0.0
+    inv_rms_2 = 1.0/map_rms.copy().reshape((256,120*120))**2
+    inv_rms_2[inv_rms_2==0] = 1.0
+    inv_rms_2[~np.isfinite(inv_rms_2)] = 1.0
+    freqvec = np.random.normal(0, 1, 256)
+    angvec = np.random.normal(0, 1, (120*120))
+
+    map_signal_T = np.ascontiguousarray(map_signal.T)
+    inv_rms_2_T = np.ascontiguousarray(inv_rms_2.T)
+
+    C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/pipeline/C_libs/mPCA/mPCAlib.so.1"
+    mPCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+    float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+    float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+    mPCAlib.PCA_experimental.argtypes = [float32_array2, float32_array2, float32_array2, float32_array2, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
+    mPCAlib.PCA_experimental(map_signal, map_signal_T, inv_rms_2, inv_rms_2_T, angvec, freqvec, 256, 120*120, 1000, 1e-10)
+
+    return angvec, freqvec
 
 
 class PCA_SubTractor_Experimental:
@@ -88,8 +110,8 @@ class PCA_SubTractor_Experimental:
 
             for ifeed in trange(20):
                 for icomp in range(self.ncomps):
-
-                    ai, ci = PCA_newer(signal_map[ifeed], rms_map[ifeed])
+                    # ai, ci = PCA_newer(signal_map[ifeed], rms_map[ifeed])
+                    ai, ci = PCA_experimental_ctypes(signal_map[ifeed], rms_map[ifeed])
                     angvec[icomp, ifeed] = ai
                     freqvec[icomp, ifeed] = ci
                     reconstruction = (ci[:,None]*ai[None,:]).reshape(256,120,120)

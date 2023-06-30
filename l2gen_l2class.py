@@ -194,12 +194,21 @@ class level2_file:
             tod_local = self.tod[ifeed][:,:,self.mask_temporal[ifeed]]
             self.sigma0[ifeed] = np.std(tod_local[:,:,1:] - tod_local[:,:,:-1], axis=-1)/np.sqrt(2)
             self.chi2[ifeed] = (np.sum(tod_local**2, axis=-1)/self.sigma0[ifeed]**2 - self.Ntod_effective[ifeed])/np.sqrt(2*self.Ntod_effective[ifeed])
+        
+        # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
+        if "Replace_TOD_With_Signal" in self.params.filters:
+            print("Overwriting weights in l2 saver with ones due to signal only TOD being processed!")
+
+            self.sigma0 = 0.04 * np.ones_like(self.sigma0)
+            self.sigma0[~self.freqmask_decimated] = np.nan
+        
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
             os.mkdir(outpath)
         # We write to a hidden file (starting with a ".") first, and then rename it. This makes it safe to abort the program during writes:
         temp_outfilename = os.path.join(outpath, "." + self.l2_filename + name_extension + ".h5")
         outfilename = os.path.join(outpath, self.l2_filename + name_extension + ".h5")
+
         with h5py.File(temp_outfilename, "w") as f:
             # Hardcoded level2 parameters:
             if self.params.use_l2_compression:
@@ -264,6 +273,7 @@ class level2_file:
                 f["hk_cryostat_temp4"]  = l1file["hk/antenna0/cryostat/temp4"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
                 f["hk_cryostat_temp5"]  = l1file["hk/antenna0/cryostat/temp5"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
                 f["hk_cryostat_temp6"]  = l1file["hk/antenna0/cryostat/temp6"][self.scan_start_idx_hk:self.scan_stop_idx_hk]
+            
             # pix2ind_python = np.zeros(20, dtype=int) + 999
             pix2ind_fortran = np.zeros(20, dtype=int)
             for ifeed in range(self.Nfeeds):
