@@ -1,4 +1,7 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks, savgol_filter
+from scipy.optimize import curve_fit
 import h5py
 import os
 import git
@@ -111,8 +114,76 @@ class level2_file:
                     self.n_nans[:,isb,:] = self.n_nans[:,isb,::-1]
                 for ifreq in range(self.freqs.shape[1]):
                     self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
+                
+            self.find_spikes()
 
+    def find_spikes(self):
+        # define gaussian function to fit
+        def gauss(x, a, b, c, d):
+            return a * np.exp(-(x - b)**2 / (2 * c**2)) + d
+        time = self.tod_times_seconds  # seconds
+        n_fit = 70  # half the length of region used to fit gaussian
+        window_size = 151  # window size for savgol_filter
+        distance = 50  # closest allowed distance between peaks
+        height = 0.01  # amplitude of spike
+        
 
+        
+
+        dt = time[1] - time[0]
+
+        self.n_spikes = np.zeros((self.Nfeeds, self.Nsb)).astype(int)
+        self.spike_data = np.zeros((self.Nfeeds, self.Nsb, 50, 5))
+
+        for i in range(self.Nfeeds):
+            for j in range(self.Nsb):
+                data = self.sb_mean[i, j]
+                data = data / np.mean(data) - 1
+                if np.isnan(data.mean()):
+                    continue 
+                smoothed_data = savgol_filter(data, window_size, 3) # smooth data
+                data_detrended = data - smoothed_data # subtract smoothed data
+
+                # detect spikes
+                peaks, _ = find_peaks(data_detrended, height=height, distance=distance)  # adjust the height parameter as per your data
+                # print(i, j, peaks)
+                n_time = len(time)
+
+                
+                self.n_spikes[i, j] = len(peaks)
+
+                # if self.n_spikes[i, j] > 0:
+                #     plt.plot(time, data)  # plot original data
+
+                std = data_detrended.std() #(data[1:] - data[:-1]).std() / np.sqrt(2)
+
+                # fit gaussians and save parameters
+                for k, peak in enumerate(peaks[:50]):
+                    try:
+                        bounds = ((0, time[peak]-0.5, 0, -1), (5000, time[peak]+0.5, 2, 1))
+                        p0 = (0.1, time[peak], 0.1, 0)
+                        earliest_ind = max(0, peak-n_fit)
+                        latest_ind = min(n_time, peak+n_fit)
+                        popt, _ = curve_fit(gauss, time[earliest_ind:latest_ind], data[earliest_ind:latest_ind], 
+                            p0=p0, bounds=bounds
+                        )
+                        self.spike_data[i, j, k, 0] = popt[0]  # amplitude
+                        self.spike_data[i, j, k, 1] = popt[1]  # position
+                        self.spike_data[i, j, k, 2] = popt[2]  # standard deviation
+                        self.spike_data[i, j, k, 3] = popt[3]  # offset
+                        
+                        n_time_fit = latest_ind - earliest_ind
+                        chi2 = (np.sum(((data[earliest_ind:latest_ind] - gauss(time[earliest_ind:latest_ind], *popt))/ std) ** 2) - n_time_fit) / np.sqrt(2 * n_time_fit)
+                        
+                        self.spike_data[i, j, k, 4] = chi2  # chi2 goodness-of-fit
+                        # plt.plot(time[earliest_ind:latest_ind], gauss(time[earliest_ind:latest_ind], *popt), 'r')  # plot fitted gaussians
+                    except:  # in case the fitting fails
+                        print(f"Couldn't fit a Gaussian on the spike at position {time[peak]}, feed {self.pixels[i]}, sb {j+1}")
+                        self.spike_data[i, j, k, 1] = time[peak]
+                
+                # if self.n_spikes[i, j] > 0:
+                #     plt.show()
+                
     def write_level2_data(self, name_extension=""):
         self.acceptrate = np.mean(self.freqmask, axis=(-1))
         self.sigma0 = np.zeros((self.Nfeeds, self.Nsb, self.Nfreqs))
@@ -165,6 +236,8 @@ class level2_file:
             f["is_sim"] = self.is_sim
             f["git_hash"] = self.git_hash
             f["l1_filepath"] = self.l1_filename
+            f["n_spikes"] = self.n_spikes
+            f["spike_data"] = self.spike_data
 
             # Custom data (usually from the filters):
             for key in self.tofile_dict:  
@@ -199,3 +272,4 @@ class level2_file:
             # f["pix2ind_python"] = pix2ind_python
             f["pix2ind_fortran"] = pix2ind_fortran
         os.rename(temp_outfilename, outfilename)
+
