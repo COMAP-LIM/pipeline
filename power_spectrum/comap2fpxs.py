@@ -243,12 +243,12 @@ class COMAP2FPXS():
                             seed = seed,
                         )
                     else:
-                        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
-                        #     k_centers_perp = infile["k_centers_perp"][()]
-                        #     k_centers_par = infile["k_centers_par"][()]
-                        #     tf_wn = infile["tf"][()]
+                        with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
+                            k_centers_perp = infile["k_centers_perp"][()]
+                            k_centers_par = infile["k_centers_par"][()]
+                            tf_wn = infile["tf"][()]
 
-                        # cross_spectrum.xs *= tf_wn
+                        cross_spectrum.xs *= tf_wn
 
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance"], outdir_data)
                     

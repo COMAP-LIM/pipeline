@@ -173,82 +173,6 @@ class CrossSpectrum_nmaps:
         self.nmodes = np.array(self.nmodes)
         return self.xs, self.k, self.nmodes
 
-    # COMPUTE ALL THE XS
-    def calculate_xs_with_tf(
-        self, no_of_k_bins=15
-    ):  # here take the number of k-bins as an argument
-
-        self.get_tf()
-
-        n_k = no_of_k_bins
-        self.k_bin_edges = np.logspace(-2.0, np.log10(1.5), n_k)
-        self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), n_k)
-        self.k_bin_edges_perp = np.logspace(-2.0 + np.log10(2), np.log10(1.5), n_k)
-        calculated_xs = self.get_information()
-
-        # store each cross-spectrum and corresponding k and nmodes by appending to these lists:
-        self.xs = []
-        self.k = []
-        self.nmodes = []
-        self.rms_mean = []
-        self.rms_std = []
-        index = -1
-        for i in range(0, len(self.maps) - 1, 2):
-            j = i + 1
-            index += 1
-            print(
-                "Computing 2D xs between "
-                + calculated_xs[index][1]
-                + " and "
-                + calculated_xs[index][2]
-            )
-            self.normalize_weights(i, j)  # normalize weights for given xs pair of maps
-
-            wi = self.maps[i].w
-            wj = self.maps[j].w
-            wh_i = np.where(np.log10(wi) < -0.5)
-            wh_j = np.where(np.log10(wj) < -0.5)
-            wi[wh_i] = 0.0
-            wj[wh_j] = 0.0
-
-            (
-                my_xs,
-                my_k,
-                my_nmodes,
-                my_rms_mean,
-                my_rms_std,
-            ) = tools.compute_cross_spec3d_with_tf(
-                (
-                    self.maps[i].map * np.sqrt(wi * wj),
-                    self.maps[j].map * np.sqrt(wi * wj),
-                ),
-                (self.k_bin_edges_perp, self.k_bin_edges_par),
-                self.k_bin_edges,
-                self.rms_xs_mean_2D[i],
-                self.rms_xs_std_2D[i],
-                self.transfer_filt_2D,
-                self.transfer_sim_2D,
-                dx=self.maps[i].dx,
-                dy=self.maps[i].dy,
-                dz=self.maps[i].dz,
-            )
-
-            self.reverse_normalization(
-                i, j
-            )  # go back to the previous state to normalize again with a different map-pair
-
-            self.xs.append(my_xs)
-            self.k.append(my_k)
-            self.rms_mean.append(my_rms_mean)
-            self.rms_std.append(my_rms_std)
-            self.nmodes.append(my_nmodes)
-        self.xs = np.array(self.xs)
-        self.k = np.array(self.k)
-        self.nmodes = np.array(self.nmodes)
-        self.rms_mean = np.array(self.rms_mean)
-        self.rms_std = np.array(self.rms_std)
-        return self.xs, self.k, self.nmodes, self.rms_mean, self.rms_std
-
     # COMPUTE ALL THE XS IN 2D
     def calculate_xs_2d(
         self, no_of_k_bins=15
@@ -281,7 +205,7 @@ class CrossSpectrum_nmaps:
             
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
-           
+
             my_xs, my_k, my_nmodes = tools.compute_cross_spec_perp_vs_par(
                 (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
                 (self.k_bin_edges_perp, self.k_bin_edges_par),
@@ -374,58 +298,6 @@ class CrossSpectrum_nmaps:
         return self.xs, self.k, self.nmodes
 
 
-    # RUN NOISE SIMULATIONS (for all combinations of n maps, to match xs)
-    def run_noise_sims(self, n_sims, seed=None):
-        self.rms_xs_mean = []
-        self.rms_xs_std = []
-        for i in range(0, len(self.maps) - 1, 2):
-            j = i + 1
-
-            self.normalize_weights(i, j)
-            wi = self.maps[i].w
-            wj = self.maps[j].w
-            wh_i = np.where(np.log10(wi) < -0.5)
-            wh_j = np.where(np.log10(wj) < -0.5)
-            wi[wh_i] = 0.0
-            wj[wh_j] = 0.0
-            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
-
-            if seed is not None:
-                if self.maps[i].feed is not None:
-                    feeds = np.array([self.maps[i].feed, self.maps[j].feed])
-                else:
-                    feeds = np.array([1, 1])
-
-            rms_xs = np.zeros((len(self.k_bin_edges) - 1, n_sims))
-            for g in range(n_sims):
-                randmap = [
-                    np.zeros(self.maps[i].rms.shape),
-                    np.zeros(self.maps[i].rms.shape),
-                ]
-                for l in range(2):
-                    if seed is not None:
-                        np.random.seed(seed * (g + 1) * (l + 1) * feeds[l])
-                    randmap[l] = (
-                        np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
-                    )
-
-                rms_xs[:, g] = tools.compute_cross_spec3d(
-                    (randmap[0] * full_weight, randmap[1] * full_weight),
-                    self.k_bin_edges,
-                    dx=self.maps[i].dx,
-                    dy=self.maps[i].dy,
-                    dz=self.maps[i].dz,
-                )[0]
-
-            self.reverse_normalization(
-                i, j
-            )  # go back to the previous state to normalize again with a different map-pair
-
-            self.rms_xs_mean.append(np.mean(rms_xs, axis=1))
-            self.rms_xs_std.append(np.std(rms_xs, axis=1, ddof = 1))
-
-        return np.array(self.rms_xs_mean), np.array(self.rms_xs_std)
-
     def run_noise_sims_2d(self, n_sims, seed=None, no_of_k_bins=15):
         n_k = no_of_k_bins
 
@@ -435,10 +307,10 @@ class CrossSpectrum_nmaps:
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
 
-        # with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
-        #     k_centers_perp = infile["k_centers_perp"][()]
-        #     k_centers_par = infile["k_centers_par"][()]
-        #     tf_wn = infile["tf"][()]
+        with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
+            k_centers_perp = infile["k_centers_perp"][()]
+            k_centers_par = infile["k_centers_par"][()]
+            tf_wn = infile["tf"][()]
 
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
@@ -488,16 +360,18 @@ class CrossSpectrum_nmaps:
                 )[0]
 
                 ## MAY CHANGE IN THE FUTURE!!! THIS IS TO CORRECT WN SIMS TO GET SAME PIPELINE BIAS AS DATA
-                # rms_xs[:, :, g] *= tf_wn
+                rms_xs[:, :, g] *= tf_wn
 
             self.reverse_normalization(
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
 
+            self.covariance = np.cov(rms_xs.reshape((n_k - 1) ** 2, n_sims))
+
             self.rms_xs_mean_2D.append(np.mean(rms_xs, axis=2))
             self.rms_xs_std_2D.append(np.std(rms_xs, axis=2, ddof=1))
             
-        return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D)
+        return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D), self.covariance
 
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
     def make_h5_2d(self, outdir, outname=None):
@@ -535,10 +409,12 @@ class CrossSpectrum_nmaps:
             if self.params.psx_white_noise_sim_seed is not None:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
                 outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
+                outfile.create_dataset("white_noise_covariance", data=self.covariance)
                 outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
             else:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
                 outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
+                outfile.create_dataset("white_noise_covariance", data=self.covariance)
             
     
     def read_spectrum(self, indir, inname = None):
