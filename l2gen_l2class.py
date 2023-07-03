@@ -125,11 +125,11 @@ class level2_file:
             self.chi2[ifeed] = (np.sum(tod_local**2, axis=-1)/self.sigma0[ifeed]**2 - self.Ntod_effective[ifeed])/np.sqrt(2*self.Ntod_effective[ifeed])
         
         # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
-        if "Replace_TOD_With_Signal" in self.params.filters:
-            print("Overwriting weights in l2 saver with ones due to signal only TOD being processed!")
+        # if "Replace_TOD_With_Signal" in self.params.filters:
+        #     print("Overwriting weights in l2 saver with ones due to signal only TOD being processed!")
 
-            self.sigma0 = 0.04 * np.ones_like(self.sigma0)
-            self.sigma0[~self.freqmask_decimated] = np.nan
+        #     self.sigma0 = 0.04 * np.ones_like(self.sigma0)
+        #     self.sigma0[~self.freqmask_decimated] = np.nan
         
         outpath = os.path.join(self.level2_dir, self.fieldname)
         if not os.path.exists(outpath):
@@ -142,8 +142,14 @@ class level2_file:
             # Hardcoded level2 parameters:
             if self.params.use_l2_compression:
                 f.create_dataset("tod", (self.Nfeeds, self.Nsb, self.Nfreqs, self.Ntod), chunks=(1,1,1,self.Ntod), data=self.tod, compression="gzip", compression_opts=1, shuffle=True)
+                if self.is_sim:
+                    f.create_dataset("signal_simulation_tod", (self.Nfeeds, self.Nsb, self.Nfreqs, self.Ntod), chunks=(1,1,1,self.Ntod), data=self.signal_tod, compression="gzip", compression_opts=1, shuffle=True)
+                        
             else:
                 f["tod"] = self.tod
+                if self.is_sim:
+                    f["signal_simulation_tod"] = self.signal_tod
+
             f["feeds"] = self.feeds
             f["time"] = self.tod_times
             f["mjd_start"] = self.tod_times[0]
