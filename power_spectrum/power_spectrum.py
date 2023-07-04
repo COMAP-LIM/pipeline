@@ -117,6 +117,29 @@ class CrossSpectrum:
         return self.xs, self.k, self.nmodes
 
 
+    def calculate_xs_ra_dec_nu(self, number_of_k_bin_edges = 15):
+        
+
+        self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), number_of_k_bin_edges)
+        self.k_bin_edges_ra = np.logspace(-2.0 + np.log10(2), np.log10(1.5), number_of_k_bin_edges)
+        # self.k_bin_edges_par = np.logspace(-1.0, np.log10(0.9), number_of_k_bin_edges)
+        # self.k_bin_edges_ra = np.logspace(-1.0 + np.log10(2), np.log10(0.9), number_of_k_bin_edges)
+        self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
+
+        if not self.weights_are_normalized:
+            self.normalize_weights()
+        
+        w = np.sqrt(self.maps[0].w * self.maps[1].w)
+
+        self.xs, self.k, self.nmodes = tools.compute_cross_spec_angular2d_vs_par(
+            (self.maps[0].map * w, self.maps[1].map * w),
+            (self.k_bin_edges_ra, self.k_bin_edges_dec, self.k_bin_edges_par),
+            dx=self.maps[0].dx,
+            dy=self.maps[0].dy,
+            dz=self.maps[0].dz,
+        )
+        return self.xs, self.k, self.nmodes
+
     def calculate_xs_2d(self, number_of_k_bin_edges = 15):
         
 
