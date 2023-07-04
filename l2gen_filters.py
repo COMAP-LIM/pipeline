@@ -307,18 +307,31 @@ class Decimation(Filter):
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
         
         # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
-        if "Replace_TOD_With_Signal" in self.params.filters:
-            print("Overwriting weights in decimation with ones due to signal only TOD being processed!")
-            weight = np.ones_like(weight)
+        # if "Replace_TOD_With_Signal" in self.params.filters:
+        #     print("Overwriting weights in decimation with ones due to signal only TOD being processed!")
+        #     weight = np.ones_like(weight)
 
-        weight[~l2.freqmask] = 0
+        # weight[~l2.freqmask] = 0
 
         tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=np.float32)
+
+        if l2.is_sim:
+            signal_tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=np.float32)
+            
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
                 tod_decimated[:,isb,ifreq,:] = np.nansum(l2.tod[:,isb,freq_idxs_included[isb,ifreq],:]*weight[:,isb,freq_idxs_included[isb,ifreq],None], axis=1)
                 tod_decimated[:,isb,ifreq,:] /= np.nansum(weight[:,isb,freq_idxs_included[isb,ifreq]], axis=1)[:,None]
+
+                if l2.is_sim:
+                    signal_tod_decimated[:,isb,ifreq,:] = np.nansum(l2.signal_tod[:,isb,freq_idxs_included[isb,ifreq],:]*weight[:,isb,freq_idxs_included[isb,ifreq],None], axis=1)
+                    signal_tod_decimated[:,isb,ifreq,:] /= np.nansum(weight[:,isb,freq_idxs_included[isb,ifreq]], axis=1)[:,None]
+
         l2.tod = tod_decimated
+
+        if l2.is_sim:
+            l2.signal_tod = signal_tod_decimated
+
         l2.freqmask_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs_lowres), dtype=bool)
 
         for isb in range(l2.Nsb):
@@ -1665,6 +1678,10 @@ class Masking(Filter):
 
             
         l2.tod[~l2.freqmask] = np.nan
+
+        if l2.is_sim:
+            l2.signal_tod[~l2.freqmask] = np.nan
+
         l2.acceptrate = np.mean(l2.freqmask, axis=(-1))
 
         # Just printing stuff:
