@@ -112,13 +112,19 @@ class SimCube:
         if ".h5" in self.path: 
             self.npz_format = False
             with h5py.File(self.path, "r") as infile:
-                self._data["simulation"] = infile["simulation"][..., min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx]
+                
+                # Note that grid in RA direction is flipped since cubes are not saved in astronomical decreasing RA standard 
+                self._data["simulation"] = enmap.enmap(infile["simulation"][..., min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx], wcs = self.equator_geometry.wcs, dtype = np.float32)
+
+                # Pad a few pixels to be sure when slicing the signal cube
+                if (min_dec_idx is not None or max_dec_idx is not None) or (min_ra_idx is not None or max_ra_idx is not None):
+                    self.equator_geometry = enmap.pad(self.equator_geometry, pix = 5)
+                    self._data["simulation"] = enmap.pad(self._data["simulation"], pix = 5)
 
         
         elif ".npz" in self.path:
             self.npz_format = True
             with np.load(self.path) as infile:
-                
                 self._data["simulation"] = infile["map_cube"][min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx, ...]
                 self._data["simulation"] = self._data["simulation"].transpose(2, 0, 1)
                 nfreq, ndec, nra = self._data["simulation"].shape
@@ -129,7 +135,7 @@ class SimCube:
         
         self.keys = self._data.keys()
 
-        if self._data["simulation"].dtype != np.int32:
+        if self._data["simulation"].dtype != np.float32:
             self._data["simulation"] = self._data["simulation"].astype(np.float32) 
 
         # muK to K
@@ -137,13 +143,10 @@ class SimCube:
         # Boost signal
         self._data["simulation"] *= boost
 
+        self.simdata = self._data["simulation"]
 
-    def read_cube_geometry(self, boost: float = 1):
-        """Method that reads in simulation cube from file
-        
-        Args:
-            boost (float, optional): Boost factor with which signal can be boosted. Defaults to 1.
-        """
+    def read_cube_geometry(self):
+        """Method that reads in simulation cube bin edges/centers from file"""
 
         if ".h5" in self.path: 
             self.npz_format = False
@@ -184,10 +187,16 @@ class SimCube:
         ra_edges = self._data["x_edges"]
         dec_edges = self._data["y_edges"]
     
+        # box = (
+        #     np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
+        #     * utils.degree
+        # )
+
         box = (
-            np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
+            np.array([[dec_edges[0], ra_edges[0]], [dec_edges[-1], ra_edges[-1]]])
             * utils.degree
         )
+
         shape, equator_wcs = enmap.geometry(
             pos=box, res=np.deg2rad(ra_edges[1] - ra_edges[0]), proj="car", force = True
         )
@@ -212,11 +221,11 @@ class SimCube:
         """
     
         # Get equatorial origin geometry grid
+
         dec_grid, ra_grid = np.rad2deg(self.equator_geometry.posmap())
 
-        ra_centers = ra_grid[0, ::-1]
+        ra_centers = ra_grid[0, :]
         dec_centers = dec_grid[:, 0]
-
         return ra_centers, dec_centers
 
     def rotate_pointing_to_equator(
@@ -307,24 +316,13 @@ class SimCube:
         NFREQ = NSB * NCHANNEL
 
         # Flipping RA axis to be consistant with geometry
-        self._data["simulation"] = self._data["simulation"].reshape(NFREQ, NDEC_sim, NRA_sim)[..., ::-1]
+        # self._data["simulation"] = self._data["simulation"].reshape(NFREQ, NDEC_sim, NRA_sim)[..., ::-1]
+        self._data["simulation"] = self._data["simulation"].reshape(NFREQ, NDEC_sim, NRA_sim)
 
         # Number of angular grid points in target geometry
         NDEC, NRA = geometry.shape
 
-        # Define source geometry situated at equatorial origin
-        ra_edges = self._data["x_edges"].astype(np.float64)
-        dec_edges = self._data["y_edges"].astype(np.float64)
-        
-        box = (
-            np.array([[dec_edges[0], ra_edges[-1]], [dec_edges[-1], ra_edges[0]]])
-            * utils.degree
-        )
-        
-        shape, equator_wcs = enmap.geometry(
-            pos=box, res=np.deg2rad(ra_edges[1] - ra_edges[0]), proj="car", force = True
-        )
-        equator_geometry = enmap.zeros(shape, equator_wcs)
+        equator_geometry = self.equator_geometry.copy()
 
         # Get equatorial origin geometry grid
         dec_grid, ra_grid = np.rad2deg(equator_geometry.posmap())

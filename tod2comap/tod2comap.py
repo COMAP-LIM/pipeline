@@ -355,7 +355,7 @@ class Mapmaker:
             time_buffer = None
             rejection_number_buffer = None
 
-        if self.rank == 0:
+        if self.rank == 0 and not self.params.verbose:
             print("\n")
             progress_bar = tqdm.tqdm(
                 total = len(self.runlist) // self.Nranks, 
@@ -374,7 +374,7 @@ class Mapmaker:
                     print(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
                     # raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
                     rejection_number += 1
-                    if self.rank == 0:
+                    if self.rank == 0 and not self.params.verbose:
                         progress_bar.update(1)
                     continue
 
@@ -389,7 +389,7 @@ class Mapmaker:
                             f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
-                    if self.rank == 0:
+                    if self.rank == 0 and not self.params.verbose:
                         progress_bar.update(1)
                     continue
 
@@ -400,7 +400,7 @@ class Mapmaker:
                             f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
-                    if self.rank == 0:
+                    if self.rank == 0 and not self.params.verbose:
                         progress_bar.update(1)
                     continue
 
@@ -440,9 +440,8 @@ class Mapmaker:
                 time_array[5] += time.perf_counter() - ti
 
 
-                if not self.params.verbose:
-                    if self.rank == 0:
-                        progress_bar.update(1)
+                if self.rank == 0 and not self.params.verbose:
+                    progress_bar.update(1)
 
         # Get frequency bin centers and edges from last level2 file.
         full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
@@ -1255,10 +1254,11 @@ class Mapmaker:
         simdata = SimCube(signal_path)
 
         # Reading simulation cube data from file
-        simdata.read()
+        simdata.read_cube_geometry()
+        simdata.read(self.params.boost_factor)
 
         # Defining simulation cube geometry using standard geometies and boost signal
-        simdata.prepare_geometry(self.fieldname, self.params.boost_factor)
+        simdata.prepare_geometry(self.fieldname)
 
         NCHANNEL_sim = simdata.simdata.shape[1]
 

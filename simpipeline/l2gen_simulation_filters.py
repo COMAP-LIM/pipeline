@@ -77,7 +77,7 @@ class Cube2TOD:
         if ".npz" in self.simpath:
             np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
             
-        simdata.read_cube_geometry(self.boost)
+        simdata.read_cube_geometry()
 
         # Defining simulation cube geometry using standard geometies and boost signal
         simdata.prepare_geometry(l2file.fieldname)
@@ -94,15 +94,22 @@ class Cube2TOD:
         min_dec = np.deg2rad(np.min(rotated_dec))
 
         # Find indecies the extrema of rotated pointing correspond to
-        max_dec_idx, min_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((max_dec, max_ra)))
-        min_dec_idx, max_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((min_dec, min_ra)))
+        max_dec_idx, max_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((max_dec, max_ra)))
+        min_dec_idx, min_ra_idx = utils.nint(simdata.equator_geometry.sky2pix((min_dec, min_ra)))
 
-        # Expand geometry by four pixels to be sure all needed simualtion pixels are included.
-        max_dec_idx += 4
-        max_ra_idx += 4
-        min_dec_idx -= 4
-        min_ra_idx -= 4
-        
+        N_dec, N_ra = simdata.equator_geometry.shape
+    
+        if max_dec_idx < 0 or max_dec_idx > N_dec:
+            max_dec_idx = N_dec
+        if min_dec_idx < 0 or min_dec_idx > N_dec: 
+            min_dec_idx = 0
+    
+        if max_ra_idx < 0 or max_ra_idx > N_dec:
+            max_ra_idx = N_ra
+        if min_ra_idx < 0 or min_ra_idx > N_dec: 
+            min_ra_idx = 0
+
+
         # Slice equatorial box geometry. Pixel centers will automatically also be updated
         # if they are produced by simdata.equator_geometry.posmap or the like. 
         simdata.equator_geometry = simdata.equator_geometry[min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx]
@@ -116,7 +123,7 @@ class Cube2TOD:
 
         # Get new pixel centers of sliced equatorial geometry 
         ra_grid, dec_grid = simdata.get_bin_centers()
-        
+
         # Grid resolution
         dra = ra_grid[1] - ra_grid[0]
         ddec = dec_grid[1] - dec_grid[0]
@@ -238,7 +245,7 @@ class Replace_TOD_With_Signal:
         if ".npz" in self.simpath:
             np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
             
-        simdata.read_cube_geometry(self.boost)
+        simdata.read_cube_geometry()
 
         # Defining simulation cube geometry using standard geometies and boost signal
         simdata.prepare_geometry(l2file.fieldname)

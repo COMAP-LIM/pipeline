@@ -108,7 +108,7 @@ class COmap:
         Args:
             fieldname (str): Name of field patch.
             decimation_freqs (float): Number of frequency channels after decimation in l2gen.
-            resolution_factor (int): Integer factor to upgrade or downgrade standard
+            resolution_factor (float): Float factor to upgrade or downgrade standard
             geometry (2' pixels) with.
             make_nhit (bool, optional): Boolean specifying whether to make an empty hit map.
             maps_to_bin (optional, list): List of numerator map datasets to initialize.
@@ -130,7 +130,7 @@ class COmap:
 
         if resolution_factor > 1:
             self.standard_geometry = enmap.upgrade(
-                self.standard_geometry, resolution_factor
+                self.standard_geometry, int(resolution_factor)
             )
         elif resolution_factor < 1:
             resolution_factor = int(1 / resolution_factor)
