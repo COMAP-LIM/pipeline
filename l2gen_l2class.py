@@ -87,6 +87,15 @@ class level2_file:
             if self.params.sbA_num_masked_channels != 0:
                 self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
+            for i in range(len(self.feeds)):
+                feed = self.feeds[i]
+                if feed == 4 or feed == 10:
+                    self.freqmask[i,2,952:] = False
+                    self.freqmask[i,3,:72] = False
+                elif feed == 16:
+                    self.freqmask[i,0,550:900] = False
+                elif feed == 17:
+                    self.freqmask[i,1,276:526] = False
             self.freqmask_counter += 1
             self.freqmask_reason_string.append("Marked channels")
             
