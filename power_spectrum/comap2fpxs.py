@@ -963,15 +963,14 @@ class COMAP2FPXS():
         
         # Read and sort split variables to respective lists
         for line in all_lines:
+            line = line.split("#")[0].strip()
+            line = line.split("$")[0].strip()
             split_line = line.split()
             variable = split_line[0]
             number = split_line[1]
 
             if len(split_line) > 2:
                 extra = split_line[-1]
-            
-            if len(split_line) < 2 or len(split_line) == 2:
-                extra = "#"
 
             all_variables.append(variable)
 
