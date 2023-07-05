@@ -47,6 +47,7 @@ class l2gen_runner:
             print("######## Done initializing l2gen ########")
 
 
+
     def run(self):
         self.comm.Barrier()
         Nscans = len(self.runlist)
@@ -54,25 +55,57 @@ class l2gen_runner:
             if self.rank == 0:
                 print(f"No unprocessed scans in runlist. Exiting.")
             return
-        if self.params.distributed_starting:
-            time.sleep((self.rank%16)*60.0)
-        time.sleep(self.rank*0.01)
-        print(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks} on {self.node_name}.")
-        logging.info(f"[{self.rank}] >>> Spawning rank {self.rank} of {self.Nranks} on {self.node_name}.")
 
-        for i_scan in range(Nscans):
-            if i_scan%self.Nranks == self.rank:
-                while psutil.virtual_memory().available/psutil.virtual_memory().total < 0.2:
-                    logging.debug(f"[{self.rank}] Only {psutil.virtual_memory().available/psutil.virtual_memory().total:.1f}% available memory. Checking again in 30 seconds.")
-                    time.sleep(30)
-                print(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})...")
-                logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[i_scan][0]} ({i_scan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
-                l2 = l2gen(self.runlist[i_scan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
+        WORK_TAG = 1
+        DIE_TAG = 2
+
+        ##### Master #####
+        if self.rank == 0:
+            proc_order = np.arange(1, self.Nranks)
+            np.random.shuffle(proc_order)
+            self.tasks_done = 0
+            self.tasks_started = 0
+            for irank in range(self.Nranks-1):
+                self.comm.send(self.tasks_started, dest=proc_order[irank], tag=WORK_TAG)
+                self.tasks_started += 1
+                if self.tasks_started == Nscans:
+                    break
+                if self.params.distributed_starting:
+                    time.sleep(min(600/self.Nranks, 15))  # Spawn ranks randomly over 10 minutes, or 15 seconds per rank, whichever is faster.
+                time.sleep(0.01)
+
+            while self.tasks_started < Nscans:
+                status = MPI.Status()
+                received = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
+                self.tasks_done += 1
+                workerID = status.Get_source()
+                self.comm.send(self.tasks_started, dest=workerID, tag=WORK_TAG)
+                time.sleep(0.01)
+
+            while self.tasks_done < Nscans:
+                status = MPI.Status()
+                received = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
+                self.tasks_done += 1
+                workerID = status.Get_source()
+                self.comm.send(-1, dest=workerID, tag=DIE_TAG)
+                time.sleep(0.01)
+
+        ##### Workers #####
+        else:
+            while True:
+                status = MPI.Status()
+                iscan = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
+                if status.Get_tag() == DIE_TAG:
+                    break
+                print(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})...")
+                logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
+                l2 = l2gen(self.runlist[iscan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
                 dt = time.time() - t0; pdt = time.process_time() - pt0
-                print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
-                logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[i_scan][0]} ({i_scan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
-        
+                print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+
+
 
     def read_params(self):
         self.params = 0
@@ -83,6 +116,7 @@ class l2gen_runner:
                 raise ValueError("A runlist must be specified in parameter file or terminal.")
             print(f"Filters included: {self.params.filters}")
         self.params = self.comm.bcast(self.params, root=0)
+
 
 
     def configure_logging(self):
@@ -99,6 +133,7 @@ class l2gen_runner:
             print(f"Log initialized for runID {runID}")
 
 
+
     def configure_filters(self):
         self.filter_list = []
         if self.rank == 0:
@@ -108,12 +143,15 @@ class l2gen_runner:
         self.filter_list = self.comm.bcast(self.filter_list, root=0)
 
 
+
     def read_runlist(self):
         self.runlist = []
         if self.rank == 0:
             self.runlist = read_runlist(self.params, ignore_existing=True)
 
         self.runlist = self.comm.bcast(self.runlist, root=0)
+
+
 
 
 class l2gen:
@@ -152,6 +190,7 @@ class l2gen:
         logging.debug(f"[{self.rank}] Writing level2 file...")
         self.l2file.write_level2_data()
         logging.debug(f"[{self.rank}] Finished l2 file write.")
+
 
 
 
