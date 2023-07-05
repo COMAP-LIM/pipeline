@@ -422,8 +422,8 @@ class Mapmaker:
                     )
                     if self.rank == 0:
                         for p, pbar in enumerate(pbars):
-                            pbar.n += progress_tot[p]
                             pbar.refresh()
+                            pbar.n += progress_tot[p]
 
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]

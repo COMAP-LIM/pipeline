@@ -157,7 +157,7 @@ class COMAP2FPXS():
             return tqdm.tqdm(
             total = N, 
             colour = "green", 
-            ncols = 60,
+            ncols = 80,
             desc = f"{text}",
             position = pos,
         )
@@ -235,8 +235,8 @@ class COMAP2FPXS():
                     )
                     if self.rank == 0:
                         for p, pbar in enumerate(pbars):
-                            pbar.n += progress_tot[p]
                             pbar.refresh()
+                            pbar.n += progress_tot[p]
 
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
@@ -379,7 +379,7 @@ class COMAP2FPXS():
 
                         xs = cross_spectrum.xs_2D
                         xs_sigma = cross_spectrum.rms_xs_std_2D
-                        
+
                         k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
                         k_bin_edges_par = cross_spectrum.k_bin_edges_par
