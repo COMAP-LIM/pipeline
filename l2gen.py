@@ -75,13 +75,14 @@ class l2gen_runner:
         
 
     def read_params(self):
-        from l2gen_argparser import parser
-        params = parser.parse_args()
-        if not params.runlist:
-            raise ValueError("A runlist must be specified in parameter file or terminal.")
-        self.params = params
+        self.params = 0
         if self.rank == 0:
-            print(f"Filters included: {params.filters}")
+            from l2gen_argparser import parser
+            self.params = parser.parse_args()
+            if not self.params.runlist:
+                raise ValueError("A runlist must be specified in parameter file or terminal.")
+            print(f"Filters included: {self.params.filters}")
+        self.params = self.comm.bcast(self.params, root=0)
 
 
     def configure_logging(self):
@@ -100,9 +101,11 @@ class l2gen_runner:
 
     def configure_filters(self):
         self.filter_list = []
-        for filter_str in self.params.filters:
-            filter = getattr(l2gen_filters, filter_str)
-            self.filter_list.append(filter)
+        if self.rank == 0:
+            for filter_str in self.params.filters:
+                filter = getattr(l2gen_filters, filter_str)
+                self.filter_list.append(filter)
+        self.filter_list = self.comm.bcast(self.filter_list, root=0)
 
 
     def read_runlist(self):
