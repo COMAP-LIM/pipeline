@@ -278,8 +278,7 @@ class COMAP2FPXS():
         
         if self.rank == 0:
             # Compute average FPXS and finished data product plots
-            if self.verbose:
-                print("Computing averages:")
+            print("\nComputing averages:")
             self.compute_averages()
         
 
@@ -308,7 +307,7 @@ class COMAP2FPXS():
             # Generate name of outpute data directory
             mapname1 = map1.split("/")[-1]
             mapname2 = map2.split("/")[-1]
-
+            
             if self.params.psx_null_cross_field:
                 indir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
             else:
@@ -333,9 +332,10 @@ class COMAP2FPXS():
 
             xs_mean_1d = np.zeros((N_splits, N_k))
             xs_error_1d = np.zeros((N_splits, N_k))
-
+            cross_variable_names = [] 
             for i, splits in enumerate(self.split_map_combinations):
-                
+                cross_variable = splits[0].split("/")[1]
+                cross_variable_names.append(cross_variable)
 
                 xs_sum = np.zeros((N_k, N_k))
 
@@ -398,7 +398,6 @@ class COMAP2FPXS():
                 if self.verbose:
                     print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
                     
-
                 xs_mean[i, ...] = xs_sum / xs_inv_var
                 xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
 
@@ -513,6 +512,8 @@ class COMAP2FPXS():
                     (mapname1, mapname2),
                     average_name,
                 )
+            
+            cross_variable_names = np.array(cross_variable_names, dtype = "S")
 
             with h5py.File(os.path.join(outdir, mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
@@ -524,6 +525,7 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_mean_2d", data = xs_mean)
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error)
+                outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
 
                 if self.params.psx_white_noise_sim_seed is not None:
