@@ -185,7 +185,6 @@ class COMAP2FPXS():
                     outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
                 
                 if self.verbose:
-                    print(mapname1, mapname2)
                     # Print some usefull information while computing FPXS
                     if self.params.psx_null_diffmap:
                         if split1 is None or split2 is None:
@@ -198,6 +197,8 @@ class COMAP2FPXS():
                         else:
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
                 
+
+
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
                         self.params, 
@@ -229,6 +230,10 @@ class COMAP2FPXS():
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
 
+                    k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
+                    transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
+
+
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -237,19 +242,16 @@ class COMAP2FPXS():
                             t = time.time()
                             seed = int(np.round((t - np.floor(t)) * 1e4))
 
+                        self.params.psx_white_noise_transfer_function = transfer_function_wn
+
                         cross_spectrum.run_noise_sims_2d(
                             self.params.psx_noise_sim_number,
                             no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                             seed = seed,
                         )
+
                     else:
-                        with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
-                            k_centers_perp = infile["k_centers_perp"][()]
-                            k_centers_par = infile["k_centers_par"][()]
-                            tf_wn = infile["tf"][()]
-
-                        cross_spectrum.xs *= tf_wn
-
+                        cross_spectrum.xs *= transfer_function_wn
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance"], outdir_data)
                     
                     # Save resulting FPXS from current combination to file
@@ -1174,6 +1176,23 @@ class COMAP2FPXS():
                 full_transfer_function.k_bin_centers_par_2D,
             )
             np.testing.assert_allclose(approx, full_transfer_function.transfer_function_2D)
+
+        # White noise transfer function used to deconvole the effect of the pipeline filteres
+        path_wn_transfer_function = os.path.join(
+                self.params.transfer_function_dir,
+                self.params.psx_white_noise_transfer_function_name
+            )
+        transfer_function_wn = TransferFunction()
+        transfer_function_wn.read(path_wn_transfer_function) 
+
+        self.transfer_function_wn_interp = interpolate.RectBivariateSpline(
+            transfer_function_wn.k_bin_centers_perp_2D,
+            transfer_function_wn.k_bin_centers_par_2D,
+            transfer_function_wn.transfer_function_2D, 
+            s = 0, # No smoothing when splining
+            kx = 3, # Use bi-cubic spline in x-direction
+            ky = 3, # Use bi-cubic spline in x-direction
+            )
 
     def generate_new_monte_carlo_seed(self):
             """Method that generates global Monte Carlo seed from current time.time() used in white noise simulations.

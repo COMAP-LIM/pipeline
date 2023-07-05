@@ -186,7 +186,6 @@ class TransferFunction:
                 self.transfer_function_2D = infile[f"{cyl_avg}/transfer_function"][
                     ()
                 ]
-
                 self.k_bin_edges_par_2D = infile[f"{cyl_avg}/k_bin_edges_par"][()]
                 self.k_bin_edges_perp_2D = infile[f"{cyl_avg}/k_bin_edges_perp"][()]
 

@@ -706,6 +706,12 @@ parser.add_argument(
     help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
 )
 
+parser.add_argument(
+    "--psx_white_noise_transfer_function_name",
+    type=str,
+    default = "tf_white_noise.h5",
+    help="(comap2fpxs) White noise transfer function filename (not absolute path) to use when correcting error bar bias from filtering.",
+)
 
 
 ###### Physics ######

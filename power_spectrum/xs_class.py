@@ -307,11 +307,6 @@ class CrossSpectrum_nmaps:
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
 
-        with h5py.File("/mn/stornext/d22/cmbco/comap/nils/pipeline/power_spectrum/transfer_functions/TF_wn_v2.h5", "r") as infile:
-            k_centers_perp = infile["k_centers_perp"][()]
-            k_centers_par = infile["k_centers_par"][()]
-            tf_wn = infile["tf"][()]
-
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
 
@@ -358,10 +353,9 @@ class CrossSpectrum_nmaps:
                     dy=self.maps[i].dy,
                     dz=self.maps[i].dz,
                 )[0]
-
-                ## MAY CHANGE IN THE FUTURE!!! THIS IS TO CORRECT WN SIMS TO GET SAME PIPELINE BIAS AS DATA
-                rms_xs[:, :, g] *= tf_wn
-
+            
+            rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
+            
             self.reverse_normalization(
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
