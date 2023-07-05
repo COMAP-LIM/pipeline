@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import time 
 import scipy.interpolate as interpolate
 
+import tqdm
+
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
 sys.path.append(parent_directory)
@@ -144,7 +146,7 @@ class COMAP2FPXS():
         
         Number_of_combinations = len(all_combinations)
         
-        if self.verbose and self.rank == 0:
+        if self.rank == 0:
             print("#" * 70)
             print(f"Primary splits: {self.primary_variables}")
             print(f"Secondary splits: {self.secondary_variables}")
@@ -154,6 +156,15 @@ class COMAP2FPXS():
         self.comm.Barrier()
         
         self.params.primary_variables = self.primary_variables
+        
+
+        if self.rank == 0 and not self.verbose:
+            print("\n")
+            progress_bar = tqdm.tqdm(
+                total = Number_of_combinations // self.Nranks, 
+                colour = "green", 
+                ncols = 60
+            )
         
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
@@ -196,7 +207,10 @@ class COMAP2FPXS():
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
                         else:
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
-                
+                else:
+                    if self.rank == 0:
+                        progress_bar.update(1)
+
 
 
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
@@ -214,7 +228,9 @@ class COMAP2FPXS():
                 
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
-                    print("Skip")
+                    if self.rank == 0 and not self.verbose:
+                        progress_bar.update(1)
+                    
                     continue
                 else:
 
