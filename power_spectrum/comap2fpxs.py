@@ -171,10 +171,8 @@ class COMAP2FPXS():
                 dummy_rank = 0            
             N_pbars = self.Nranks
 
-        elif self.rank != 0 and not self.verbose:
+        else:
             N_pbars = None
-
-
 
         if self.Nranks < 21:
             dummy_rank = self.rank
@@ -182,9 +180,8 @@ class COMAP2FPXS():
             dummy_rank = 0      
 
         N_pbars = self.comm.bcast(N_pbars, root = 0)
-
-        # print("hei", dummy_rank, N_pbars, "\n")
-        progress_tot = np.zeros(N_pbars, dtype = np.int32)
+        if N_pbars is not None:
+            progress_tot = np.zeros(N_pbars, dtype = np.int32)
 
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
