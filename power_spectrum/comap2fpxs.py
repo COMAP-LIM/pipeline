@@ -92,11 +92,6 @@ class COMAP2FPXS():
         """Main run method to perform computation of cross-spectra
         """
 
-        # Distributed start will slow down some MPI threads in beginning to not overwhelm memory.
-        if self.params.distributed_starting:
-            time.sleep((self.rank%16) * 30.0)
-        #time.sleep(self.rank * 0.01)
-
         if self.params.psx_mode == "feed":
             # Only want to compute FPXS for included feeds (detectors)
             self.included_feeds = self.params.included_feeds
@@ -154,7 +149,7 @@ class COMAP2FPXS():
             print("#" * 70)
 
         self.comm.Barrier()
-        
+
         self.params.primary_variables = self.primary_variables
         
         if self.rank == 0 and not self.verbose:
@@ -211,8 +206,6 @@ class COMAP2FPXS():
                         progress_bar.update(1)
                         progress_bar.refresh()
 
-
-
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
                         self.params, 
@@ -231,7 +224,7 @@ class COMAP2FPXS():
                     if self.rank == 0 and not self.verbose:
                         progress_bar.update(1)
                         progress_bar.refresh()
-                    
+
                     continue
                 else:
 
