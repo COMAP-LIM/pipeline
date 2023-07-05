@@ -376,6 +376,8 @@ class Mapmaker:
                     rejection_number += 1
                     if self.rank == 0 and not self.params.verbose:
                         progress_bar.update(1)
+                        progress_bar.refresh()
+
                     continue
 
                 scan_idx = scan_idx[0]
@@ -391,6 +393,7 @@ class Mapmaker:
                     rejection_number += 1
                     if self.rank == 0 and not self.params.verbose:
                         progress_bar.update(1)
+                        progress_bar.refresh()
                     continue
 
                 if self.params.drop_first_scans and str(scanid)[-2:] == "02":
@@ -402,6 +405,8 @@ class Mapmaker:
                     rejection_number += 1
                     if self.rank == 0 and not self.params.verbose:
                         progress_bar.update(1)
+                        progress_bar.refresh()
+
                     continue
 
                 if self.params.verbose:
@@ -442,6 +447,8 @@ class Mapmaker:
 
                 if self.rank == 0 and not self.params.verbose:
                     progress_bar.update(1)
+                    progress_bar.refresh()
+
 
         # Get frequency bin centers and edges from last level2 file.
         full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]

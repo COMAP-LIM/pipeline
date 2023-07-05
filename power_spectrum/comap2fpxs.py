@@ -157,13 +157,12 @@ class COMAP2FPXS():
         
         self.params.primary_variables = self.primary_variables
         
-
         if self.rank == 0 and not self.verbose:
             print("\n")
             progress_bar = tqdm.tqdm(
                 total = Number_of_combinations // self.Nranks, 
                 colour = "green", 
-                ncols = 60
+                ncols = 60,
             )
         
         # MPI parallel run over all FPXS combinations
@@ -210,6 +209,7 @@ class COMAP2FPXS():
                 else:
                     if self.rank == 0:
                         progress_bar.update(1)
+                        progress_bar.refresh()
 
 
 
@@ -230,6 +230,7 @@ class COMAP2FPXS():
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
                     if self.rank == 0 and not self.verbose:
                         progress_bar.update(1)
+                        progress_bar.refresh()
                     
                     continue
                 else:
