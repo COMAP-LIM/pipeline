@@ -1,10 +1,11 @@
 """
+l2gen.py must be run with at least 2 MPI processes, as it utilizes a master-worker approach.
 Example usage:
-    mpirun --machinefile machinefile.txt python3 -W ignore -u l2gen.py
-    mpirun -n 120 python3 -W ignore -u l2gen.py
-    python3 -W ignore l2gen.py
+    mpirun --machinefile machinefile.txt python3 -u -m mpi4py l2gen.py
+    mpirun -n 120 python3 -u -m mpi4py l2gen.py -p /mn/stornext/d22/cmbco/comap/params/param_co7_apr22_v2.txt
     To get Numpy to respect number of threads (per MPI thread):
-    export OMP_NUM_THREADS=20; export OPENBLAS_NUM_THREADS=20; export MKL_NUM_THREADS=20; python3 -u -W ignore l2gen.py
+    OMP_NUM_THREADS=20 OPENBLAS_NUM_THREADS=20 MKL_NUM_THREADS=20 mpirun -n 10 python3 -u -m mpi4py l2gen.py
+the -m mpi4py is necessary for MPI to properly handle errors. See https://mpi4py.readthedocs.io/en/stable/mpi4py.run.html and https://stackoverflow.com/questions/49868333/fail-fast-with-mpi4py.
 """
 import time
 import numpy as np
@@ -26,6 +27,29 @@ warnings.filterwarnings("ignore", message="invalid value encountered in true_div
 warnings.filterwarnings("ignore", message="divide by zero encountered in true_divide")
 warnings.filterwarnings("ignore", message="Degrees of freedom <= 0 for slice.")
 warnings.filterwarnings("ignore", message="Mean of empty slice")
+
+
+class Terminal_print:
+    def __init__(self, filter_list):
+        self.accumulated_acceptrate = np.zeros((19, 4))
+        self.accumulated_feeds = np.zeros((19))
+        self.accumulated_filter_runtime = {filter.name : 0 for filter in filter_list}
+        self.accumulated_filter_runtime["l2_write"] = 0
+
+
+    def update_and_print(self, info):
+        self.accumulated_feeds[info["feeds"]-1] += 1
+        self.accumulated_acceptrate[info["feeds"]-1] += info["acceptrate"]
+        for filter in info["filter_runtimes"].keys():
+            self.accumulated_filter_runtime[filter] += info["filter_runtimes"][filter]
+
+        
+        for filter in self.accumulated_filter_runtime.keys():
+            print(filter, self.accumulated_filter_runtime[filter])
+        
+        print(self.accumulated_acceptrate)
+        print(self.accumulated_feeds)
+        print(self.accumulated_acceptrate/self.accumulated_feeds[:,None])
 
 
 
@@ -61,6 +85,8 @@ class l2gen_runner:
 
         ##### Master #####
         if self.rank == 0:
+            term = Terminal_print(self.filter_list)
+
             proc_order = np.arange(1, self.Nranks)
             np.random.shuffle(proc_order)
             self.tasks_done = 0
