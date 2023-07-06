@@ -152,39 +152,30 @@ class COMAP2FPXS():
 
         self.params.primary_variables = self.primary_variables
         
-
-        def get_progress_bar(pos, text, N):
-            return tqdm.tqdm(
-            total = N, 
-            colour = "green", 
-            ncols = 80,
-            desc = f"{text}",
-            position = pos,
-        )
-
         if self.rank == 0 and not self.verbose:
-            if self.Nranks < 21:
-                pbars = [get_progress_bar(i, f"Rank {i}", Number_of_combinations // self.Nranks) for i in range(self.Nranks)]
-                dummy_rank = self.rank
-            else:
-                pbars = [get_progress_bar(0, f"Total ", Number_of_combinations)]
-                dummy_rank = 0            
-            N_pbars = self.Nranks
-
-        else:
-            N_pbars = None
-
-        if self.Nranks < 21:
-            dummy_rank = self.rank
-        else:
-            dummy_rank = 0      
-
-        N_pbars = self.comm.bcast(N_pbars, root = 0)
-        if N_pbars is not None:
-            progress_tot = np.zeros(N_pbars, dtype = np.int32)
+            pbar = tqdm.tqdm(
+                total = Number_of_combinations, 
+                colour = "red", 
+                ncols = 80,
+                desc = f"Total",
+                position = 0,
+            )
 
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
+
+            # If not verbose use progress bars instead of informative prints
+            if not self.verbose:
+                prog_tot = self.comm.reduce(
+                    1,
+                    op = MPI.SUM,
+                    root = 0
+                )
+                
+                if self.rank == 0:
+                    pbar.refresh()
+                    pbar.n = int(pbar.n + prog_tot / self.Nranks)
+                
             if i % self.Nranks == self.rank:
                 
                 # Extract file names, split keys and feed combinations from current combination
@@ -224,20 +215,7 @@ class COMAP2FPXS():
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
                         else:
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
-                else:
-                    progress = np.zeros(N_pbars, dtype = np.int32)
-                    progress[dummy_rank] = 1
-                    self.comm.Reduce(
-                        [progress, MPI.INTEGER],
-                        [progress_tot, MPI.INTEGER],
-                        op = MPI.SUM,
-                        root = 0
-                    )
-                    if self.rank == 0:
-                        for p, pbar in enumerate(pbars):
-                            pbar.refresh()
-                            pbar.n += progress_tot[p]
-
+                    
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
                         self.params, 
@@ -250,12 +228,11 @@ class COMAP2FPXS():
                 if self.params.psx_null_diffmap:
                     outdir = os.path.join(outdir, f"null_diffmap/{cross_spectrum.null_variable}")
                 
-                
+                    
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
                     continue
                 else:
-
                     # Read maps from generated map paths, and provide cosmology to translate from
                     # observational units to cosmological ones.
                     cross_spectrum.read_map(
@@ -294,7 +271,7 @@ class COMAP2FPXS():
                     
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
-
+                
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
         
@@ -392,14 +369,10 @@ class COMAP2FPXS():
 
                         transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
                         
-                        try:
-                            chi3 = np.nansum(
-                            (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
-                            )
-                        except:
-                            print(xs.shape, transfer_function_mask.shape, transfer_function.shape, xs_sigma.shape, self.params.psx_white_noise_sim_seed, feed1, feed2, splits)
-                            sys.exit()
-
+                        chi3 = np.nansum(
+                        (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
+                        )
+                            
                         number_of_samples = np.sum(transfer_function_mask)
             
                         chi2[feed1, feed2] = np.sign(chi3) * abs(
@@ -415,8 +388,7 @@ class COMAP2FPXS():
                                 xs_inv_var += 1 / xs_sigma ** 2
                 
 
-                if self.verbose:
-                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
                     
                 xs_mean[i, ...] = xs_sum / xs_inv_var
                 xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
