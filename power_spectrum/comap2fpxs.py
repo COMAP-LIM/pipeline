@@ -152,14 +152,37 @@ class COMAP2FPXS():
 
         self.params.primary_variables = self.primary_variables
         
+
+        def get_progress_bar(pos, text, N):
+            return tqdm.tqdm(
+            total = N, 
+            colour = "green", 
+            ncols = 80,
+            desc = f"{text}",
+            position = pos,
+        )
+
         if self.rank == 0 and not self.verbose:
-            print("\n")
-            progress_bar = tqdm.tqdm(
-                total = Number_of_combinations // self.Nranks, 
-                colour = "green", 
-                ncols = 60,
-            )
-        
+            if self.Nranks < 21:
+                pbars = [get_progress_bar(i, f"Rank {i}", Number_of_combinations // self.Nranks) for i in range(self.Nranks)]
+                dummy_rank = self.rank
+            else:
+                pbars = [get_progress_bar(0, f"Total ", Number_of_combinations)]
+                dummy_rank = 0            
+            N_pbars = self.Nranks
+
+        else:
+            N_pbars = None
+
+        if self.Nranks < 21:
+            dummy_rank = self.rank
+        else:
+            dummy_rank = 0      
+
+        N_pbars = self.comm.bcast(N_pbars, root = 0)
+        if N_pbars is not None:
+            progress_tot = np.zeros(N_pbars, dtype = np.int32)
+
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
             if i % self.Nranks == self.rank:
@@ -202,9 +225,18 @@ class COMAP2FPXS():
                         else:
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
                 else:
+                    progress = np.zeros(N_pbars, dtype = np.int32)
+                    progress[dummy_rank] = 1
+                    self.comm.Reduce(
+                        [progress, MPI.INTEGER],
+                        [progress_tot, MPI.INTEGER],
+                        op = MPI.SUM,
+                        root = 0
+                    )
                     if self.rank == 0:
-                        progress_bar.update(1)
-                        progress_bar.refresh()
+                        for p, pbar in enumerate(pbars):
+                            pbar.refresh()
+                            pbar.n += progress_tot[p]
 
                 # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
                 cross_spectrum = xs_class.CrossSpectrum_nmaps(
@@ -221,10 +253,6 @@ class COMAP2FPXS():
                 
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
-                    if self.rank == 0 and not self.verbose:
-                        progress_bar.update(1)
-                        progress_bar.refresh()
-
                     continue
                 else:
 
@@ -345,14 +373,13 @@ class COMAP2FPXS():
                             self.included_feeds[feed1], 
                             self.included_feeds[feed2],
                         )
-                        #print("hei", indir)
 
                         cross_spectrum.read_spectrum(indir)
                         #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
                         xs = cross_spectrum.xs_2D
                         xs_sigma = cross_spectrum.rms_xs_std_2D
-                        
+
                         k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
                         k_bin_edges_par = cross_spectrum.k_bin_edges_par
@@ -360,7 +387,6 @@ class COMAP2FPXS():
                         k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
 
                         transfer_function = self.full_trasnfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
-                        #print("hei", transfer_function)
 
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 

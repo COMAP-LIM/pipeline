@@ -355,29 +355,82 @@ class Mapmaker:
             time_buffer = None
             rejection_number_buffer = None
 
-        if self.rank == 0 and not self.params.verbose:
-            print("\n")
-            progress_bar = tqdm.tqdm(
-                total = len(self.runlist) // self.Nranks, 
-                colour = "green", 
-                ncols = 60
-            )
+        # if self.rank == 0 and not self.params.verbose:
+        #     print("\n")
+        #     progress_bar = tqdm.tqdm(
+        #         total = len(self.runlist) // self.Nranks, 
+        #         colour = "green", 
+        #         ncols = 60
+        #     )
         
+        def get_progress_bar(pos: int, text: str, N: int) -> tqdm.std.tqdm:
+            """Function making progress bars
+
+            Args:
+                pos (int): Position of progress bar
+                text (str): Description text on progress bar
+                N (int): Number of iterations in progress bar
+
+            Returns:
+                tqdm.std.tqdm: tqdm progress bar object
+            """
+            return tqdm.tqdm(
+            total = N, 
+            colour = "green", 
+            ncols = 60,
+            desc = f"{text}",
+            position = pos,
+        )
+
+        # Define progress bares
+        if self.rank == 0 and not self.params.verbose:
+            if self.Nranks < 21:
+                pbars = [get_progress_bar(i, f"Rank {i}", len(self.runlist) // self.Nranks) for i in range(self.Nranks)]
+                dummy_rank = self.rank
+            else:
+                pbars = [get_progress_bar(0, f"Total ", len(self.runlist))]
+                dummy_rank = 0            
+            N_pbars = self.Nranks
+
+        else:
+            N_pbars = None
+
+        if self.Nranks < 21:
+            dummy_rank = self.rank
+        else:
+            dummy_rank = 0      
+
+        N_pbars = self.comm.bcast(N_pbars, root = 0)
+
+        if N_pbars is not None:
+            progress_tot = np.zeros(N_pbars, dtype = np.int32)
+
         for i, scan in enumerate(self.runlist):
 
             scanid = scan[0]
 
             if i % self.Nranks == self.rank:
+
+                if not self.params.verbose:
+                    progress = np.zeros(N_pbars, dtype = np.int32)
+                    progress[dummy_rank] = 1
+                    self.comm.Reduce(
+                        [progress, MPI.INTEGER],
+                        [progress_tot, MPI.INTEGER],
+                        op = MPI.SUM,
+                        root = 0
+                    )
+                    if self.rank == 0:
+                        for p, pbar in enumerate(pbars):
+                            pbar.refresh()
+                            pbar.n += progress_tot[p]
+
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]
                 if len(scan_idx) == 0:
                     print(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
                     # raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
                     rejection_number += 1
-                    if self.rank == 0 and not self.params.verbose:
-                        progress_bar.update(1)
-                        progress_bar.refresh()
-
                     continue
 
                 scan_idx = scan_idx[0]
@@ -391,9 +444,6 @@ class Mapmaker:
                             f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
-                    if self.rank == 0 and not self.params.verbose:
-                        progress_bar.update(1)
-                        progress_bar.refresh()
                     continue
 
                 if self.params.drop_first_scans and str(scanid)[-2:] == "02":
@@ -403,10 +453,6 @@ class Mapmaker:
                             f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
-                    if self.rank == 0 and not self.params.verbose:
-                        progress_bar.update(1)
-                        progress_bar.refresh()
-
                     continue
 
                 if self.params.verbose:
@@ -443,11 +489,6 @@ class Mapmaker:
                 time_array[4] += time.perf_counter() - t0
 
                 time_array[5] += time.perf_counter() - ti
-
-
-                if self.rank == 0 and not self.params.verbose:
-                    progress_bar.update(1)
-                    progress_bar.refresh()
 
 
         # Get frequency bin centers and edges from last level2 file.
