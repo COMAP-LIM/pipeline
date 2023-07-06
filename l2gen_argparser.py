@@ -21,7 +21,7 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-v", "--verbose", type=str2bool, default=True, help="Enable verbose printing.")
+parser.add_argument("-v", "--verbose", type=str2bool, default=False, help="Enable verbose printing.")
 
 parser.add_argument(
     "--debug",

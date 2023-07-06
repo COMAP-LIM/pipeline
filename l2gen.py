@@ -15,6 +15,8 @@ import os
 import psutil
 import random
 from mpi4py import MPI
+from tqdm import tqdm
+import sys
 from l2gen_l2class import level2_file
 import l2gen_filters
 from tools.read_runlist import read_runlist
@@ -30,26 +32,78 @@ warnings.filterwarnings("ignore", message="Mean of empty slice")
 
 
 class Terminal_print:
-    def __init__(self, filter_list):
+    def __init__(self, filter_list, Nscans):
+        self.Nscans = Nscans
+        self.N_finished_scans = 0
         self.accumulated_acceptrate = np.zeros((19, 4))
         self.accumulated_feeds = np.zeros((19))
-        self.accumulated_filter_runtime = {filter.name : 0 for filter in filter_list}
+        self.accumulated_filter_runtime = {}
+        self.accumulated_filter_runtime["l1_read"] = 0
+        for filter in filter_list:
+            self.accumulated_filter_runtime[filter.name] = 0
         self.accumulated_filter_runtime["l2_write"] = 0
+        self.total_filter_runtime = 1e-10
+        self.t0 = time.time()
+        self.pt0 = time.process_time()
+        self.rewrite_lines = 0
 
 
-    def update_and_print(self, info):
+    def get_color(self, value):
+        if value > 85:
+            return "\033[96m"
+        elif value > 70:
+            return "\033[94m"
+        elif value > 50:
+            return "\033[93m"
+        else:            
+            return "\033[91m"
+
+
+    def update(self, info):
+        self.N_finished_scans += 1
+
         self.accumulated_feeds[info["feeds"]-1] += 1
         self.accumulated_acceptrate[info["feeds"]-1] += info["acceptrate"]
+
+        self.total_filter_runtime = 0.0
         for filter in info["filter_runtimes"].keys():
             self.accumulated_filter_runtime[filter] += info["filter_runtimes"][filter]
+            self.total_filter_runtime += self.accumulated_filter_runtime[filter]
 
-        
+
+    def rewrite_terminal(self):
+        Nfeeds = 19
+        Nsb = 4
+        feeds = np.arange(1, 20)
+
+        printstring = ""
+        asdf = tqdm.format_meter(self.N_finished_scans, self.Nscans, elapsed=time.time()-self.t0, ncols=140)
+        printstring += f"______Total progress______\n{asdf}\n"
+        printstring += f"\n______Average acceptrate by feed and sidebands______\n"
+        printstring += f"         all"
+        for ifeed in range(Nfeeds):
+            printstring += f"{feeds[ifeed]:7d}"
+        acc = np.sum(self.accumulated_acceptrate)/np.sum(Nsb*self.accumulated_feeds)*100
+        printstring += f"\nall  {self.get_color(acc)}{acc:6.1f}%\033[0m"
+        for ifeed in range(Nfeeds):
+            acc = np.sum(self.accumulated_acceptrate[ifeed])/(Nsb*self.accumulated_feeds[ifeed])*100
+            printstring += f"{self.get_color(acc)}{acc:6.1f}%\033[0m"
+        for isb in range(Nsb):
+            acc = np.sum(self.accumulated_acceptrate[:,isb])/np.sum(self.accumulated_feeds)*100
+            printstring += f"\n  {isb}  {self.get_color(acc)}{acc:6.1f}%\033[0m"
+            for ifeed in range(Nfeeds):
+                acc = np.sum(self.accumulated_acceptrate[ifeed,isb])/self.accumulated_feeds[ifeed]*100
+                printstring += f"{self.get_color(acc)}{acc:6.1f}%\033[0m"
+
+        printstring += "\n\n______Runtime summary______\n"
         for filter in self.accumulated_filter_runtime.keys():
-            print(filter, self.accumulated_filter_runtime[filter])
-        
-        print(self.accumulated_acceptrate)
-        print(self.accumulated_feeds)
-        print(self.accumulated_acceptrate/self.accumulated_feeds[:,None])
+            printstring += f"{filter:12s}: {self.accumulated_filter_runtime[filter]/60.0:8.1f}m  ({100*self.accumulated_filter_runtime[filter]/self.total_filter_runtime:4.1f} %)\n"
+
+        for i in range(self.rewrite_lines):
+            sys.stdout.write("\x1b[1A\x1b[2K")
+        print(printstring)
+        lines = printstring.count("\n")
+        self.rewrite_lines = lines + 1
 
 
 
@@ -85,7 +139,8 @@ class l2gen_runner:
 
         ##### Master #####
         if self.rank == 0:
-            term = Terminal_print(self.filter_list)
+            term = Terminal_print(self.filter_list, Nscans)
+            term.rewrite_terminal()
 
             proc_order = np.arange(1, self.Nranks)
             np.random.shuffle(proc_order)
@@ -94,7 +149,9 @@ class l2gen_runner:
             for irank in range(self.Nranks-1):
                 self.comm.send(self.tasks_started, dest=proc_order[irank], tag=WORK_TAG)
                 self.tasks_started += 1
-                if self.tasks_started == Nscans:
+                if self.tasks_started == Nscans:  # If we have more processes than tasks, kill the rest, and break the task-assigment loop.
+                    for iirank in range(irank, self.Nranks-1):
+                        self.comm.send(-1, dest=proc_order[iirank], tag=DIE_TAG)
                     break
                 if self.params.distributed_starting:
                     time.sleep(min(600/self.Nranks, 15))  # Spawn ranks randomly over 10 minutes, or 15 seconds per rank, whichever is faster.
@@ -102,15 +159,20 @@ class l2gen_runner:
 
             while self.tasks_started < Nscans:
                 status = MPI.Status()
-                received = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
+                info = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
+                term.update(info)
+                term.rewrite_terminal()
                 self.tasks_done += 1
                 workerID = status.Get_source()
                 self.comm.send(self.tasks_started, dest=workerID, tag=WORK_TAG)
+                self.tasks_started += 1
                 time.sleep(0.01)
 
             while self.tasks_done < Nscans:
                 status = MPI.Status()
-                received = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
+                info = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
+                term.update(info)
+                term.rewrite_terminal()
                 self.tasks_done += 1
                 workerID = status.Get_source()
                 self.comm.send(-1, dest=workerID, tag=DIE_TAG)
@@ -123,14 +185,19 @@ class l2gen_runner:
                 iscan = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
                 if status.Get_tag() == DIE_TAG:
                     break
-                print(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})...")
+                # print(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})...")
                 logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
                 l2 = l2gen(self.runlist[iscan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
                 dt = time.time() - t0; pdt = time.process_time() - pt0
-                print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                # print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
                 logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
 
+                return_dict = {}
+                return_dict["filter_runtimes"] = l2.filter_runtimes
+                return_dict["acceptrate"] = l2.l2file.acceptrate
+                return_dict["feeds"] = l2.l2file.feeds
+                self.comm.send(return_dict, dest=0)
 
 
     def read_params(self):
@@ -191,13 +258,18 @@ class l2gen:
         self.params = params
         self.verbose = self.params.verbose
         self.filter_names = [filter.name for filter in filter_list]
+        self.filter_runtimes = {}
+        self.filter_processtimes = {}
 
 
     def run(self):
         logging.debug(f"[{self.rank}] Reading level1 data...")
         t0 = time.time(); pt0 = time.process_time()
         self.l2file.load_level1_data()
-        logging.debug(f"[{self.rank}] Finished l1 file read in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+        t1 = time.time(); pt1 = time.time()
+        self.filter_runtimes["l1_read"] = t1 - t0
+        self.filter_processtimes["l1_read"] = pt1 - pt0
+        logging.debug(f"[{self.rank}] Finished l1 file read in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
 
         if self.params.write_inter_files:
             logging.debug(f"[{self.rank}] Writing pre-filtered data to file...")
@@ -207,14 +279,21 @@ class l2gen:
             logging.debug(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
             t0 = time.time(); pt0 = time.process_time()
             filter.run(self.l2file)
-            logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+            t1 = time.time(); pt1 = time.process_time()
+            logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
             if self.params.write_inter_files:
                 logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
+            self.filter_runtimes[self.filter_names[i]] = t1 - t0
+            self.filter_processtimes[self.filter_names[i]] = pt1 - pt0
 
         logging.debug(f"[{self.rank}] Writing level2 file...")
+        t0 = time.time()
         self.l2file.write_level2_data()
+        t1 = time.time()
+        self.filter_runtimes["l2_write"] = t1 - t0
+        self.filter_processtimes["l2_write"] = pt1 - pt0
         logging.debug(f"[{self.rank}] Finished l2 file write.")
 
 
