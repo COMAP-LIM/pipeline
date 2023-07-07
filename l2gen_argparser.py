@@ -590,6 +590,12 @@ parser.add_argument(
     help="(comap2fpxs) The path to the binned white noise (no filtering) map, used to generate error bars in power spectra.",
 )
 
+parser.add_argument(
+    "--psx_map_name_postfix",
+    type=str,
+    default="",
+    help="If set, the PSX code will add this to the end of the map-name before reading. Currently used for easier compatibility with the names written by the clean_maps.py mPCA subtractor (remember to add '_' to the postfix name).",
+)
 
 parser.add_argument(
     "--from_file",
