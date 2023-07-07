@@ -77,27 +77,36 @@ class Terminal_print:
         feeds = np.arange(1, 20)
 
         printstring = ""
-        asdf = tqdm.format_meter(self.N_finished_scans, self.Nscans, elapsed=time.time()-self.t0, ncols=140)
-        printstring += f"______Total progress______\n{asdf}\n"
-        printstring += f"\n______Average acceptrate by feed and sidebands______\n"
-        printstring += f"         all"
+        printstring += " " + "_"*107 + "\n"
+        asdf = tqdm.format_meter(self.N_finished_scans, self.Nscans, elapsed=time.time()-self.t0, ncols=105)
+        printstring += f"{'______Total progress______':<105}\n"
+        printstring += f"{asdf}\n"
+        printstring += f"{'':<105}\n"
+        printstring += f"{'______Average acceptrate by feed and sidebands______':<105s}\n"
+        printstring += f"       all"
         for ifeed in range(Nfeeds):
-            printstring += f"{feeds[ifeed]:7d}"
+            printstring += f"{feeds[ifeed]:5d}"
         acc = np.sum(self.accumulated_acceptrate)/np.sum(Nsb*self.accumulated_feeds)*100
-        printstring += f"\nall  {self.get_color(acc)}{acc:6.1f}%\033[0m"
+        printstring += f"\nall  {self.get_color(acc)}{acc:4.0f}%\033[0m"
         for ifeed in range(Nfeeds):
             acc = np.sum(self.accumulated_acceptrate[ifeed])/(Nsb*self.accumulated_feeds[ifeed])*100
-            printstring += f"{self.get_color(acc)}{acc:6.1f}%\033[0m"
+            printstring += f"{self.get_color(acc)}{acc:4.0f}%\033[0m"
         for isb in range(Nsb):
             acc = np.sum(self.accumulated_acceptrate[:,isb])/np.sum(self.accumulated_feeds)*100
-            printstring += f"\n  {isb}  {self.get_color(acc)}{acc:6.1f}%\033[0m"
+            printstring += f"\n  {isb}  {self.get_color(acc)}{acc:4.0f}%\033[0m"
             for ifeed in range(Nfeeds):
                 acc = np.sum(self.accumulated_acceptrate[ifeed,isb])/self.accumulated_feeds[ifeed]*100
-                printstring += f"{self.get_color(acc)}{acc:6.1f}%\033[0m"
-
-        printstring += "\n\n______Runtime summary______\n"
+                printstring += f"{self.get_color(acc)}{acc:4.0f}%\033[0m"
+        printstring += "\n"
+        printstring += f"{'':<105}\n"
+        printstring += f"{'______Runtime summary______':<105s}\n"
         for filter in self.accumulated_filter_runtime.keys():
-            printstring += f"{filter:12s}: {self.accumulated_filter_runtime[filter]/60.0:8.1f}m  ({100*self.accumulated_filter_runtime[filter]/self.total_filter_runtime:4.1f} %)\n"
+            tempstring = f"{filter:12s}: {self.accumulated_filter_runtime[filter]/60.0:8.1f}m  ({100*self.accumulated_filter_runtime[filter]/self.total_filter_runtime:4.1f} %)"
+            printstring += f"{tempstring:<105s}\n"
+
+        printstring = printstring.replace("\n", " |\n| ")
+        printstring = printstring.replace("|", "", 1)
+        printstring += "_"*105 + " |\n"
 
         for i in range(self.rewrite_lines):
             sys.stdout.write("\x1b[1A\x1b[2K")
@@ -114,7 +123,7 @@ class l2gen_runner:
         self.rank = self.comm.Get_rank()
         self.node_name = MPI.Get_processor_name()
         if self.rank == 0:
-            print("######## Initializing l2gen ########")
+            print("\n######## Initializing l2gen ########")
 
         self.omp_num_threads = omp_num_threads
         self.read_params()
@@ -122,7 +131,7 @@ class l2gen_runner:
         self.configure_filters()
         self.read_runlist()
         if self.rank == 0:
-            print("######## Done initializing l2gen ########")
+            print("######## Done initializing l2gen ########\n")
 
 
 
