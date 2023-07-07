@@ -1136,3 +1136,58 @@ parser.add_argument(
     default=None,
     help="(Replace_TOD_with_WN) What seed to use for white noise TOD replacement. None = no seed.",
 )
+
+
+
+###### pca_subtractor/clean_maps.py stuff ######
+parser.add_argument("--mpca_inname", type=str, help="""Path to input map.""")
+
+parser.add_argument(
+    "--mpca_outname", type=str, help="""Name of output map.""", default=None
+)
+
+parser.add_argument(
+    "--mpca_rmsnorm",
+    type=str,
+    help="""Which normalistion to use before PCA decomposition.
+    Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
+    default="sigma_wn",
+)
+
+parser.add_argument(
+    "--mpca_approx_noise",
+    help="""Whether to approximate noise weights by PCA to conserve outer product""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_maskrms",
+    type=float,
+    help="""Factor of mean of bottom 100 sigma_wn of each feed and frequency beyond which map is masked.""",
+    default=None,
+)
+
+parser.add_argument(
+    "--mpca_ncomps",
+    type=int,
+    help="""How many PCA modes to subtract from input map. Default is 5. """,
+    default=5,
+)
+
+parser.add_argument(
+    "--mpca_verbose",
+    help="""Whether to run in verbose mode or not. Default is False""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_subtract_mean",
+    help="""Whether to subtract line-of-sight mean per pixel prior to PCA. Default is False""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_save_reconstruction",
+    help="""Whether to save PCA reconstrucion in its own map file(s). Default is False""",
+    action="store_true",
+)
