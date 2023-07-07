@@ -116,7 +116,7 @@ class COMAP2FPXS():
                 # If provided map name file list is empty, just use map-maker map name 
                 # and all included fields (assuming that all fields have same filename pattern).
                 fields = self.params.fields
-                mapnames = [f"{field_name}_{self.params.map_name}.h5" for field_name in fields]
+                mapnames = [f"{field_name}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5" for field_name in fields]
             
             # Map file name combinations
             field_combinations = list(itertools.product(mapnames, mapnames))
@@ -126,7 +126,7 @@ class COMAP2FPXS():
             # assume that map file name follows mapmaker file name pattern for all fields.
 
             fields = self.params.fields
-            field_combinations = [(f"{field_name}_{self.params.map_name}.h5", f"{field_name}_{self.params.map_name}.h5")
+            field_combinations = [(f"{field_name}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5", f"{field_name}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5")
                         for field_name in fields]            
         else:
             # Else use file names from map file name list (when to compute FPXS of custom map list)
@@ -911,7 +911,7 @@ class COMAP2FPXS():
         self.power_spectrum_dir = self.params.power_spectrum_dir
         
         # Mapmaker map name and directory
-        self.map_name = self.params.map_name
+        self.map_name = self.params.map_name + self.params.psx_map_name_postfix
         self.map_dir = self.params.map_dir
 
         # Jackknive "split" definition file path, defining which splits to use 
