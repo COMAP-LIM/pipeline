@@ -422,19 +422,22 @@ def get_scan_stats(filepath, map_grid=None):
         else:
             pca = np.zeros((4, 10000))
             # eigv = np.zeros(0)
-            print('Found no pca comps', scanid)
+            # print('Found no pca comps', scanid)
 
         npca_ind = np.zeros((n_det_ind, n_sb))
         npcaf_ind = np.zeros((n_det_ind, n_sb))
         for feed in range(n_det_ind):
-            npca_ind[feed,:] = my_file['n_pca_comp'][()]
-            npcaf_ind[feed,:] = my_file['n_pca_feed_comp'][feed]
+            try:
+                npca_ind[feed,:] = my_file['n_pca_comp'][()]
+                npcaf_ind[feed,:] = my_file['n_pca_feed_comp'][feed]
+            except:
+                pass
 
         try:
             tsys_ind = np.array(my_file['Tsys_lowres'])
         except KeyError:
             tsys_ind = np.zeros_like(tod_ind[:,:,:,0]) + 40
-            print("Found no tsys")
+            # print("Found no tsys")
     # except KeyboardInterrupt:
     #     sys.exit()
     # except:
@@ -681,7 +684,7 @@ def get_scan_stats(filepath, map_grid=None):
         forecast = max(weather[i_start, 2], weather[i_end, 2])
     except IndexError:
         # no weather data for this obsid
-        print('no weather data for obsid:', obsid)
+        # print('no weather data for obsid:', obsid)
         forecast = np.nan
         insert_data_in_array(data, 1, 'acceptmod_error')
     insert_data_in_array(data, forecast, 'weather')
@@ -1077,44 +1080,48 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
         tasks_started = 0
         proc_order = np.arange(1, Nproc)
         np.random.shuffle(proc_order)
+
+        progress_bar = tqdm(total=n_tasks, ncols=80)
         for iproc in range(Nproc-1):
-            print(f"Spawning worker {iproc} (thread {proc_order[iproc]}) of {Nproc}.")
             comm.send(obsid_infos[tasks_started], dest=proc_order[iproc], tag=WORK_TAG)
-            if params.distributed_starting:
-                time.sleep(1)
-            # print(f"Sent work to worker {iproc} for task {tasks_started}.", flush=True)
             tasks_started += 1
+            if tasks_started == n_tasks:  # If we have more processes than tasks, kill the rest, and break the task-assigment loop.
+                for iirank in range(iproc, Nproc-1):
+                    comm.send(-1, dest=proc_order[iirank], tag=DIE_TAG)
+                break
+            if params.distributed_starting:
+                time.sleep(0.5)
+            time.sleep(0.01)
 
         while tasks_started < n_tasks:
             status = MPI.Status()
             scan_data_list = comm.recv(source=MPI.ANY_SOURCE, status=status)
             tasks_done += 1
             workerID = status.Get_source()
-            print(f"Recieved work from worker {workerID}. ({tasks_done} / {n_tasks})", flush=True)
-            # print(f"Recieved work from worker {workerID}.", flush=True)
             comm.send(obsid_infos[tasks_started], dest=workerID, tag=WORK_TAG)
             tasks_started += 1
-            print(f"Started task {tasks_started} of {n_tasks}.", flush=True)
-            # print(f"Sent work to worker {workerID} for task {tasks_started}.", flush=True)
             n_scans = len(scan_data_list)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
             scan_list[i_scan:i_scan+n_scans] = [int(scaninfo[0,0,1]) for scaninfo in scan_data_list]
             i_scan += n_scans
+            progress_bar.update(1)
 
         while tasks_done < n_tasks:
             status = MPI.Status()
             scan_data_list = comm.recv(source=MPI.ANY_SOURCE, status=status)
             tasks_done += 1
             workerID = status.Get_source()
-            print(f"Recieved work from worker {workerID}. ({tasks_done} / {n_tasks})", flush=True)
             n_scans = len(scan_data_list)
             scan_data[i_scan:i_scan+n_scans] = scan_data_list
             scan_list[i_scan:i_scan+n_scans] = [int(scaninfo[0,0,1]) for scaninfo in scan_data_list]
             i_scan += n_scans
-        
-        print("Shutting down workers.")
+            progress_bar.update(1)
+            workerID = status.Get_source()
+            comm.send(-1, dest=workerID, tag=DIE_TAG)
+            time.sleep(0.01)
+
+
         for iproc in range(1, Nproc):
-            print(f"Shutting down worker {iproc}.")
             comm.send(-1, dest=iproc, tag=DIE_TAG)
 
         # print(scan_data.shape)
@@ -1134,11 +1141,9 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             obsid_info = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
             # print(f"Worker {rank} recieved work with tag {status.Get_tag()}.", flush=True)
             if status.Get_tag() == DIE_TAG:
-                print(f"Worker {rank} dying.", flush=True)
                 break
             scan_data_list = get_obsid_data(obsid_info)
             comm.send(scan_data_list, dest=0)
-    print(f"Done from rank {rank}.")
 
     if rank == 0:
         sort_idxs = np.argsort(scan_list)
