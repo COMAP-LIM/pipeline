@@ -160,7 +160,6 @@ class COMAP2FPXS():
                 desc = f"Total",
                 position = 0,
             )
-
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
 
@@ -248,7 +247,7 @@ class COMAP2FPXS():
                     k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
                     transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
 
-
+                    
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -267,7 +266,7 @@ class COMAP2FPXS():
 
                     else:
                         cross_spectrum.xs *= transfer_function_wn
-                        cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance"], outdir_data)
+                        cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance", "white_noise_simulation"], outdir_data)
                     
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
@@ -328,17 +327,24 @@ class COMAP2FPXS():
 
             xs_mean = np.zeros((N_splits, N_k, N_k))
             xs_error = np.zeros((N_splits, N_k, N_k))
+            xs_covariance = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            xs_full_operator = np.zeros((N_splits, N_k ** 2, N_k ** 2))
 
             xs_mean_1d = np.zeros((N_splits, N_k))
             xs_error_1d = np.zeros((N_splits, N_k))
             cross_variable_names = [] 
+
             for i, splits in enumerate(self.split_map_combinations):
                 cross_variable = splits[0].split("/")[1]
                 cross_variable_names.append(cross_variable)
 
-                xs_sum = np.zeros((N_k, N_k))
 
-                xs_inv_var = np.zeros((N_k, N_k))
+                if self.params.psx_use_full_wn_covariance:
+                    xs_sum = np.zeros(N_k ** 2)
+                    xs_inv_cov = np.zeros((N_k ** 2, N_k ** 2))
+                else:
+                    xs_sum = np.zeros((N_k, N_k))
+                    xs_inv_var = np.zeros((N_k, N_k))
                 
                 chi2 = np.zeros((N_feed, N_feed))
 
@@ -357,6 +363,7 @@ class COMAP2FPXS():
                         xs = cross_spectrum.xs_2D
                         xs_sigma = cross_spectrum.rms_xs_std_2D
 
+                            
                         k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
                         k_bin_edges_par = cross_spectrum.k_bin_edges_par
@@ -368,7 +375,7 @@ class COMAP2FPXS():
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 
                         transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
-                        
+
                         chi3 = np.nansum(
                         (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
                         )
@@ -380,18 +387,40 @@ class COMAP2FPXS():
                             / np.sqrt(2 * number_of_samples)
                         )
 
-                        #print(f"chi2 = {chi2[feed1, feed2]}", self.params.psx_chi2_cut_limit    )
                         
                         if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
                             if np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit:
-                                xs_sum += xs / xs_sigma ** 2
-                                xs_inv_var += 1 / xs_sigma ** 2
+                                if self.params.psx_use_full_wn_covariance:
+                                    xs = xs.flatten()
+
+                                    cov = cross_spectrum.white_noise_covariance
+
+
+                                    new_cov = np.zeros_like(cov)
+                                    for d in range(0, 14 * 14, 14):
+                                        new_cov += np.diag(cov.diagonal(d), d)
+                                        new_cov += np.diag(cov.diagonal(-d), -d)
+                                    cov = new_cov
+                                                                        
+                                    cov_inv = np.linalg.inv(cov)
+                                    xs_sum += cov_inv @ xs 
+                                    xs_inv_cov += cov_inv
+
+                                else:
+                                    xs_sum += xs / xs_sigma ** 2
+                                    xs_inv_var += 1 / xs_sigma ** 2
                 
 
                 print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
-                    
-                xs_mean[i, ...] = xs_sum / xs_inv_var
-                xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
+
+                if self.params.psx_use_full_wn_covariance:
+                    xs_covariance[i, ...] = np.linalg.inv(xs_inv_cov)
+                    xs_mean[i, ...] = (xs_covariance[i, ...] @ xs_sum).reshape(N_k, N_k)
+                    xs_error[i, ...] = np.sqrt(xs_covariance[i, ...].diagonal().reshape(N_k, N_k))
+                    xs_full_operator[i, ...] = xs_covariance[i, ...]
+                else:
+                    xs_mean[i, ...] = xs_sum / xs_inv_var
+                    xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
 
                 weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
 
@@ -474,13 +503,15 @@ class COMAP2FPXS():
                     average_name = os.path.join(average_name, indir)
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
-                    average_name = os.path.join(average_name, "null_diffmap")
-                    if not os.path.exists(average_name):
-                        os.mkdir(average_name)
 
-                    average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
-                    if not os.path.exists(average_name):
-                        os.mkdir(average_name)
+                    if self.params.psx_null_diffmap:
+                        average_name = os.path.join(average_name, "null_diffmap")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+
+                        average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
 
                     
                 
@@ -518,6 +549,7 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error)
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
+                outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
 
                 if self.params.psx_white_noise_sim_seed is not None:
@@ -571,7 +603,7 @@ class COMAP2FPXS():
             f"xs_mean_2d_{split1}_X_{split2}.png"
             )
         
-        fig, ax = plt.subplots(1, 2, figsize=(16, 5.6), sharey=True)
+        fig, ax = plt.subplots(1, 3, figsize=(16, 5.6), sharey=True)
 
         fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
         
@@ -579,12 +611,19 @@ class COMAP2FPXS():
 
         if limit_idx != 0:
             lim = np.nanmax(np.abs(xs_mean[limit_idx:-limit_idx, limit_idx:-limit_idx]))
+            lim_error = np.nanmax(xs_sigma[limit_idx:-limit_idx, limit_idx:-limit_idx])
             lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)[limit_idx:-limit_idx, limit_idx:-limit_idx]))
         else:
             lim = np.nanmax(np.abs(xs_mean))
+            lim_error = np.nanmax(xs_sigma)
             lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)))
 
+        lim = 3e4
+        lim_error = 15e3
+        lim_significance = 10
+
         norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
+        lim_error = matplotlib.colors.Normalize(vmin=0, vmax=lim_error)
         lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
 
         img1 = ax[0].imshow(
@@ -625,6 +664,46 @@ class COMAP2FPXS():
         )
         
         img2 = ax[1].imshow(
+            xs_sigma,
+            interpolation="none",
+            origin="lower",
+            extent=[0, 1, 0, 1],
+            cmap="CMRmap",
+            norm=lim_error,
+            rasterized=True,
+            zorder = 1,
+        )
+        fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.04).set_label(
+            r"$\sigma\left(k_{\bot},k_{\parallel}\right)$[$\mu$K$^2$ (Mpc)${}^3$]",
+            size=16,
+        )
+
+        ax[1].fill_between(
+            [0, 1], 
+            0, 
+            1, 
+            hatch='xxxx', 
+            transform = ax[2].transAxes, 
+            alpha = 0, 
+            zorder = 2
+        )
+
+        xs_sigma_masked = np.ma.masked_where(~transfer_function_mask, xs_sigma)
+
+        ax[1].imshow(
+            xs_sigma_masked,
+            interpolation="none",
+            origin="lower",
+            extent=[0, 1, 0, 1],
+            cmap="CMRmap",
+            norm=lim_error,
+            rasterized=True,
+            zorder = 3,
+        )
+
+
+
+        img2 = ax[2].imshow(
             xs_mean / xs_sigma,
             interpolation="none",
             origin="lower",
@@ -634,24 +713,24 @@ class COMAP2FPXS():
             rasterized=True,
             zorder = 1,
         )
-        fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.04).set_label(
+        fig.colorbar(img2, ax=ax[2], fraction=0.046, pad=0.04).set_label(
             r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
             size=16,
         )
 
-        ax[1].fill_between(
+        ax[2].fill_between(
             [0, 1], 
             0, 
             1, 
             hatch='xxxx', 
-            transform = ax[1].transAxes, 
+            transform = ax[2].transAxes, 
             alpha = 0, 
             zorder = 2
         )
 
         xs_sigma_masked = np.ma.masked_where(~transfer_function_mask, xs_sigma)
 
-        ax[1].imshow(
+        ax[2].imshow(
             xs_mean_masked / xs_sigma_masked,
             interpolation="none",
             origin="lower",
@@ -678,9 +757,10 @@ class COMAP2FPXS():
         majorlist_y = self.log2lin(majorticks, ybins)
 
         ax[0].set_title(r"$\tilde{C}^{\mathrm{FPXS}}$ ", fontsize=16)
-        ax[1].set_title(r"$\tilde{C}^{\mathrm{FPXS}}/\sigma$ ", fontsize=16)
+        ax[1].set_title(r"$\sigma$ ", fontsize=16)
+        ax[2].set_title(r"$\tilde{C}^{\mathrm{FPXS}}/\sigma$ ", fontsize=16)
 
-        for i in range(2):
+        for i in range(3):
             ax[i].set_xticks(ticklist_x, minor=True)
             ax[i].set_xticks(majorlist_x, minor=False)
             ax[i].set_xticklabels(majorlabels, minor=False, fontsize=16)
@@ -690,8 +770,9 @@ class COMAP2FPXS():
 
         ax[0].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
         ax[0].set_ylabel(r"$k_{\bot}$ [Mpc${}^{-1}$]", fontsize=16)
-        ax[1].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
+        ax[2].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
 
+        fig.tight_layout()
         fig.savefig(outname, bbox_inches = "tight")
         
     def plot_1D_mean(self,
@@ -865,6 +946,9 @@ class COMAP2FPXS():
         # Bad values, i.e. NaN and Inf, are set to black
         cmap.set_bad("k", 1)
         
+
+        lim = np.nanmin((self.params.psx_chi2_cut_limit, np.nanmax(np.abs(chi2))))
+
         # Plot chi2 value grid
         fig, ax = plt.subplots()
 
@@ -1210,7 +1294,6 @@ class COMAP2FPXS():
             # If no seed is provided make base seed from current time
             if self.rank == 0:
                 t = time.perf_counter()
-                print(t)
                 # seed = int(t - 1e6 * (t // 1e6))
                 seed = int(t)
             else:
@@ -1229,6 +1312,7 @@ if __name__ == "__main__":
     
     comap2fpxs.params.psx_white_noise_sim_seed = None
     comap2fpxs.run()
+
     if run_wn_sim:
         comap2fpxs.params.psx_generate_white_noise_sim = True
 
@@ -1238,10 +1322,9 @@ if __name__ == "__main__":
         # filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
         # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
         seed_list = []
+        seed_list_path = os.path.join(comap2fpxs.params.power_spectrum_dir, comap2fpxs.params.psx_seed_list)
         if comap2fpxs.params.psx_use_seed_list:
-            seed_list_path = os.path.join(comap2fpxs.params.power_spectrum_dir, comap2fpxs.params.psx_seed_list)
             seeds_to_run = np.loadtxt(seed_list_path)
-
         else:
             seeds_to_run = range(comap2fpxs.params.psx_monte_carlo_sim_number)
 
@@ -1256,6 +1339,7 @@ if __name__ == "__main__":
             print("#" * 80)
             print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
             print("#" * 80)
+
 
         for i, seed in enumerate(seeds_to_run):
             # try:
