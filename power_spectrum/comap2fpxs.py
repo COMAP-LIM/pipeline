@@ -222,7 +222,7 @@ class COMAP2FPXS():
                         feed1, 
                         feed2
                     )
-
+                
                 # If map difference null test is computed the output is saved in separate directory
                 if self.params.psx_null_diffmap:
                     outdir = os.path.join(outdir, f"null_diffmap/{cross_spectrum.null_variable}")
@@ -514,7 +514,13 @@ class COMAP2FPXS():
                             os.mkdir(average_name)
 
                     
-                
+                    
+                self.angle2Mpc = cross_spectrum.angle2Mpc
+                self.map_dx = cross_spectrum.dx
+                self.map_dy = cross_spectrum.dy
+                self.map_dz = cross_spectrum.dz
+
+
                 #if not self.params.psx_generate_white_noise_sim:
                 self.plot_2D_mean(
                     k_bin_edges_par,
@@ -551,6 +557,16 @@ class COMAP2FPXS():
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+
+                outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
+                outfile.create_dataset("dx", data = self.map_dx)
+                outfile.create_dataset("dy", data = self.map_dx)
+                outfile.create_dataset("dz", data = self.map_dx)
+
+                outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
+                outfile["dx"].attrs["unit"] = "Mpc"
+                outfile["dy"].attrs["unit"] = "Mpc"
+                outfile["dz"].attrs["unit"] = "Mpc"
 
                 if self.params.psx_white_noise_sim_seed is not None:
                     outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
@@ -603,7 +619,8 @@ class COMAP2FPXS():
             f"xs_mean_2d_{split1}_X_{split2}.png"
             )
         
-        fig, ax = plt.subplots(1, 3, figsize=(16, 5.6), sharey=True)
+        # fig, ax = plt.subplots(1, 3, figsize=(16, 5.6))
+        fig, ax = plt.subplots(1, 3, figsize=(16, 7.4))
 
         fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
         
@@ -636,10 +653,12 @@ class COMAP2FPXS():
             rasterized=True,
             zorder = 1,
         )
-        fig.colorbar(img1, ax=ax[0], fraction=0.046, pad=0.04).set_label(
+        cbar = fig.colorbar(img1, ax=ax[0], fraction=0.046, pad=0.18, location = "bottom")
+        cbar.set_label(
             r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
             size=16,
         )
+        cbar.ax.tick_params(rotation=45)
 
         ax[0].fill_between(
             [0, 1], 
@@ -673,10 +692,12 @@ class COMAP2FPXS():
             rasterized=True,
             zorder = 1,
         )
-        fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.04).set_label(
+        cbar  = fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.18, location = "bottom")
+        cbar.set_label(
             r"$\sigma\left(k_{\bot},k_{\parallel}\right)$[$\mu$K$^2$ (Mpc)${}^3$]",
             size=16,
         )
+        cbar.ax.tick_params(rotation=45)
 
         ax[1].fill_between(
             [0, 1], 
@@ -701,7 +722,7 @@ class COMAP2FPXS():
             zorder = 3,
         )
 
-
+        ax[1].tick_params(left = True , labelleft = False)
 
         img2 = ax[2].imshow(
             xs_mean / xs_sigma,
@@ -713,10 +734,13 @@ class COMAP2FPXS():
             rasterized=True,
             zorder = 1,
         )
-        fig.colorbar(img2, ax=ax[2], fraction=0.046, pad=0.04).set_label(
+        cbar = fig.colorbar(img2, ax=ax[2], fraction=0.046, pad=0.18, location = "bottom")
+        cbar.set_label(
             r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
             size=16,
         )
+        cbar.ax.tick_params(rotation=45)
+
 
         ax[2].fill_between(
             [0, 1], 
@@ -740,6 +764,8 @@ class COMAP2FPXS():
             rasterized=True,
             zorder = 3,
         )
+
+        ax[2].tick_params(left = True , labelleft = False)
 
         ticks = [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
 
@@ -768,9 +794,30 @@ class COMAP2FPXS():
             ax[i].set_yticks(majorlist_y, minor=False)
             ax[i].set_yticklabels(majorlabels, minor=False, fontsize=16)
 
-        ax[0].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
         ax[0].set_ylabel(r"$k_{\bot}$ [Mpc${}^{-1}$]", fontsize=16)
+        
+        ax[0].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
+        ax[1].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
         ax[2].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
+
+
+        ax2 = ax[0].twinx()
+        ax2.set_yticks(majorlist_y)
+        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
+        # ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
+        ax2.tick_params(right = True , labelright = False)
+
+        ax2 = ax[1].twinx()
+        ax2.set_yticks(majorlist_y)
+        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
+        # ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
+        ax2.tick_params(right = True , labelright = False)
+
+        ax2 = ax[2].twinx()
+        ax2.set_yticks(majorlist_y)
+        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
+        ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
+
 
         fig.tight_layout()
         fig.savefig(outname, bbox_inches = "tight")
@@ -899,8 +946,11 @@ class COMAP2FPXS():
         ax[1].set_xticks(klabels)
         ax[1].set_xticklabels(klabels, fontsize = 16)
 
-        ax[0].set_xlim(0.04, 1.0)
-        ax[1].set_xlim(0.04, 1.0)
+        # ax[0].set_xlim(0.04, 1.0)
+        # ax[1].set_xlim(0.04, 1.0)
+
+        ax[0].set_xlim(0.1, 1.0)
+        ax[1].set_xlim(0.1, 1.0)
 
         ax[1].set_xlabel(r"$k [\mathrm{Mpc}^{-1}]$", fontsize = 16)
 
