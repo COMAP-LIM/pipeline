@@ -76,12 +76,13 @@ class Cube2TOD:
         # Testing if frequency array in new simulation format has same bin centers as level2 data
         if ".npz" in self.simpath:
             np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
-            
+        
         simdata.read_cube_geometry()
 
         # Defining simulation cube geometry using standard geometies and boost signal
         simdata.prepare_geometry(l2file.fieldname)
-
+        # print("Read and prepare geometry:", time.perf_counter() - t00, "s")
+        
         # Euler rotaion of telescope pointing to equatorial origin
         rotated_ra, rotated_dec = simdata.rotate_pointing_to_equator(
             l2file.ra.flatten(), l2file.dec.flatten()
@@ -164,7 +165,7 @@ class Cube2TOD:
                         ctypes.c_long,    # nsamp
                         ctypes.c_int,    # nthread
                     ]
-
+        
         # Call C++ library by reference and inject TOD with signal
         self.injector.replace_tod_with_bilinear_interp_signal(
                     signal_tod,
@@ -182,6 +183,7 @@ class Cube2TOD:
                     l2file.tod.shape[-1],
                     self.omp_num_threads,
                 ) 
+
 
         l2file.tod *= (1 + signal_tod / l2file.Tsys[..., None])
         l2file.signal_tod = signal_tod
