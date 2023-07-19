@@ -713,6 +713,46 @@ parser.add_argument(
     help="(comap2fpxs) White noise transfer function filename (not absolute path) to use when correcting error bar bias from filtering.",
 )
 
+parser.add_argument(
+    "--psx_use_full_wn_covariance",
+    type=str2bool,
+    default = False,
+    help="(comap2fpxs) Whether to use the full k-bin covariance matrix when averaging spectra.",
+)
+
+parser.add_argument(
+    "--psx_nyquist_bin_limit",
+    type=str2bool,
+    default = False,
+    help="(comap2fpxs) If True this ensures that the upper bin edge in each map dimension is set by the spacial nyquist frequency.",
+)
+
+parser.add_argument(
+    "--psx_k_angular_bin_min",
+    type = float,
+    default = 0.02,
+    help="(comap2fpxs) Bin edges of minimum wavenumber k in Mpc for the angular dimensions.",
+)
+
+parser.add_argument(
+    "--psx_k_angular_bin_max",
+    type = float,
+    default = 1.5,
+    help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral dimensions.",
+)
+parser.add_argument(
+    "--psx_k_spectral_bin_min",
+    type = float,
+    default = 0.01,
+    help="(comap2fpxs) Bin edges of minimum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
+)
+
+parser.add_argument(
+    "--psx_k_spectral_bin_max",
+    type = float,
+    default = 1.0,
+    help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
+)
 
 ###### Physics ######
 parser.add_argument(
