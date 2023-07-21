@@ -17,110 +17,48 @@ from tod2comap.COmap import COmap
 
 
 def main():
-    """
-    Parsing the command line input.
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--inname", type=str, help="""Path to input map.""")
-
-    parser.add_argument(
-        "-o", "--outname", type=str, help="""Name of output map.""", default=None
-    )
-
-    parser.add_argument(
-        "-r",
-        "--rmsnorm",
-        type=str,
-        help="""Which normalistion to use before PCA decomposition.
-        Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
-        default="sigma_wn",
-    )
-
-    parser.add_argument(
-        "-a",
-        "--approx_noise",
-        help="""Whether to approximate noise weights by PCA to conserve outer product""",
-        action="store_true",
-    )
-
-    parser.add_argument(
-        "-m",
-        "--maskrms",
-        type=float,
-        help="""Factor of mean of bottom 100 sigma_wn of each feed and frequency beyond which map is masked.""",
-        default=None,
-    )
-
-    parser.add_argument(
-        "-n",
-        "--ncomps",
-        type=int,
-        help="""How many PCA modes to subtract from input map. Default is 5. """,
-        default=5,
-    )
-
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        help="""Whether to run in verbose mode or not. Default is False""",
-        action="store_true",
-    )
-
-    parser.add_argument(
-        "-s",
-        "--subtract_mean",
-        help="""Whether to subtract line-of-sight mean per pixel prior to PCA. Default is False""",
-        action="store_true",
-    )
-
-    parser.add_argument(
-        "--save_reconstruction",
-        help="""Whether to save PCA reconstrucion in its own map file(s). Default is False""",
-        action="store_true",
-    )
-
+    
     # Defining argument object
+    from l2gen_argparser import parser
     args = parser.parse_args()
 
+
     # Check if any arguments are missing or of invalid formate
-    try:
-        inpath = args.inname
-    except:
-        message = """Input map path is missing"""
-        raise NameError(message)
+    if len(args.fields) > 1:
+        raise ValueError("More than 1 field not currently supported by the mPCA.")
+    else:
+        field = args.fields[0]
+
+    if not args.mpca_inname is None:
+        inpath = args.mpca_inname
+    else:
+        if not args.map_name is None:
+            inpath = os.path.join(args.map_dir, field + "_" + args.map_name + ".h5")
+        else:
+            raise NameError("Missing input map name.")
+
+    outpath = args.mpca_outname
 
     try:
-        outpath = args.outname
-    except:
-        message = """Output map path is missing"""
-        raise NameError(message)
-
-    try:
-        rmsnorm = args.rmsnorm
+        rmsnorm = args.mpca_rmsnorm
         assert rmsnorm in ["approx", "sigma_wn", "var", "three", "weightless", "exper"]
     except:
-        message = """Please choose a normalisation to apply prior to PCA;  -n approx, -n rms or -n var."""
+        message = """Please choose a normalisation to apply prior to PCA;  -n approx, -n sigma_wn or -n var."""
         raise NameError(message)
 
-    try:
-        ncomps = int(args.ncomps)
-    except:
-        message = (
-            """Number of subtracted PCA modes invalid or missing. Must be integer."""
-        )
-        raise NameError(message)
+    ncomps = int(args.mpca_ncomps)
 
-    is_verbose = args.verbose
+    is_verbose = args.mpca_verbose
 
     if is_verbose:
         print(f"Subtracting n={ncomps} PCA modes from maps:")
 
-    subtract_mean = args.subtract_mean
-    approx_noise = args.approx_noise
+    subtract_mean = args.mpca_subtract_mean
+    approx_noise = args.mpca_approx_noise
 
-    maskrms = args.maskrms
+    maskrms = args.mpca_maskrms
 
-    save_reconstruction = args.save_reconstruction
+    save_reconstruction = args.mpca_save_reconstruction
 
     # Define map object to process
     mymap = COmap(path=inpath)
