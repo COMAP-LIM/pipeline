@@ -179,7 +179,7 @@ class COMAP2FPXS():
                 
                 # Extract file names, split keys and feed combinations from current combination
                 mapnames, splits, feeds = all_combinations[i]
-                
+       
                 map1, map2 = mapnames
                 split1, split2 = splits
                 feed1, feed2 = feeds
@@ -426,6 +426,8 @@ class COMAP2FPXS():
 
                 xs_1d = xs_mean[i, ...].copy()
 
+                transfer_function_mask = np.logical_and(transfer_function_mask, xs_error[i, ...] < xs_error[i, ...].max() * 0.8)
+
                 weights[~transfer_function_mask] = 0.0
             
                 xs_1d /= transfer_function
@@ -537,6 +539,7 @@ class COMAP2FPXS():
                     k_1d,
                     xs_mean_1d[i, ...],
                     xs_error_1d[i, ...],
+                    chi2,
                     splits,
                     (mapname1, mapname2),
                     average_name,
@@ -557,6 +560,9 @@ class COMAP2FPXS():
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+                outfile.create_dataset("chi2_grid", data = chi2)
+                outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                
 
                 outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
                 outfile.create_dataset("dx", data = self.map_dx)
@@ -826,20 +832,25 @@ class COMAP2FPXS():
                     k_1d: npt.NDArray,
                     xs_mean: npt.NDArray,
                     xs_sigma: npt.NDArray,
+                    chi2_grid: npt.NDArray,
                     splits: Sequence[str],
                     fields: Sequence[str],
                     outname: str
                     ):
+        
         """Method that plots 1D, i.e. spherically averaged mean FPXS.
 
         Args:
             k_1d (npt.NDArray): Array of k-bin centers in 1/Mpc
             xs_mean (npt.NDArray): Array of mean spherically averaged FPXS 
             xs_sigma (npt.NDArray): Array of errors of mean spherically averaged FPXS
+            chi2_grid (npt.NDArray): Array of errors of normalized chi2 values for each feed-split combo
             splits (Sequence[str]): Sequence of strings with split names used for as cross-spectrum variable
             fields (Sequence[str]): Sequence of strings with field names used in cross correlation
             outname (str): String with output directory for plot
         """
+
+        from scipy.stats import chi2, norm
 
         # Define default tick label fontsize
         matplotlib.rcParams["xtick.labelsize"] = 16
@@ -874,13 +885,13 @@ class COMAP2FPXS():
         fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
         
         # Only want to use points between 0.04 and 1.0 /Mpc
-        where = np.logical_and(k_1d > 0.04, k_1d < 1.0)
+        where = np.logical_and(k_1d > 0.1, k_1d < 1.0)
 
         # Plot y-limits
         lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
         lim = np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
         
-        lim = 2e4
+        # lim = 2e4
 
         lim_significance = 2 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
         
@@ -906,6 +917,15 @@ class COMAP2FPXS():
             fontsize = 16,
         )
         
+        chi2_sum = np.sum((xs_mean[6:-1] / xs_sigma[6:-1]) ** 2)
+        
+        chi2_cdf = chi2.cdf(chi2_sum, df = xs_mean[6:-1].size)
+
+        PTE = chi2.sf(chi2_sum, df = xs_mean[6:-1].size)
+
+        number_accepted_cross_spectra = np.sum(np.abs(chi2_grid) < self.params.psx_chi2_cut_limit)
+
+        ax[1].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + rf"$\chi^2$ cdf: {chi2_cdf:.3f}" + " " * 5 + rf"PTE: {PTE:.3f}", fontsize = 16)
         # Plot scatter and error bar of significance plot
         ax[1].scatter(
             k_1d,
@@ -1115,8 +1135,7 @@ class COMAP2FPXS():
             variable = split_line[0]
             number = split_line[1]
 
-            if len(split_line) > 2:
-                extra = split_line[-1]
+            extra = split_line[-1]
 
             all_variables.append(variable)
 
@@ -1203,7 +1222,6 @@ class COMAP2FPXS():
                     if not ((name1, name2) in secondary_cross_combos):
                         secondary_cross_combos.append((name1, name2))
 
-                    
             for primary_variable in primary_variables:
                 # Generating names of split combinations
                 for primary_bin_number in range(self.params.split_base_number):
