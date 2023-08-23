@@ -30,6 +30,13 @@ parser.add_argument(
     help="Debug mode. If True unit tests are run. Default False.",
 )
 
+parser.add_argument(
+    "--print_progress_bar",
+    type=str2bool,
+    default=True,
+    help="Whether to print the self-updating progress bar to terminal (turn off if e.g. inserting debug-prints)."
+)
+
 ### Parameter file and runlist
 parser.add_argument(
     "-p",
@@ -149,10 +156,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--cal_database_file",
+    "--cal_database_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5",
-    help="Location of calibration hdf5 database.",
+    default="/mn/stornext/d22/cmbco/comap/protodir/aux_data/level1_database_files/",
+    help="Location of level1 database files, which include the Tsys calibration data.",
 )
 
 parser.add_argument(

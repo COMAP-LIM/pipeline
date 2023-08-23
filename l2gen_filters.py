@@ -1720,7 +1720,7 @@ class Tsys_calc(Filter):
     
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
-        self.cal_database_file = params.cal_database_file
+        self.cal_database_dir = params.cal_database_dir
         self.params = params
 
     def run(self, l2):
@@ -1732,20 +1732,20 @@ class Tsys_calc(Filter):
         Pcold = np.nanmean(l2.tod, axis=-1)
         Phot_interp = np.zeros(l2.Nfeeds)
         
-        with h5py.File(self.cal_database_file, "r") as f:
-            try:
-                Phot = f[f"/obsid/{obsid}/Phot"][()]
+        try:
+            with h5py.File(os.path.join(self.cal_database_dir, obsid + ".h5"), "r") as f:
+                Phot = f[f"Phot"][()]
                 for isb in l2.flipped_sidebands:
                     Phot[:,isb,:] = Phot[:,isb,::-1]
-                Thot = f[f"/obsid/{obsid}/Thot"][()]
-                calib_times = f[f"/obsid/{obsid}/calib_times"][()]
-                successful = f[f"/obsid/{obsid}/successful"][()]
-            except:
-                Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan
-                Thot = np.zeros((l2.Nfeeds, 2)) + np.nan
-                calib_times = np.zeros((l2.Nfeeds, 2)) + np.nan
-                successful = np.zeros((l2.Nfeeds, 2))
-                l2.freqmask[:] = False
+                Thot = f[f"Thot"][()]
+                calib_times = f[f"calib_times"][()]
+                successful = f[f"successful"][()]
+        except Exception as e:
+            Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan
+            Thot = np.zeros((l2.Nfeeds, 2)) + np.nan
+            calib_times = np.zeros((l2.Nfeeds, 2)) + np.nan
+            successful = np.zeros((l2.Nfeeds, 2))
+            l2.freqmask[:] = False
 
         n_cal = np.zeros(l2.Nfeeds, dtype=int)
         for ifeed in range(l2.Nfeeds):
