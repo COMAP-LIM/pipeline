@@ -48,7 +48,7 @@ extern "C" void cube2tod(
     int npix = nra * ndec;
 
     // Looping through data and binning up into maps
-    // omp_set_num_threads(nthread);
+    omp_set_num_threads(nthread);
     #pragma omp parallel for
     for (long int d = 0; d < nfeed; d++)
     {   

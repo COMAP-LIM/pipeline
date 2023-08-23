@@ -399,7 +399,7 @@ class Mapmaker:
                     if self.params.verbose:
                         # Print in red forground color
                         print(
-                            f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
+                            f"\033[91m Rejected scan {scanid} ({i + 1} / {len(self.runlist)}) @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
                     continue
@@ -408,14 +408,14 @@ class Mapmaker:
                     # Print in red forground color
                     if self.params.verbose:
                         print(
-                            f"\033[91m Rejected scan {scanid} @ rank {self.rank} \033[00m"
+                            f"\033[91m Rejected scan {scanid} ({i + 1} / {len(self.runlist)}) @ rank {self.rank} \033[00m"
                         )
                     rejection_number += 1
                     continue
 
                 if self.params.verbose:
                     # Print in green forground color
-                    print(f"\033[92m Processing scan {scan[0]} @ rank {self.rank}\033[00m")
+                    print(f"\033[92m Processing scan {scan[0]} ({i + 1} / {len(self.runlist)}) @ rank {self.rank}\033[00m")
                 
                 l2path = scan[-1]
 

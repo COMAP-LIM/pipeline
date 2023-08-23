@@ -79,7 +79,7 @@ class CrossSpectrum_nmaps:
         self.name_of_map = mappaths  
         if len(self.name_of_map) < 2:
             raise ValueError("Can only compute cross-spectra when two map paths are provided.")
-        
+
         split_map1 = map_cosmo.MapCosmo(
             self.params,
             mappaths[0], 
@@ -95,6 +95,11 @@ class CrossSpectrum_nmaps:
             self.feed2 - 1, # feed index to use for loading map is base-0
             self.split_keys[1],
             )
+
+        self.angle2Mpc = split_map1.angle2Mpc.value
+        self.map_dx = split_map1.dx
+        self.map_dy = split_map1.dy
+        self.map_dz = split_map1.dz
 
         self.maps.append(split_map1)
         self.maps.append(split_map2)
@@ -238,10 +243,31 @@ class CrossSpectrum_nmaps:
     def calculate_xs_ra_dec_nu(
         self, no_of_k_bins=15
     ):  # here take the number of k-bins as an argument
-        n_k = no_of_k_bins
-        self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), n_k)
-        self.k_bin_edges_ra = np.logspace(-2.0 + np.log10(2), np.log10(1.5), n_k)
-        self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
+        if self.maps[0].params.psx_nyquist_bin_limit:
+            self.k_bin_edges_par = np.logspace(np.log10(self.maps[0].min_k_z), np.log10(self.maps[0].nyquist_z), number_of_k_bin_edges)
+            spacial_bin_max_limit = np.min(
+                                    (np.min((self.maps[0].nyquist_x, self.maps[0].nyquist_x)),
+                                    np.min((self.maps[1].nyquist_y, self.maps[1].nyquist_y)),)
+            )
+            spacial_bin_min_limit = np.max(
+                                    (np.max((self.maps[0].min_k_x, self.maps[0].min_k_x)),
+                                    np.max((self.maps[1].min_k_y, self.maps[1].min_k_y)),)
+            )
+
+            self.k_bin_edges_ra = np.logspace(np.log10(spacial_bin_min_limit), np.log10(spacial_bin_max_limit), number_of_k_bin_edges)
+            self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
+        else:
+            self.k_bin_edges_par = np.logspace(
+                np.log10(self.maps[0].params.psx_k_spectral_bin_min), 
+                np.log10(self.maps[0].params.psx_k_spectral_bin_max), 
+                number_of_k_bin_edges
+            )
+            self.k_bin_edges_ra = np.logspace(
+                np.log10(self.maps[0].params.psx_k_angular_bin_min), 
+                np.log10(self.maps[0].params.psx_k_angular_bin_max), 
+                number_of_k_bin_edges
+            )
+            self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
 
         calculated_xs = self.get_information()
 
@@ -298,6 +324,103 @@ class CrossSpectrum_nmaps:
         return self.xs, self.k, self.nmodes
 
 
+    def run_noise_sims_3d(self, n_sims, seed=None, no_of_k_bins=15):
+        n_k = no_of_k_bins
+
+        if self.maps[0].params.psx_nyquist_bin_limit:
+            self.k_bin_edges_par = np.logspace(np.log10(self.maps[0].min_k_z), np.log10(self.maps[0].nyquist_z), number_of_k_bin_edges)
+            spacial_bin_max_limit = np.min(
+                                    (np.min((self.maps[0].nyquist_x, self.maps[0].nyquist_x)),
+                                    np.min((self.maps[1].nyquist_y, self.maps[1].nyquist_y)),)
+            )
+            spacial_bin_min_limit = np.max(
+                                    (np.max((self.maps[0].min_k_x, self.maps[0].min_k_x)),
+                                    np.max((self.maps[1].min_k_y, self.maps[1].min_k_y)),)
+            )
+
+            self.k_bin_edges_ra = np.logspace(np.log10(spacial_bin_min_limit), np.log10(spacial_bin_max_limit), number_of_k_bin_edges)
+            self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
+        else:
+            self.k_bin_edges_par = np.logspace(
+                np.log10(self.maps[0].params.psx_k_spectral_bin_min), 
+                np.log10(self.maps[0].params.psx_k_spectral_bin_max), 
+                number_of_k_bin_edges
+            )
+            self.k_bin_edges_ra = np.logspace(
+                np.log10(self.maps[0].params.psx_k_angular_bin_min), 
+                np.log10(self.maps[0].params.psx_k_angular_bin_max), 
+                number_of_k_bin_edges
+            )
+            self.k_bin_edges_dec = self.k_bin_edges_ra.copy()
+
+
+        self.rms_xs_mean_3D = []
+        self.rms_xs_std_3D = []
+        self.all_noise_simulations = []
+
+        for i in range(0, len(self.maps) - 1, 2):
+            j = i + 1
+
+            self.normalize_weights(i, j)
+            wi = self.maps[i].w.copy()
+            wj = self.maps[j].w.copy()
+            
+            wh_i = np.where(np.log10(wi) < -0.5)
+            wh_j = np.where(np.log10(wj) < -0.5)
+            
+            wi[wh_i] = 0.0
+            wj[wh_j] = 0.0
+            
+            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+
+            full_weight[wi * wj == 0] = 0.0
+            full_weight[np.isnan(full_weight)] = 0.0
+
+            if seed is not None:
+                if self.maps[i].feed is not None:
+                    feeds = np.array([self.maps[i].feed, self.maps[j].feed])
+                else:
+                    feeds = np.array([1, 1])
+
+            rms_xs = np.zeros(
+                (len(self.k_bin_edges_dec) - 1, len(self.k_bin_edges_ra) - 1, len(self.k_bin_edges_par) - 1, n_sims)
+            )
+            for g in range(n_sims):
+                randmap = [
+                    np.zeros(self.maps[i].rms.shape),
+                    np.zeros(self.maps[i].rms.shape),
+                ]
+                for l in range(2):
+                    if seed is not None:
+                        np.random.seed(seed * (g + 1) * (l + 1) * feeds[l])
+                    randmap[l] = (
+                        np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
+                    )
+
+                rms_xs[:, :, :, g] = tools.compute_cross_spec_angular2d_vs_par(
+                    (randmap[0] * full_weight, randmap[1] * full_weight),
+                    (self.k_bin_edges_perp, self.k_bin_edges_par),
+                    dx=self.maps[i].dx,
+                    dy=self.maps[i].dy,
+                    dz=self.maps[i].dz,
+                )[0]
+            
+            #rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
+            
+            self.reverse_normalization(
+                i, j
+            )  # go back to the previous state to normalize again with a different map-pair
+
+            self.white_noise_covariance = np.cov(rms_xs.reshape((n_k - 1) ** 2, n_sims), ddof=1)
+
+            self.rms_xs_mean_3D.append(np.mean(rms_xs, axis=2))
+            self.rms_xs_std_3D.append(np.std(rms_xs, axis=2, ddof=1))
+            self.all_noise_simulations.append(rms_xs)
+
+            self.all_noise_simulations = np.array(self.all_noise_simulations)[0, ...].transpose(2, 0, 1)
+
+        return np.array(self.rms_xs_mean_3D), np.array(self.rms_xs_std_3D), self.white_noise_covariance
+
     def run_noise_sims_2d(self, n_sims, seed=None, no_of_k_bins=15):
         n_k = no_of_k_bins
 
@@ -306,6 +429,7 @@ class CrossSpectrum_nmaps:
 
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
+        self.all_noise_simulations = []
 
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
@@ -360,12 +484,15 @@ class CrossSpectrum_nmaps:
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
 
-            self.covariance = np.cov(rms_xs.reshape((n_k - 1) ** 2, n_sims))
+            self.white_noise_covariance = np.cov(rms_xs.reshape((n_k - 1) ** 2, n_sims), ddof=1)
 
             self.rms_xs_mean_2D.append(np.mean(rms_xs, axis=2))
             self.rms_xs_std_2D.append(np.std(rms_xs, axis=2, ddof=1))
-            
-        return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D), self.covariance
+            self.all_noise_simulations.append(rms_xs)
+
+            self.all_noise_simulations = np.array(self.all_noise_simulations)[0, ...].transpose(2, 0, 1)
+
+        return np.array(self.rms_xs_mean_2D), np.array(self.rms_xs_std_2D), self.white_noise_covariance
 
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
     def make_h5_2d(self, outdir, outname=None):
@@ -399,17 +526,27 @@ class CrossSpectrum_nmaps:
             outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
             outfile.create_dataset("nmodes", data=self.nmodes[0])
             
+            outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
+            outfile.create_dataset("dx", data = self.map_dx)
+            outfile.create_dataset("dy", data = self.map_dx)
+            outfile.create_dataset("dz", data = self.map_dx)
+
+            outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
+            outfile["dx"].attrs["unit"] = "Mpc"
+            outfile["dy"].attrs["unit"] = "Mpc"
+            outfile["dz"].attrs["unit"] = "Mpc"
             
+
             if self.params.psx_white_noise_sim_seed is not None:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
                 outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
-                outfile.create_dataset("white_noise_covariance", data=self.covariance)
+                outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
                 outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
             else:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
                 outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
-                outfile.create_dataset("white_noise_covariance", data=self.covariance)
-            
+                outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
     
     def read_spectrum(self, indir, inname = None):
         if inname is None:

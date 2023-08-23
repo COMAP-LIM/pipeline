@@ -21,7 +21,7 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-v", "--verbose", type=str2bool, default=False, help="Enable verbose printing.")
+parser.add_argument("-v", "--verbose", type=str2bool, default=True, help="Enable verbose printing.")
 
 parser.add_argument(
     "--debug",
@@ -590,12 +590,6 @@ parser.add_argument(
     help="(comap2fpxs) The path to the binned white noise (no filtering) map, used to generate error bars in power spectra.",
 )
 
-parser.add_argument(
-    "--psx_map_name_postfix",
-    type=str,
-    default="",
-    help="If set, the PSX code will add this to the end of the map-name before reading. Currently used for easier compatibility with the names written by the clean_maps.py mPCA subtractor (remember to add '_' to the postfix name).",
-)
 
 parser.add_argument(
     "--from_file",
@@ -715,7 +709,7 @@ parser.add_argument(
     "--psx_transfer_function_names",
     type=str,
     nargs="+",
-    default = ["tf_feed_pca.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
+    default = ["tf_default_jul18.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
     help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
 )
 
@@ -726,6 +720,46 @@ parser.add_argument(
     help="(comap2fpxs) White noise transfer function filename (not absolute path) to use when correcting error bar bias from filtering.",
 )
 
+parser.add_argument(
+    "--psx_use_full_wn_covariance",
+    type=str2bool,
+    default = False,
+    help="(comap2fpxs) Whether to use the full k-bin covariance matrix when averaging spectra.",
+)
+
+parser.add_argument(
+    "--psx_nyquist_bin_limit",
+    type=str2bool,
+    default = False,
+    help="(comap2fpxs) If True this ensures that the upper bin edge in each map dimension is set by the spacial nyquist frequency.",
+)
+
+parser.add_argument(
+    "--psx_k_angular_bin_min",
+    type = float,
+    default = 0.02,
+    help="(comap2fpxs) Bin edges of minimum wavenumber k in Mpc for the angular dimensions.",
+)
+
+parser.add_argument(
+    "--psx_k_angular_bin_max",
+    type = float,
+    default = 1.5,
+    help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral dimensions.",
+)
+parser.add_argument(
+    "--psx_k_spectral_bin_min",
+    type = float,
+    default = 0.01,
+    help="(comap2fpxs) Bin edges of minimum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
+)
+
+parser.add_argument(
+    "--psx_k_spectral_bin_max",
+    type = float,
+    default = 1.0,
+    help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
+)
 
 ###### Physics ######
 parser.add_argument(
@@ -1095,59 +1129,4 @@ parser.add_argument(
     type=int,
     default=None,
     help="(Replace_TOD_with_WN) What seed to use for white noise TOD replacement. None = no seed.",
-)
-
-
-
-###### pca_subtractor/clean_maps.py stuff ######
-parser.add_argument("--mpca_inname", type=str, help="""Path to input map.""")
-
-parser.add_argument(
-    "--mpca_outname", type=str, help="""Name of output map.""", default=None
-)
-
-parser.add_argument(
-    "--mpca_rmsnorm",
-    type=str,
-    help="""Which normalistion to use before PCA decomposition.
-    Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
-    default="sigma_wn",
-)
-
-parser.add_argument(
-    "--mpca_approx_noise",
-    help="""Whether to approximate noise weights by PCA to conserve outer product""",
-    action="store_true",
-)
-
-parser.add_argument(
-    "--mpca_maskrms",
-    type=float,
-    help="""Factor of mean of bottom 100 sigma_wn of each feed and frequency beyond which map is masked.""",
-    default=None,
-)
-
-parser.add_argument(
-    "--mpca_ncomps",
-    type=int,
-    help="""How many PCA modes to subtract from input map. Default is 5. """,
-    default=5,
-)
-
-parser.add_argument(
-    "--mpca_verbose",
-    help="""Whether to run in verbose mode or not. Default is False""",
-    action="store_true",
-)
-
-parser.add_argument(
-    "--mpca_subtract_mean",
-    help="""Whether to subtract line-of-sight mean per pixel prior to PCA. Default is False""",
-    action="store_true",
-)
-
-parser.add_argument(
-    "--mpca_save_reconstruction",
-    help="""Whether to save PCA reconstrucion in its own map file(s). Default is False""",
-    action="store_true",
 )

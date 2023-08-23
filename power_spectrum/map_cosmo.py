@@ -192,6 +192,8 @@ class MapCosmo:
         dredshift = (1 + Z_MID) ** 2 * dnu / NU_REST
 
         angle2Mpc = cosmology.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
+        
+        self.angle2Mpc = angle2Mpc
 
         NRA, NDEC = self.x.size, self.y.size
         
@@ -244,6 +246,15 @@ class MapCosmo:
         self.nx = nx
         self.ny = ny
         self.nz = nz
+
+        self.nyquist_x = 2 * np.pi * np.abs(np.fft.fftfreq(self.nx, self.dx)).max()
+        self.nyquist_y = 2 * np.pi * np.abs(np.fft.fftfreq(self.ny, self.dy)).max()
+        self.nyquist_z = 2 * np.pi * np.abs(np.fft.fftfreq(self.nz, self.dz)).max()
+
+        self.min_k_x = np.sort(2 * np.pi * np.abs(np.fft.fftfreq(self.nx, self.dx)))[1]
+        self.min_k_y = np.sort(2 * np.pi * np.abs(np.fft.fftfreq(self.ny, self.dy)))[1]
+        self.min_k_z = np.sort(2 * np.pi * np.abs(np.fft.fftfreq(self.nz, self.dz)))[1]
+
 
         self.voxel_volume = voxel_volume.value
 
