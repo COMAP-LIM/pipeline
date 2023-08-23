@@ -32,7 +32,7 @@ warnings.filterwarnings("ignore", message="Mean of empty slice")
 
 
 class Terminal_print:
-    def __init__(self, filter_list, Nscans):
+    def __init__(self, filter_list, Nscans, Nranks):
         self.Nscans = Nscans
         self.N_finished_scans = 0
         self.accumulated_acceptrate = np.zeros((19, 4))
@@ -43,6 +43,7 @@ class Terminal_print:
             self.accumulated_filter_runtime[filter.name] = 0
         self.accumulated_filter_runtime["l2_write"] = 0
         self.total_filter_runtime = 1e-10
+        self.rank_progress = ["x"]*Nranks
         self.t0 = time.time()
         self.pt0 = time.process_time()
         self.rewrite_lines = 0
@@ -59,7 +60,7 @@ class Terminal_print:
             return "\033[91m"
 
 
-    def update(self, info):
+    def scan_done_update(self, info):
         self.N_finished_scans += 1
 
         self.accumulated_feeds[info["feeds"]-1] += 1
@@ -69,6 +70,10 @@ class Terminal_print:
         for filter in info["filter_runtimes"].keys():
             self.accumulated_filter_runtime[filter] += info["filter_runtimes"][filter]
             self.total_filter_runtime += self.accumulated_filter_runtime[filter]
+
+
+    def scan_progress_update(self, info):
+        self.rank_progress[info["rank"]] = info["status"]
 
 
     def rewrite_terminal(self):
@@ -103,6 +108,16 @@ class Terminal_print:
         for filter in self.accumulated_filter_runtime.keys():
             tempstring = f"{filter:12s}: {self.accumulated_filter_runtime[filter]/60.0:8.1f}m  ({100*self.accumulated_filter_runtime[filter]/self.total_filter_runtime:4.1f} %)"
             printstring += f"{tempstring:<105s}\n"
+
+        printstring += f"{'':<105}\n"
+        printstring += f"{'______Rank report______':<105s}\n"
+        rankstring = "".join(self.rank_progress)
+        for i in range(100):
+            if len(rankstring) > 100*i:
+                printstring += f"{rankstring[i*100:(i+1)*100]:<105s}"
+                printstring += "\n"
+            else:
+                break
 
         printstring = printstring.replace("\n", " |\n| ")
         printstring = printstring.replace("|", "", 1)
@@ -145,11 +160,14 @@ class l2gen_runner:
 
         WORK_TAG = 1
         DIE_TAG = 2
+        PROGRESS_TAG = 8
+        DONE_TAG = 9
 
         ##### Master #####
         if self.rank == 0:
-            term = Terminal_print(self.filter_list, Nscans)
-            term.rewrite_terminal()
+            if self.params.print_progress_bar:
+                term = Terminal_print(self.filter_list, Nscans, self.Nranks)
+                term.rewrite_terminal()
 
             proc_order = np.arange(1, self.Nranks)
             np.random.shuffle(proc_order)
@@ -169,23 +187,39 @@ class l2gen_runner:
             while self.tasks_started < Nscans:
                 status = MPI.Status()
                 info = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
-                term.update(info)
-                term.rewrite_terminal()
-                self.tasks_done += 1
-                workerID = status.Get_source()
-                self.comm.send(self.tasks_started, dest=workerID, tag=WORK_TAG)
-                self.tasks_started += 1
-                time.sleep(0.01)
+                if status.Get_tag() == DONE_TAG:
+                    if self.params.print_progress_bar:
+                        term.scan_done_update(info)
+                        term.rewrite_terminal()
+                    self.tasks_done += 1
+                    workerID = status.Get_source()
+                    self.comm.send(self.tasks_started, dest=workerID, tag=WORK_TAG)
+                    self.tasks_started += 1
+                    time.sleep(0.01)
+                elif status.Get_tag() == PROGRESS_TAG:
+                    if self.params.print_progress_bar:
+                        term.scan_progress_update(info)
+                        term.rewrite_terminal()
+                else:
+                    raise ValueError("Unknown tag recieved.")
 
             while self.tasks_done < Nscans:
                 status = MPI.Status()
                 info = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
-                term.update(info)
-                term.rewrite_terminal()
-                self.tasks_done += 1
-                workerID = status.Get_source()
-                self.comm.send(-1, dest=workerID, tag=DIE_TAG)
-                time.sleep(0.01)
+                if status.Get_tag() == DONE_TAG:
+                    if self.params.print_progress_bar:
+                        term.scan_done_update(info)
+                        term.rewrite_terminal()
+                    self.tasks_done += 1
+                    workerID = status.Get_source()
+                    self.comm.send(-1, dest=workerID, tag=DIE_TAG)
+                    time.sleep(0.01)
+                elif status.Get_tag() == PROGRESS_TAG:
+                    if self.params.print_progress_bar:
+                        term.scan_progress_update(info)
+                        term.rewrite_terminal()
+                else:
+                    raise ValueError("Unknown tag recieved.")
 
         ##### Workers #####
         else:
@@ -206,7 +240,7 @@ class l2gen_runner:
                 return_dict["filter_runtimes"] = l2.filter_runtimes
                 return_dict["acceptrate"] = l2.l2file.acceptrate
                 return_dict["feeds"] = l2.l2file.feeds
-                self.comm.send(return_dict, dest=0)
+                self.comm.send(return_dict, dest=0, tag=DONE_TAG)
 
 
     def read_params(self):
@@ -293,9 +327,15 @@ class l2gen:
             if self.params.write_inter_files:
                 logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
+            if self.params.print_progress_bar:
+                self.filter_runtimes[self.filter_names[i]] = t1 - t0
+                self.filter_processtimes[self.filter_names[i]] = pt1 - pt0
+                info = {}
+                info["rank"] = self.rank
+                info["status"] = filter.name[0]
+                self.comm.send(info, dest=0, tag=8)
             del(filter)
-            self.filter_runtimes[self.filter_names[i]] = t1 - t0
-            self.filter_processtimes[self.filter_names[i]] = pt1 - pt0
+
 
         logging.debug(f"[{self.rank}] Writing level2 file...")
         t0 = time.time()
