@@ -11,6 +11,11 @@ import grp
 import sys
 import math
 
+current = os.path.dirname(os.path.realpath(__file__))
+parent_directory = os.path.dirname(current)
+sys.path.append(parent_directory)
+
+
 featname = ["f0", "optical_pointing", "radio_pointing", "ground_scan",
             "circular_scan", "constant_elevation_scan", "ambient_load",
             "stationary", "sky_dip", "raster"]
@@ -393,7 +398,7 @@ except IndexError:
     sys.exit()
 
 
-sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline")  # TODO: Not use hard-coded path.
+# sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline")  # TODO: Not use hard-coded path.
 from l2gen_argparser import parser
 params = parser.parse_args()
 if not params.runlist:
@@ -408,7 +413,7 @@ require_tsys = True  # params['REQUIRE_TSYS']
 verb = False  # params['VERBOSE_PRINT']
 remove_eng = True  # params['REMOVE_ENGINEERING_RUNS']
 
-aux_data_path = "/mn/stornext/d22/cmbco/comap/protodir/auxiliary/obj/"  # params['AUX_SAVED_DATA']
+aux_data_path = "/mn/stornext/d22/cmbco/comap/protodir/aux_data/obj/"  # params['AUX_SAVED_DATA']
 memory_file = 'mem'
 bad_file = 'bad'
 
