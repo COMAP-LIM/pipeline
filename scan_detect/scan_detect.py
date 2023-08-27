@@ -213,7 +213,7 @@ def find_file_dict(foldername, params, verb, mem={}, bad=[]):
                         obs_id = -1
                         bad.append(file)
 
-                    if new_format:
+                    if new_format and (field in params["fields"] or "all" in params["fields"]):  # 
                         # correct_scan_type = False
                         # scan_mode = "none"
                         # for scantype_feature in params["scantypes"]:
@@ -457,16 +457,16 @@ n_files = len(file_list)
 
 
 if require_tsys:
-    f = open("tsys_error.txt", "w")
+    # f = open("tsys_error.txt", "w")
     for i in range(n_files):
         index = n_files - i - 1
         #print("what we have: ",file_list[index].obs_id, file_list[index].field, file_list[index].scan_ranges, file_list[index].features)
         
         if not ((file_list[index].features[0] == 8192) and (file_list[index].features[-1] == 8192)):
-            if file_list[index].field[:2] == 'co':
-                f.write(str(file_list[index].obs_id) + '\n')
+            # if file_list[index].field[:2] == 'co':
+                # f.write(str(file_list[index].obs_id) + '\n')
             file_list.pop(index)
-    f.close()
+    # f.close()
 
 n_files = len(file_list)
 if remove_eng:  # Do not include engineering runs
