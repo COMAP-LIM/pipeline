@@ -185,7 +185,7 @@ def find_file_dict(foldername, params, verb, mem={}, bad=[]):
     # for file in glob.glob(foldername + "/**/*.hd5", recursive=True):
     # for file in glob.glob(foldername + "/**/comp_*.hd5", recursive=True):
     from tqdm import tqdm
-    for file in tqdm(glob.glob(foldername + "/**/comap-*.hd5", recursive=True)):
+    for file in tqdm(glob.glob(foldername + "/20[0-9][0-9]-[0-9][0-9]/comap-*.hd5", recursive=True)):
         if file in bad:
             pass
         else:
