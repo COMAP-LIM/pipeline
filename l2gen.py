@@ -307,6 +307,10 @@ class l2gen:
 
     def run(self):
         logging.debug(f"[{self.rank}] Reading level1 data...")
+        info = {}
+        info["rank"] = self.rank
+        info["status"] = "r"
+        self.comm.send(info, dest=0, tag=8)
         t0 = time.time(); pt0 = time.process_time()
         self.l2file.load_level1_data()
         t1 = time.time(); pt1 = time.time()

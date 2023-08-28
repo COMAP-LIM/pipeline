@@ -1094,7 +1094,7 @@ class PCA_filter(Filter):
             l2.tofile_dict["pca_comp"] = pca_comp
             l2.tofile_dict["pca_eigval"] = pca_eigval
             l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
-            print("num PCA comp: ", self.n_pca_comp)
+            # print("num PCA comp: ", self.n_pca_comp)
 
 class PCA_feed_filter(Filter):
     name = "pcaf"
@@ -1291,7 +1291,7 @@ class PCA_feed_filter(Filter):
 
             l2.tofile_dict["pca_feed_eigval"] = pca_eigval
             l2.tofile_dict["n_pca_feed_comp"] = self.n_pca_comp
-            print("num PCAf comp: ", self.n_pca_comp)
+            # print("num PCAf comp: ", self.n_pca_comp)
 
 
         if masking_run:
@@ -1709,7 +1709,7 @@ class Masking(Filter):
             for ifeed in range(l2.Nfeeds):
                 acc = np.sum(l2.acceptrate[ifeed,isb])*100
                 printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
-        if self.verbose:
+        if not self.params.print_progress_bar:
             print(printstring)
         logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
