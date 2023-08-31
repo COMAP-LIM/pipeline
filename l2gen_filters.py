@@ -1750,6 +1750,7 @@ class Tsys_calc(Filter):
             l2.freqmask_reason_string.append("Can't read or find Tsys calib file.")
 
         n_cal = np.zeros(l2.Nfeeds, dtype=int)
+        any_calib_failed = False
         for ifeed in range(l2.Nfeeds):
             feed = l2.feeds[ifeed]
             if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
@@ -1771,9 +1772,13 @@ class Tsys_calc(Filter):
             else:
                 Phot_interp = np.zeros_like(Phot[feed-1,:,:,0]) + np.nan
                 Thot_interp = np.zeros_like(Thot[feed-1,0]) + np.nan
-
+                l2.freqmask[ifeed] = False
+                l2.freqmask_reason[ifeed] += 2**l2.freqmask_counter
             l2.Gain[ifeed,:,:] = (Phot_interp - Pcold[ifeed])/(Thot_interp - Tcmb)
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
+        if any_calib_failed:  # We need to add this logic at the end, as it would be wrong if we repeated this this for every feed in the loop above.
+            l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Both calibs marked as unsuccessful.")
 
         l2.tofile_dict["Tsys"] = l2.Tsys
         l2.tofile_dict["Gain"] = l2.Gain
