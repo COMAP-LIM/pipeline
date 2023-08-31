@@ -1746,6 +1746,8 @@ class Tsys_calc(Filter):
             calib_times = np.zeros((l2.Nfeeds, 2)) + np.nan
             successful = np.zeros((l2.Nfeeds, 2))
             l2.freqmask[:] = False
+            l2.freqmask_reason[:] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Can't read or find Tsys calib file.")
 
         n_cal = np.zeros(l2.Nfeeds, dtype=int)
         for ifeed in range(l2.Nfeeds):
