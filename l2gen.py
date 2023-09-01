@@ -323,21 +323,22 @@ class l2gen:
             self.l2file.write_level2_data(name_extension="_0")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i](self.params, omp_num_threads=self.omp_num_threads)
+            if self.params.print_progress_bar:
+                info = {}
+                info["rank"] = self.rank
+                info["status"] = filter.name[0]
+                self.comm.send(info, dest=0, tag=8)
             logging.debug(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
             t0 = time.time(); pt0 = time.process_time()
             filter.run(self.l2file)
             t1 = time.time(); pt1 = time.process_time()
             logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
-            if self.params.write_inter_files:
-                logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
-                self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             if self.params.print_progress_bar:
                 self.filter_runtimes[self.filter_names[i]] = t1 - t0
                 self.filter_processtimes[self.filter_names[i]] = pt1 - pt0
-                info = {}
-                info["rank"] = self.rank
-                info["status"] = filter.name[0]
-                self.comm.send(info, dest=0, tag=8)
+            if self.params.write_inter_files:
+                logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
+                self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
 
 
