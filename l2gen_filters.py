@@ -1417,7 +1417,8 @@ class Masking(Filter):
             #     l2.tofile_dict["leak_aliasing"] = leak_mask
 
 
-
+            l2.tofile_dict["premask_C_lowres"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs//16, 2*l2.Nfreqs//16), dtype=np.float32)
+            l2.tofile_dict["C_template_lowres"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs//16, 2*l2.Nfreqs//16), dtype=np.float32)
             if self.params.write_C_matrix:  # For debuging purposes only.
                 l2.tofile_dict["premask_C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
                 l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
@@ -1434,7 +1435,9 @@ class Masking(Filter):
                     freqmask_reason = l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
 
                     C = np.corrcoef(tod)  # Correlation matrix.
-                    
+
+                    l2.tofile_dict["premask_C_lowres"][ifeed, ihalf] = np.nanmean(C.reshape((2*l2.Nfreqs//16, 16, 2*l2.Nfreqs//16, 16)), axis=(1,3))
+
                     # Ignore masked frequencies.
                     C[~freqmask,:] = 0
                     C[:,~freqmask] = 0
@@ -1450,7 +1453,6 @@ class Masking(Filter):
                     
                     if l2.params.write_C_matrix:  # For debuging purposes only.
                         l2.tofile_dict["premask_C"][ifeed,ihalf] = C
-                    
                     
                     # corr_template = np.zeros((2*l2.Nfreqs, 2*l2.Nfreqs))  # The correlated induced by different filters, to be subtracted from the correlation matrix.
                     # for filter in l2.filter_list:
@@ -1474,6 +1476,9 @@ class Masking(Filter):
                     # print("2:", C[:5,:5])
 
                     corr_template = l2_local.corr_template[ifeed,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
+
+                    l2.tofile_dict["C_template_lowres"][ifeed, ihalf] = np.nanmean(corr_template.reshape((2*l2.Nfreqs//16, 16, 2*l2.Nfreqs//16, 16)), axis=(1,3))
+
                     # Ignore masked frequencies. (again, since template does not include aliasing masking, and has different mask.)
                     corr_template[~freqmask,:] = 0
                     corr_template[:,~freqmask] = 0
@@ -1610,7 +1615,7 @@ class Masking(Filter):
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Radiometer std")
             del(l2_local)
-            
+
             
             ### Maxmimum freq-freq correlation masking ###
             max_corr_threshold = 0.1
