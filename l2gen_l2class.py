@@ -187,7 +187,7 @@ class level2_file:
                         self.spike_data[i, j, k, 4] = chi2  # chi2 goodness-of-fit
                         # plt.plot(time[earliest_ind:latest_ind], gauss(time[earliest_ind:latest_ind], *popt), 'r')  # plot fitted gaussians
                     except:  # in case the fitting fails
-                        print(f"Couldn't fit a Gaussian on the spike at position {time[peak]}, feed {self.feeds[i]}, sb {j+1}")
+                        # print(f"Couldn't fit a Gaussian on the spike at position {time[peak]}, feed {self.feeds[i]}, sb {j+1}")
                         self.spike_data[i, j, k, 1] = time[peak]
                 
                 # if self.n_spikes[i, j] > 0:
