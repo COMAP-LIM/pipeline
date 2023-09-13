@@ -192,6 +192,8 @@ class MapCosmo:
         dredshift = (1 + Z_MID) ** 2 * dnu / NU_REST
 
         angle2Mpc = cosmology.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
+        
+        self.angle2Mpc = angle2Mpc
 
         NRA, NDEC = self.x.size, self.y.size
         

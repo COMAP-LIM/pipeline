@@ -585,6 +585,13 @@ parser.add_argument(
 
 
 parser.add_argument(
+    "--psx_chi2_import_path",
+    type=str,
+    default="",
+    help="(comap2fpxs) The path to the non-null test power spectrum run from which the chi2 grid are loaded that are used in null test chi2 cuts.",
+)
+
+parser.add_argument(
     "--from_file",
     action="store_true",
     help="(comap2fpxs) If flag is provided already computed spectra are read from file.",
@@ -612,6 +619,14 @@ parser.add_argument(
     default = [],
     help="(comap2fpxs) List of map filenames (not absolute path) to use for cross-field null tests.",
 )
+
+parser.add_argument(
+    "--psx_plot_name_suffix",
+    type=str,
+    default="",
+    help="(comap2fpxs) String to add to directory names that plots are saved in.",
+)
+
 
 parser.add_argument(
     "--psx_null_cross_field",
@@ -702,7 +717,7 @@ parser.add_argument(
     "--psx_transfer_function_names",
     type=str,
     nargs="+",
-    default = ["tf_feed_pca.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
+    default = ["tf_default_jul18.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
     help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
 )
 

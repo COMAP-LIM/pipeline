@@ -79,7 +79,7 @@ class CrossSpectrum_nmaps:
         self.name_of_map = mappaths  
         if len(self.name_of_map) < 2:
             raise ValueError("Can only compute cross-spectra when two map paths are provided.")
-        
+
         split_map1 = map_cosmo.MapCosmo(
             self.params,
             mappaths[0], 
@@ -95,6 +95,11 @@ class CrossSpectrum_nmaps:
             self.feed2 - 1, # feed index to use for loading map is base-0
             self.split_keys[1],
             )
+        
+        self.angle2Mpc = split_map1.angle2Mpc.value
+        self.map_dx = split_map1.dx
+        self.map_dy = split_map1.dy
+        self.map_dz = split_map1.dz
 
         self.maps.append(split_map1)
         self.maps.append(split_map2)
@@ -201,7 +206,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
 
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
             
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -285,7 +290,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
 
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
             
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -366,7 +371,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
             
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
 
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -521,6 +526,15 @@ class CrossSpectrum_nmaps:
             outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
             outfile.create_dataset("nmodes", data=self.nmodes[0])
             
+            outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
+            outfile.create_dataset("dx", data = self.map_dx)
+            outfile.create_dataset("dy", data = self.map_dx)
+            outfile.create_dataset("dz", data = self.map_dx)
+
+            outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
+            outfile["dx"].attrs["unit"] = "Mpc"
+            outfile["dy"].attrs["unit"] = "Mpc"
+            outfile["dz"].attrs["unit"] = "Mpc"
             
 
             if self.params.psx_white_noise_sim_seed is not None:

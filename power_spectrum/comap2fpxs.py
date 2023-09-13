@@ -179,7 +179,7 @@ class COMAP2FPXS():
                 
                 # Extract file names, split keys and feed combinations from current combination
                 mapnames, splits, feeds = all_combinations[i]
-                
+       
                 map1, map2 = mapnames
                 split1, split2 = splits
                 feed1, feed2 = feeds
@@ -332,12 +332,29 @@ class COMAP2FPXS():
 
             xs_mean_1d = np.zeros((N_splits, N_k))
             xs_error_1d = np.zeros((N_splits, N_k))
+            
+            chi2_grids = np.zeros((N_splits, N_feed, N_feed))
+            
+            if self.params.psx_null_diffmap:
+                loaded_chi2_grids = np.zeros((N_splits, N_feed, N_feed))
+            
             cross_variable_names = [] 
 
-            for i, splits in enumerate(self.split_map_combinations):
-                cross_variable = splits[0].split("/")[1]
-                cross_variable_names.append(cross_variable)
+            if self.params.psx_null_diffmap:
+                if len(self.params.psx_chi2_import_path) <= 0 or not os.path.exists(self.params.psx_chi2_import_path):
+                    raise ValueError("No chi2 import file provided to perform null test chi2 cuts!")
 
+                with h5py.File(self.params.psx_chi2_import_path, "r") as infile:
+                    loaded_names = infile["cross_variable_names"][()].astype(str)
+                    loaded_chi2_grid = infile["chi2_grid"][()]
+
+            for i, splits in enumerate(self.split_map_combinations):
+                if not self.params.psx_null_diffmap:
+                    cross_variable = splits[0].split("/")[1]
+                    cross_variable_names.append(cross_variable)
+                else:
+                    cross_variable = splits[0][0].split("/")[-1]
+                    cross_variable = cross_variable[-5:-1]
 
                 if self.params.psx_use_full_wn_covariance:
                     xs_sum = np.zeros(N_k ** 2)
@@ -347,6 +364,7 @@ class COMAP2FPXS():
                     xs_inv_var = np.zeros((N_k, N_k))
                 
                 chi2 = np.zeros((N_feed, N_feed))
+                accepted_chi2 = np.zeros((N_feed, N_feed))
 
                 for feed1 in range(N_feed):
                     for feed2 in range(N_feed):
@@ -358,6 +376,8 @@ class COMAP2FPXS():
                         )
 
                         cross_spectrum.read_spectrum(indir)
+                        # cross_spectrum.read_and_append_attribute(["white_noise_simulation"], indir)
+                        # print("hei", cross_spectrum.white_noise_simulation.shape)
                         #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
                         xs = cross_spectrum.xs_2D
@@ -376,6 +396,12 @@ class COMAP2FPXS():
 
                         transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
 
+                        _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
+                        _transfer_function_mask[:4, :] = False
+                        
+                        transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
+
+
                         chi3 = np.nansum(
                         (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
                         )
@@ -387,9 +413,20 @@ class COMAP2FPXS():
                             / np.sqrt(2 * number_of_samples)
                         )
 
+                        if self.params.psx_null_diffmap:
+                            # If null test is run the same chi2 as in data run must be used!
+                            current_cross_variable, = np.where(loaded_names == cross_variable)
+                            accept_chi2 = np.abs(loaded_chi2_grid[current_cross_variable, feed1, feed2]) < self.params.psx_chi2_cut_limit
+                            # accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
+
+                            
+                        else:
+                            accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
                         
+                        accepted_chi2[feed1, feed2] = accept_chi2
+
                         if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
-                            if np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit:
+                            if accept_chi2:
                                 if self.params.psx_use_full_wn_covariance:
                                     xs = xs.flatten()
 
@@ -410,8 +447,11 @@ class COMAP2FPXS():
                                     xs_sum += xs / xs_sigma ** 2
                                     xs_inv_var += 1 / xs_sigma ** 2
                 
-
-                print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                if self.params.psx_null_diffmap:
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(loaded_chi2_grid[current_cross_variable, ...]) < self.params.psx_chi2_cut_limit))
+                    # print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                else:
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
 
                 if self.params.psx_use_full_wn_covariance:
                     xs_covariance[i, ...] = np.linalg.inv(xs_inv_cov)
@@ -425,6 +465,8 @@ class COMAP2FPXS():
                 weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
 
                 xs_1d = xs_mean[i, ...].copy()
+
+                # transfer_function_mask = np.logical_and(transfer_function_mask, xs_error[i, ...] < xs_error[i, ...].max() * 0.5)
 
                 weights[~transfer_function_mask] = 0.0
             
@@ -464,6 +506,7 @@ class COMAP2FPXS():
                 if not self.params.psx_generate_white_noise_sim:
                     chi2_name = os.path.join(fig_dir, "chi2_grid")
                     chi2_name = os.path.join(chi2_name, indir)
+                    chi2_name = chi2_name + f"_{self.params.psx_plot_name_suffix}"
 
                     if not os.path.exists(chi2_name):
                         os.mkdir(chi2_name)
@@ -477,13 +520,17 @@ class COMAP2FPXS():
                         if not os.path.exists(chi2_name):
                             os.mkdir(chi2_name)
                     
-                    self.plot_chi2_grid(chi2, splits, chi2_name)
+                    chi2_grids[i, ...] = chi2
+                    if self.params.psx_null_diffmap:
+                        loaded_chi2_grids[i, ...] = loaded_chi2_grid[current_cross_variable, ...]
+
+                    self.plot_chi2_grid(chi2, accepted_chi2, splits, chi2_name)
 
                     average_name = os.path.join(fig_dir, "average_spectra")
                     average_name = os.path.join(average_name, indir)
                     
 
-
+                    average_name = average_name + f"_{self.params.psx_plot_name_suffix}"
                     if not os.path.exists(average_name):
                         os.mkdir(average_name)
 
@@ -525,6 +572,8 @@ class COMAP2FPXS():
                 self.plot_2D_mean(
                     k_bin_edges_par,
                     k_bin_edges_perp,
+                    k_bin_centers_par,
+                    k_bin_centers_perp,
                     xs_mean[i, ...],
                     xs_error[i, ...],
                     transfer_function_mask,
@@ -533,16 +582,26 @@ class COMAP2FPXS():
                     average_name,
                 )
 
+                if self.params.psx_null_diffmap:
+                    plot_chi2 = loaded_chi2_grid[current_cross_variable, ...]                
+                    # plot_chi2 = chi2                
+                else:
+                    plot_chi2 = chi2                
+                
                 self.plot_1D_mean(
                     k_1d,
                     xs_mean_1d[i, ...],
                     xs_error_1d[i, ...],
+                    plot_chi2,
                     splits,
                     (mapname1, mapname2),
                     average_name,
                 )
             
-            cross_variable_names = np.array(cross_variable_names, dtype = "S")
+            if not self.params.psx_null_diffmap:
+                cross_variable_names = np.array(cross_variable_names, dtype = "S")
+            else:
+                cross_variable_names = np.array([*self.cross_variables], dtype = "S")
 
             with h5py.File(os.path.join(outdir, mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
@@ -557,6 +616,14 @@ class COMAP2FPXS():
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+                outfile.create_dataset("chi2_grid", data = chi2_grids)
+
+                if not self.params.psx_null_diffmap:                
+                    outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(chi2_grids) < self.params.psx_chi2_cut_limit, axis = (1, 2)))
+                else:
+                    outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(loaded_chi2_grids) < self.params.psx_chi2_cut_limit, axis = (1, 2)))
+                    outfile.create_dataset("loaded_chi2_grid", data = loaded_chi2_grids)
+                
 
                 outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
                 outfile.create_dataset("dx", data = self.map_dx)
@@ -574,6 +641,8 @@ class COMAP2FPXS():
     def plot_2D_mean(self,
                     k_bin_edges_par: npt.NDArray,
                     k_bin_edges_perp: npt.NDArray,
+                    k_bin_centers_par: npt.NDArray,
+                    k_bin_centers_perp: npt.NDArray,
                     xs_mean: npt.NDArray,
                     xs_sigma: npt.NDArray,
                     transfer_function_mask: npt.NDArray,
@@ -585,7 +654,8 @@ class COMAP2FPXS():
 
         Args:
             k_bin_edges_par (npt.NDArray): Array of k-bin edges of parallel (line-of-sight) dimension in 1/Mpc
-            k_bin_edges_perp (npt.NDArray): Array of k-bin edges of perpendicular (angular, i.e. perpendicular to line-of-sight) dimension in 1/Mpc.
+            k_bin_edges_perp (npt.NDArray): Array of k-bin edges of perpendicular (angular, i.e.             k_bin_centers_par (npt.NDArray): Array of k-bin centers of parallel (line-of-sight) dimension in 1/Mpc
+            k_bin_centers_perp (npt.NDArray): Array of k-bin centers of perpendicular (angular, i.e. perpendicular to line-of-sight) dimension in 1/Mpc.
             xs_mean (npt.NDArray): Array of mean spherically averaged FPXS 
             xs_sigma (npt.NDArray): Array of errors of mean spherically averaged FPXS
             transfer_function_mask (npt.NDArray): Array of bools marking where transfer function is below specified level.
@@ -635,30 +705,54 @@ class COMAP2FPXS():
             lim_error = np.nanmax(xs_sigma)
             lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)))
 
-        lim = 3e4
-        lim_error = 15e3
-        lim_significance = 10
-
         norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
         lim_error = matplotlib.colors.Normalize(vmin=0, vmax=lim_error)
         lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
 
-        img1 = ax[0].imshow(
-            xs_mean,
-            interpolation="none",
-            origin="lower",
-            extent=[0, 1, 0, 1],
-            cmap="PiYG_r",
+        # img1 = ax[0].imshow(
+        #     xs_mean,
+        #     interpolation="none",
+        #     origin="lower",
+        #     extent=[0, 1, 0, 1],
+        #     cmap="RdBu_r",
+        #     norm=norm,
+        #     rasterized=True,
+        #     zorder = 1,
+        # )
+
+        # ax[0].fill_between(
+        #     [0, 1], 
+        #     0, 
+        #     1, 
+        #     hatch='xxxx', 
+        #     transform = ax[0].transAxes, 
+        #     alpha = 0, 
+        #     zorder = 2
+        # )
+
+        # xs_mean_masked = np.ma.masked_where(~transfer_function_mask, xs_mean)
+        # ax[0].imshow(
+        #     xs_mean_masked,
+        #     interpolation="none",
+        #     origin="lower",
+        #     extent=[0, 1, 0, 1],
+        #     cmap="RdBu_r",
+        #     norm=norm,
+        #     rasterized=True,
+        #     zorder = 3,
+        # )
+
+        X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)
+
+        img1 = ax[0].pcolormesh(
+            X_par,
+            X_perp, 
+            xs_mean.T,
+            cmap="RdBu_r",
             norm=norm,
             rasterized=True,
             zorder = 1,
         )
-        cbar = fig.colorbar(img1, ax=ax[0], fraction=0.046, pad=0.18, location = "bottom")
-        cbar.set_label(
-            r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
-            size=16,
-        )
-        cbar.ax.tick_params(rotation=45)
 
         ax[0].fill_between(
             [0, 1], 
@@ -671,76 +765,74 @@ class COMAP2FPXS():
         )
 
         xs_mean_masked = np.ma.masked_where(~transfer_function_mask, xs_mean)
-        ax[0].imshow(
-            xs_mean_masked,
-            interpolation="none",
-            origin="lower",
-            extent=[0, 1, 0, 1],
-            cmap="PiYG_r",
+        ax[0].pcolormesh(
+            X_par,
+            X_perp,
+            xs_mean_masked.T,
+            cmap="RdBu_r",
             norm=norm,
             rasterized=True,
             zorder = 3,
         )
-        
-        img2 = ax[1].imshow(
-            xs_sigma,
-            interpolation="none",
-            origin="lower",
-            extent=[0, 1, 0, 1],
-            cmap="CMRmap",
+
+        cbar = fig.colorbar(img1, ax=ax[0], fraction=0.046, pad=0.18, location = "bottom")
+        cbar.set_label(
+            r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+            size=16,
+        )
+        cbar.ax.tick_params(rotation=45)
+
+        ###############################
+
+        img2 = ax[1].pcolormesh(
+            X_par,
+            X_perp, 
+            xs_sigma.T,
+            cmap = "CMRmap",
             norm=lim_error,
             rasterized=True,
             zorder = 1,
         )
-        cbar  = fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.18, location = "bottom")
-        cbar.set_label(
-            r"$\sigma\left(k_{\bot},k_{\parallel}\right)$[$\mu$K$^2$ (Mpc)${}^3$]",
-            size=16,
-        )
-        cbar.ax.tick_params(rotation=45)
 
         ax[1].fill_between(
             [0, 1], 
             0, 
             1, 
             hatch='xxxx', 
-            transform = ax[2].transAxes, 
+            transform = ax[1].transAxes, 
             alpha = 0, 
             zorder = 2
         )
 
         xs_sigma_masked = np.ma.masked_where(~transfer_function_mask, xs_sigma)
-
-        ax[1].imshow(
-            xs_sigma_masked,
-            interpolation="none",
-            origin="lower",
-            extent=[0, 1, 0, 1],
-            cmap="CMRmap",
+        ax[1].pcolormesh(
+            X_par,
+            X_perp,
+            xs_sigma_masked.T,
+            cmap = "CMRmap",
             norm=lim_error,
             rasterized=True,
             zorder = 3,
         )
 
-        ax[1].tick_params(left = True , labelleft = False)
-
-        img2 = ax[2].imshow(
-            xs_mean / xs_sigma,
-            interpolation="none",
-            origin="lower",
-            extent=[0, 1, 0, 1],
-            cmap="PiYG_r",
-            norm=lim_significance,
-            rasterized=True,
-            zorder = 1,
-        )
-        cbar = fig.colorbar(img2, ax=ax[2], fraction=0.046, pad=0.18, location = "bottom")
+        cbar = fig.colorbar(img2, ax=ax[1], fraction=0.046, pad=0.18, location = "bottom")
         cbar.set_label(
-            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
+            r"$\sigma\left(k_{\bot},k_{\parallel}\right)$[$\mu$K$^2$ (Mpc)${}^3$]",
             size=16,
         )
         cbar.ax.tick_params(rotation=45)
 
+        ###############################
+
+        img3 = ax[2].pcolormesh(
+            X_par,
+            X_perp, 
+            (xs_mean / xs_sigma).T,
+            cmap="RdBu_r",
+            norm=lim_significance,
+            rasterized=True,
+            zorder = 1,
+        )
 
         ax[2].fill_between(
             [0, 1], 
@@ -752,72 +844,58 @@ class COMAP2FPXS():
             zorder = 2
         )
 
-        xs_sigma_masked = np.ma.masked_where(~transfer_function_mask, xs_sigma)
-
-        ax[2].imshow(
-            xs_mean_masked / xs_sigma_masked,
-            interpolation="none",
-            origin="lower",
-            extent=[0, 1, 0, 1],
-            cmap="PiYG_r",
+        ax[2].pcolormesh(
+            X_par,
+            X_perp,
+            (xs_mean_masked / xs_sigma_masked).T,
+            cmap="RdBu_r",
             norm=lim_significance,
             rasterized=True,
             zorder = 3,
         )
 
-        ax[2].tick_params(left = True , labelleft = False)
+        cbar = fig.colorbar(img3, ax=ax[2], fraction=0.046, pad=0.18, location = "bottom")
+        cbar.set_label(
+            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
+            size=16,
+        )
+        cbar.ax.tick_params(rotation=45)
+       
+        for i in range(3):
+            ax[i].set_xscale("log")
+            ax[i].set_yscale("log")
 
-        ticks = [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+            ticks = [0.03, 0.1, 0.3, 1]
+            ticklabels = ["0.03", "0.1", "0.3", "1"]
+
+            ax[i].set_xticks(ticks)
+            ax[i].set_xticklabels(ticklabels)
+            ax[i].set_yticks(ticks)
+            ax[i].set_yticklabels(ticklabels)
+
+            ax[i].set_xlim(k_bin_edges_par[0], k_bin_edges_par[-1])
+            ax[i].set_ylim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
+
+
+            ax[i].set_xlabel(r"$k_\parallel$ [Mpc${}^{-1}$]", fontsize=16)
+        
+        ax[0].set_ylabel(r"$k_\bot$ [Mpc${}^{-1}$]", fontsize=16)
+
 
         majorticks = [0.03, 0.1, 0.3, 1]
-        majorlabels = ["0.03", "0.1", "0.3", "1"]
-
-        xbins = k_bin_edges_par
-
-        ticklist_x = self.log2lin(ticks[:-3], xbins)
-        majorlist_x = self.log2lin(majorticks, xbins)
-
-        ybins = k_bin_edges_perp
-
-        ticklist_y = self.log2lin(ticks, ybins)
-        majorlist_y = self.log2lin(majorticks, ybins)
-
-        ax[0].set_title(r"$\tilde{C}^{\mathrm{FPXS}}$ ", fontsize=16)
-        ax[1].set_title(r"$\sigma$ ", fontsize=16)
-        ax[2].set_title(r"$\tilde{C}^{\mathrm{FPXS}}/\sigma$ ", fontsize=16)
-
-        for i in range(3):
-            ax[i].set_xticks(ticklist_x, minor=True)
-            ax[i].set_xticks(majorlist_x, minor=False)
-            ax[i].set_xticklabels(majorlabels, minor=False, fontsize=16)
-            ax[i].set_yticks(ticklist_y, minor=True)
-            ax[i].set_yticks(majorlist_y, minor=False)
-            ax[i].set_yticklabels(majorlabels, minor=False, fontsize=16)
-
-        ax[0].set_ylabel(r"$k_{\bot}$ [Mpc${}^{-1}$]", fontsize=16)
-        
-        ax[0].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
-        ax[1].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
-        ax[2].set_xlabel(r"$k_{\parallel}$ [Mpc${}^{-1}$]", fontsize=16)
-
-
-        ax2 = ax[0].twinx()
-        ax2.set_yticks(majorlist_y)
-        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
-        # ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
-        ax2.tick_params(right = True , labelright = False)
-
-        ax2 = ax[1].twinx()
-        ax2.set_yticks(majorlist_y)
-        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
-        # ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
-        ax2.tick_params(right = True , labelright = False)
 
         ax2 = ax[2].twinx()
-        ax2.set_yticks(majorlist_y)
+        ax2.set_yscale("log")
+
+        ax2.set_yticks(majorticks)
+        ax2.set_yticklabels(majorticks)
+        
+        ax2.set_ylim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
         ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
         ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
 
+
+        
 
         fig.tight_layout()
         fig.savefig(outname, bbox_inches = "tight")
@@ -826,20 +904,25 @@ class COMAP2FPXS():
                     k_1d: npt.NDArray,
                     xs_mean: npt.NDArray,
                     xs_sigma: npt.NDArray,
+                    chi2_grid: npt.NDArray,
                     splits: Sequence[str],
                     fields: Sequence[str],
                     outname: str
                     ):
+        
         """Method that plots 1D, i.e. spherically averaged mean FPXS.
 
         Args:
             k_1d (npt.NDArray): Array of k-bin centers in 1/Mpc
             xs_mean (npt.NDArray): Array of mean spherically averaged FPXS 
             xs_sigma (npt.NDArray): Array of errors of mean spherically averaged FPXS
+            chi2_grid (npt.NDArray): Array of errors of normalized chi2 values for each feed-split combo
             splits (Sequence[str]): Sequence of strings with split names used for as cross-spectrum variable
             fields (Sequence[str]): Sequence of strings with field names used in cross correlation
             outname (str): String with output directory for plot
         """
+
+        from scipy.stats import chi2, norm
 
         # Define default tick label fontsize
         matplotlib.rcParams["xtick.labelsize"] = 16
@@ -874,13 +957,13 @@ class COMAP2FPXS():
         fig.suptitle(f"Fields: {fields[0]} X {fields[1]} | {split1} X {split2}", fontsize=16)
         
         # Only want to use points between 0.04 and 1.0 /Mpc
-        where = np.logical_and(k_1d > 0.04, k_1d < 1.0)
+        where = np.logical_and(k_1d > 0.1, k_1d < 1.0)
 
         # Plot y-limits
         lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
         lim = np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
         
-        lim = 2e4
+        # lim = 2e4
 
         lim_significance = 2 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
         
@@ -906,6 +989,15 @@ class COMAP2FPXS():
             fontsize = 16,
         )
         
+        chi2_sum = np.sum((xs_mean[5:-1] / xs_sigma[5:-1]) ** 2)
+        
+        chi2_cdf = chi2.cdf(chi2_sum, df = xs_mean[5:-1].size)
+
+        PTE = chi2.sf(chi2_sum, df = xs_mean[5:-1].size)
+
+        number_accepted_cross_spectra = np.sum(np.abs(chi2_grid) < self.params.psx_chi2_cut_limit)
+
+        ax[1].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + rf"$\chi^2$ cdf: {chi2_cdf:.3f}" + " " * 5 + rf"PTE: {PTE:.3f}", fontsize = 16)
         # Plot scatter and error bar of significance plot
         ax[1].scatter(
             k_1d,
@@ -946,11 +1038,11 @@ class COMAP2FPXS():
         ax[1].set_xticks(klabels)
         ax[1].set_xticklabels(klabels, fontsize = 16)
 
-        # ax[0].set_xlim(0.04, 1.0)
-        # ax[1].set_xlim(0.04, 1.0)
+        ax[0].set_xlim(0.06, 1.0)
+        ax[1].set_xlim(0.06, 1.0)
 
-        ax[0].set_xlim(0.1, 1.0)
-        ax[1].set_xlim(0.1, 1.0)
+        # ax[0].set_xlim(0.1, 1.0)
+        # ax[1].set_xlim(0.1, 1.0)
 
         ax[1].set_xlabel(r"$k [\mathrm{Mpc}^{-1}]$", fontsize = 16)
 
@@ -960,11 +1052,12 @@ class COMAP2FPXS():
 
         fig.savefig(outname, bbox_inches = "tight")
 
-    def plot_chi2_grid(self, chi2: npt.NDArray, splits: tuple, outname: str):
+    def plot_chi2_grid(self, chi2: npt.NDArray, chi2_mask: npt.NDArray, splits: tuple, outname: str):
         """Method that plots feed-split grid of FPXS chi-squared values
 
         Args:
             chi2 (npt.NDArray): Array of chi2 values for all feed and split combinations
+            chi2 (npt.NDArray): Array of chi2 mask values for all feed and split combinations
             splits (tuple): Split names that were crossed
             outname (str): Plot file output path
         """
@@ -972,7 +1065,8 @@ class COMAP2FPXS():
         # Define default ticks label sizes
         matplotlib.rcParams["xtick.labelsize"] = 10
         matplotlib.rcParams["ytick.labelsize"] = 10
-
+        matplotlib.rcParams["hatch.color"] = "gray"
+        matplotlib.rcParams["hatch.linewidth"] = 0.3
         # Define the two split names that were cross-correlated
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
@@ -991,35 +1085,110 @@ class COMAP2FPXS():
         N_feed = len(self.included_feeds)
 
         # Define symetric collormap
-        cmap = matplotlib.cm.PiYG.reversed()
+        cmap = matplotlib.cm.RdBu.reversed()
 
         # Bad values, i.e. NaN and Inf, are set to black
         cmap.set_bad("k", 1)
         
 
-        lim = np.nanmin((self.params.psx_chi2_cut_limit, np.nanmax(np.abs(chi2))))
+        lim = np.nanmin((100, np.nanmax(np.abs(chi2))))
+        norm = matplotlib.colors.Normalize(vmin=-1.2 * lim, vmax=1.2 * lim)
+        norm_chi2_cut = matplotlib.colors.Normalize(vmin=-self.params.psx_chi2_cut_limit, vmax=self.params.psx_chi2_cut_limit)
 
         # Plot chi2 value grid
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(1, 2, figsize = (13, 5))
 
-        img = ax.imshow(
+        img = ax[0].imshow(
             chi2,
             interpolation = "none",
-            vmin = -self.params.psx_chi2_cut_limit,
-            vmax = self.params.psx_chi2_cut_limit,
+            norm=norm,
             extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
             cmap = cmap,
             rasterized = True,
+            zorder = 1,
         )
 
+        ax[0].fill_between(
+            [0.5, N_feed + 0.5], 
+            0.5, 
+            N_feed + 0.5, 
+            hatch='xxxx', 
+            alpha = 0, 
+            zorder = 2
+        )
+        
+
+        # chi2_masked = np.ma.masked_where(~(np.abs(chi2) < self.params.psx_chi2_cut_limit), chi2)
+
+        chi2_masked = np.ma.masked_where(~chi2_mask.astype(bool), chi2)
+
+        ax[0].imshow(
+            chi2_masked,
+            interpolation="none",
+            extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap="RdBu_r",
+            norm=norm,
+            rasterized=True,
+            zorder = 3,
+        )
+
+
         new_tick_locations = np.array(range(N_feed)) + 1
-        ax.set_xticks(new_tick_locations)
-        ax.set_yticks(new_tick_locations)
+        ax[0].set_xticks(new_tick_locations)
+        ax[0].set_yticks(new_tick_locations)
         
-        ax.set_xlabel(f"Feed of {split1}")
-        ax.set_ylabel(f"Feed of {split2}")
+        ax[0].set_xlabel(f"Feed of {split1}")
+        ax[0].set_ylabel(f"Feed of {split2}")
         
-        cbar = plt.colorbar(img, ax = ax)
+        cbar = plt.colorbar(img, ax = ax[0])
+        
+        cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
+
+        ####################################################
+
+        ax[1].set_title(r"Colorbar zoomed in on $\chi^2$ cut limit")
+        img2 = ax[1].imshow(
+            chi2,
+            interpolation = "none",
+            norm=norm_chi2_cut,
+            extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap = cmap,
+            rasterized = True,
+            zorder = 1,
+        )
+
+        ax[1].fill_between(
+            [0.5, N_feed + 0.5], 
+            0.5, 
+            N_feed + 0.5, 
+            hatch='xxxx', 
+            alpha = 0, 
+            zorder = 2
+        )
+
+        # chi2_masked = np.ma.masked_where(~(np.abs(chi2) < self.params.psx_chi2_cut_limit), chi2)
+
+        chi2_masked = np.ma.masked_where(~chi2_mask.astype(bool), chi2)
+        
+        ax[1].imshow(
+            chi2_masked,
+            interpolation="none",
+            extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap="RdBu_r",
+            norm=norm_chi2_cut,
+            rasterized=True,
+            zorder = 3,
+        )
+
+
+        new_tick_locations = np.array(range(N_feed)) + 1
+        ax[1].set_xticks(new_tick_locations)
+        ax[1].set_yticks(new_tick_locations)
+        
+        ax[1].set_xlabel(f"Feed of {split1}")
+        ax[1].set_ylabel(f"Feed of {split2}")
+        
+        cbar = plt.colorbar(img2, ax = ax[1])
         
         cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
         
@@ -1115,8 +1284,7 @@ class COMAP2FPXS():
             variable = split_line[0]
             number = split_line[1]
 
-            if len(split_line) > 2:
-                extra = split_line[-1]
+            extra = split_line[-1]
 
             all_variables.append(variable)
 
@@ -1203,7 +1371,6 @@ class COMAP2FPXS():
                     if not ((name1, name2) in secondary_cross_combos):
                         secondary_cross_combos.append((name1, name2))
 
-                    
             for primary_variable in primary_variables:
                 # Generating names of split combinations
                 for primary_bin_number in range(self.params.split_base_number):
