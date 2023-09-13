@@ -592,11 +592,7 @@ class COMAP2FPXS():
                     k_1d,
                     xs_mean_1d[i, ...],
                     xs_error_1d[i, ...],
-<<<<<<< HEAD
                     plot_chi2,
-=======
-                    chi2,
->>>>>>> f311b52e00de4fa1dd4e3a1c90d8c11822f1309f
                     splits,
                     (mapname1, mapname2),
                     average_name,
