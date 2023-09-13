@@ -1722,7 +1722,7 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         jk_list[np.where(sid < cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
-    elif string == 'azmp':  ## fknee of second polyfilter component
+    elif string == 'azmp':  ## az filter amplitude
         az_amp = extract_data_from_array(scan_data, 'az_amp').copy() 
         cutoff = np.percentile(az_amp[accept_list], 50.0)
         jk_list[np.where(az_amp > cutoff)] += int(2 ** n)
