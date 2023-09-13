@@ -1094,7 +1094,7 @@ class PCA_filter(Filter):
             l2.tofile_dict["pca_comp"] = pca_comp
             l2.tofile_dict["pca_eigval"] = pca_eigval
             l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
-            print("num PCA comp: ", self.n_pca_comp)
+            # print("num PCA comp: ", self.n_pca_comp)
 
 class PCA_feed_filter(Filter):
     name = "pcaf"
@@ -1291,7 +1291,7 @@ class PCA_feed_filter(Filter):
 
             l2.tofile_dict["pca_feed_eigval"] = pca_eigval
             l2.tofile_dict["n_pca_feed_comp"] = self.n_pca_comp
-            print("num PCAf comp: ", self.n_pca_comp)
+            # print("num PCAf comp: ", self.n_pca_comp)
 
 
         if masking_run:
@@ -1417,7 +1417,8 @@ class Masking(Filter):
             #     l2.tofile_dict["leak_aliasing"] = leak_mask
 
 
-
+            l2.tofile_dict["premask_C_lowres"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs//16, 2*l2.Nfreqs//16), dtype=np.float32)
+            l2.tofile_dict["C_template_lowres"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs//16, 2*l2.Nfreqs//16), dtype=np.float32)
             if self.params.write_C_matrix:  # For debuging purposes only.
                 l2.tofile_dict["premask_C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
                 l2.tofile_dict["C"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
@@ -1434,7 +1435,9 @@ class Masking(Filter):
                     freqmask_reason = l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
 
                     C = np.corrcoef(tod)  # Correlation matrix.
-                    
+
+                    l2.tofile_dict["premask_C_lowres"][ifeed, ihalf] = np.nanmean(C.reshape((2*l2.Nfreqs//16, 16, 2*l2.Nfreqs//16, 16)), axis=(1,3))
+
                     # Ignore masked frequencies.
                     C[~freqmask,:] = 0
                     C[:,~freqmask] = 0
@@ -1450,7 +1453,6 @@ class Masking(Filter):
                     
                     if l2.params.write_C_matrix:  # For debuging purposes only.
                         l2.tofile_dict["premask_C"][ifeed,ihalf] = C
-                    
                     
                     # corr_template = np.zeros((2*l2.Nfreqs, 2*l2.Nfreqs))  # The correlated induced by different filters, to be subtracted from the correlation matrix.
                     # for filter in l2.filter_list:
@@ -1474,6 +1476,9 @@ class Masking(Filter):
                     # print("2:", C[:5,:5])
 
                     corr_template = l2_local.corr_template[ifeed,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2,ihalf*l2.Nfreqs*2:(ihalf+1)*l2.Nfreqs*2]
+
+                    l2.tofile_dict["C_template_lowres"][ifeed, ihalf] = np.nanmean(corr_template.reshape((2*l2.Nfreqs//16, 16, 2*l2.Nfreqs//16, 16)), axis=(1,3))
+
                     # Ignore masked frequencies. (again, since template does not include aliasing masking, and has different mask.)
                     corr_template[~freqmask,:] = 0
                     corr_template[:,~freqmask] = 0
@@ -1610,7 +1615,7 @@ class Masking(Filter):
             l2.freqmask_counter += 1
             l2.freqmask_reason_string.append(f"Radiometer std")
             del(l2_local)
-            
+
             
             ### Maxmimum freq-freq correlation masking ###
             max_corr_threshold = 0.1
@@ -1709,7 +1714,8 @@ class Masking(Filter):
             for ifeed in range(l2.Nfeeds):
                 acc = np.sum(l2.acceptrate[ifeed,isb])*100
                 printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
-        print(printstring)
+        if not self.params.print_progress_bar:
+            print(printstring)
         logging.debug(printstring)
         logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
@@ -1719,7 +1725,7 @@ class Tsys_calc(Filter):
     
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
-        self.cal_database_file = params.cal_database_file
+        self.cal_database_dir = params.cal_database_dir
         self.params = params
 
     def run(self, l2):
@@ -1731,22 +1737,25 @@ class Tsys_calc(Filter):
         Pcold = np.nanmean(l2.tod, axis=-1)
         Phot_interp = np.zeros(l2.Nfeeds)
         
-        with h5py.File(self.cal_database_file, "r") as f:
-            try:
-                Phot = f[f"/obsid/{obsid}/Phot"][()]
+        try:
+            with h5py.File(os.path.join(self.cal_database_dir, obsid + ".h5"), "r") as f:
+                Phot = f[f"Phot"][()]
                 for isb in l2.flipped_sidebands:
                     Phot[:,isb,:] = Phot[:,isb,::-1]
-                Thot = f[f"/obsid/{obsid}/Thot"][()]
-                calib_times = f[f"/obsid/{obsid}/calib_times"][()]
-                successful = f[f"/obsid/{obsid}/successful"][()]
-            except:
-                Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan
-                Thot = np.zeros((l2.Nfeeds, 2)) + np.nan
-                calib_times = np.zeros((l2.Nfeeds, 2)) + np.nan
-                successful = np.zeros((l2.Nfeeds, 2))
-                l2.freqmask[:] = False
+                Thot = f[f"Thot"][()]
+                calib_times = f[f"calib_times"][()]
+                successful = f[f"successful"][()]
+        except Exception as e:
+            Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan
+            Thot = np.zeros((l2.Nfeeds, 2)) + np.nan
+            calib_times = np.zeros((l2.Nfeeds, 2)) + np.nan
+            successful = np.zeros((l2.Nfeeds, 2))
+            l2.freqmask[:] = False
+            l2.freqmask_reason[:] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Can't read or find Tsys calib file.")
 
         n_cal = np.zeros(l2.Nfeeds, dtype=int)
+        any_calib_failed = False
         for ifeed in range(l2.Nfeeds):
             feed = l2.feeds[ifeed]
             if successful[feed-1,0] and successful[feed-1,1]:  # Both calibrations successful.
@@ -1768,9 +1777,13 @@ class Tsys_calc(Filter):
             else:
                 Phot_interp = np.zeros_like(Phot[feed-1,:,:,0]) + np.nan
                 Thot_interp = np.zeros_like(Thot[feed-1,0]) + np.nan
-
+                l2.freqmask[ifeed] = False
+                l2.freqmask_reason[ifeed] += 2**l2.freqmask_counter
             l2.Gain[ifeed,:,:] = (Phot_interp - Pcold[ifeed])/(Thot_interp - Tcmb)
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
+        if any_calib_failed:  # We need to add this logic at the end, as it would be wrong if we repeated this this for every feed in the loop above.
+            l2.freqmask_counter += 1
+            l2.freqmask_reason_string.append("Both calibs marked as unsuccessful.")
 
         l2.tofile_dict["Tsys"] = l2.Tsys
         l2.tofile_dict["Gain"] = l2.Gain

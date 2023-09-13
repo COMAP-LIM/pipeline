@@ -3,6 +3,8 @@ import matplotlib as mpl
 mpl.use('Agg')  # Use a non-interactive backend suitable for scripts without display
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+from mpi4py import MPI
+
 
 import sys
 import numpy.fft as fft
@@ -40,29 +42,35 @@ from l2gen_argparser import parser
 
 class L2plots():
     def __init__(self):
-        self.outpath = "/mn/stornext/d16/www_cmb/ihle/comap/files/"
-        self.input()
-        self.read_paramfile()
-
-    def input(self):
-        """
-        Function parsing the command line input.
-        """
-        params = parser.parse_args()
-        self.params = params
+        self.comm = MPI.COMM_WORLD
+        self.Nranks = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()
+        self.outpath = "/mn/stornext/d16/www_cmb/comap/plots/files/"
+        self.params = None
+        if self.rank == 0:
+            self.params = parser.parse_args()
+            self.read_paramfile()
+        self.params = self.comm.bcast(self.params, root=0)
+        self.scan_data_path = self.params.accept_data_folder                          # Extracting path
+        self.id_string = self.params.accept_data_id_string                                 # Extracting path        
+        self.l2_path = self.params.level2_dir                  # Extracting path
+        self.runlist = None
+        self.obsid_dict = None
+        if self.rank == 0:
+            self.read_paramfile()
+        self.obsid_dict = self.comm.bcast(self.obsid_dict, root=0)
+        self.obsIDs = list(self.obsid_dict.keys())
+        self.nobsIDs = len(self.obsIDs) 
+        self.patch_name = self.obsid_dict[str(list(self.obsid_dict.keys())[0])][0][4]
+        
 
     def read_paramfile(self):
         """
         Function reading the parameter file provided by the command line
         argument, and defining class parameters.
         """
-    
-        params = self.params
-        self.scan_data_path = params.accept_data_folder                          # Extracting path
 
-        self.id_string = params.accept_data_id_string                                 # Extracting path
-        
-        self.l2_path = params.level2_dir                  # Extracting path
+        params = self.params
 
         self.runlist = read_runlist(params, ignore_existing=False)
         self.scanids = np.array([scan_content[0] for scan_content in self.runlist])
@@ -80,10 +88,6 @@ class L2plots():
             sorted_scans = [relevant_scans[ind] for ind in np.argsort(relevant_scanids)]  # Sort the filtered scanids
             self.obsid_dict[str(unique_id)] = list(sorted_scans)  # Add to the dictionary
 
-        self.obsIDs = list(self.obsid_dict.keys())
-        self.nobsIDs = len(self.obsIDs) 
-        
-        self.patch_name = self.obsid_dict[str(list(self.obsid_dict.keys())[0])][0][4]
  
                
         # self.runlist_path = params.runlist                  # Extracting path
@@ -121,13 +125,15 @@ class L2plots():
         # print(ps_chi2.shape)
         # print(ps_o_sb.shape)
         for i in range(self.nobsIDs):
-            self.obsid = int(self.obsIDs[i])
-            
+            if i%self.Nranks != self.rank:
+                continue
+
+            self.obsid = int(self.obsIDs[i])            
             # self.date  = self.dates[i]
             #if int(self.obsid) != 12338:
             #    continue
 
-            print(f"Processing obsID: {self.obsid}")
+            print(f"Rank {self.rank} processing obsID: {self.obsid}")
             self.scanids = [content[0] for content in self.obsid_dict[str(self.obsid)]]
 
             scan_idx = [self.allscanids.index(scanid) for scanid in self.scanids]
@@ -170,11 +176,19 @@ class L2plots():
         print(self.id_string, self.patch_name)
         filename = "scan_data_" + self.id_string + "_" + self.patch_name + ".h5"
         filename = self.scan_data_path + filename
-
-        with h5py.File(filename, "r") as infile:
-            data = np.array(infile['scan_data'][()])
-            self.allscanids = list(infile['scan_list'][()])
-            self.stats_list = list(infile['stats_list'][()].astype(str))
+        
+        data = None
+        self.allscanids = None
+        self.stats_list = None
+        if self.rank == 0:
+            with h5py.File(filename, "r") as infile:
+                data = np.array(infile['scan_data'][()])
+                self.allscanids = list(infile['scan_list'][()])
+                self.stats_list = list(infile['stats_list'][()].astype(str))
+        data = self.comm.bcast(data, root=0)
+        self.allscanids = self.comm.bcast(self.allscanids, root=0)
+        self.stats_list = self.comm.bcast(self.stats_list, root=0)
+        
         index = self.stats_list.index('ps_s_sb_chi2')
         ps_chi2 = data[:,:,:, index]
         index = self.stats_list.index('ps_s_feed_chi2')
@@ -450,6 +464,12 @@ class L2plots():
         self.ensure_dir_exists(self.outpath + 'spikes')
         
         plt.savefig(self.outpath + 'spikes/' + save_string, bbox_inches='tight')
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
 
 
     def plot_scan_correlation(self):
@@ -488,6 +508,13 @@ class L2plots():
         
         plt.savefig(self.outpath + 'corr_hr/corr_highres' + save_string, bbox_inches='tight', dpi=800)
         plt.savefig(self.outpath + 'corr_lr/corr_lowres' + save_string, bbox_inches='tight', dpi=150) 
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
+
 
     def plot_scan_acc_chi2(self):
         fig = plt.figure(figsize=(6, 6))
@@ -576,7 +603,14 @@ class L2plots():
         self.ensure_dir_exists(self.outpath + 'acc_chi2')
         
         plt.savefig(self.outpath + 'acc_chi2/' + save_string, bbox_inches='tight')
-        
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
+
+
     def plot_scan_pca_amplitudes(self):
         a2 = np.abs(self.ampl ** 2).mean((1, 2, 3))
         fig = plt.figure(figsize=(6, 12))
@@ -635,6 +669,12 @@ class L2plots():
         
         self.ensure_dir_exists(self.outpath + 'pca_ampl')        
         plt.savefig(self.outpath + "pca_ampl/" + save_string, bbox_inches='tight')
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
         
     def plot_scan_pca_components(self):
         ampl2 = self.ampl[:] / self.mask_hr[None, :]
@@ -710,6 +750,12 @@ class L2plots():
 
             self.ensure_dir_exists(self.outpath + 'pca_comp')
             plt.savefig(self.outpath + "pca_comp/" + save_string, bbox_inches='tight')
+            # Clear the current axes.
+            plt.cla() 
+            # Clear the current figure.
+            plt.clf() 
+            # Closes all the figure windows.
+            plt.close('all')
 
     def plot_feed_pca_components(self):
         ampl2 = self.ampl_feed[:] / self.mask_hr[None, :]
@@ -769,7 +815,7 @@ class L2plots():
                     ax2.set_xticklabels(())
                 
                 f = np.abs(fft.rfftfreq(len(a), dnu * 1e3))[1:]
-                print(np.max(self.pca_feed[j, i]), i, j)
+                # print(np.max(self.pca_feed[j, i]), i, j)
                 if np.sum(self.pca_feed[j, i] ** 2) == 0.0:
                     ps = (np.abs(fft.rfft(a)) ** 2 / len(a))[1:]
                 else:
@@ -794,6 +840,12 @@ class L2plots():
 
             self.ensure_dir_exists(self.outpath + 'pca_feed_comp')
             plt.savefig(self.outpath + "pca_feed_comp/" + save_string, bbox_inches='tight')
+            # Clear the current axes.
+            plt.cla() 
+            # Clear the current figure.
+            plt.clf() 
+            # Closes all the figure windows.
+            plt.close('all')
 
     def plot_scan_histogram(self):
         tsys  =self.tsys.reshape(self.n_det, self.n_sb, self.n_freq)
@@ -842,6 +894,12 @@ class L2plots():
 
         self.ensure_dir_exists(self.outpath + 'hist')
         plt.savefig(self.outpath + "hist/" + save_string, bbox_inches='tight')
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
 
     def plot_scan_acc_var(self):
         fig = plt.figure(figsize=(6, 6))
@@ -912,6 +970,12 @@ class L2plots():
 
         self.ensure_dir_exists(self.outpath + 'acc_var')
         plt.savefig(self.outpath + "acc_var/" + save_string, bbox_inches='tight')
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
 
     def plot_scan_diagnostics(self): 
         t0 = tm.time()
@@ -1078,6 +1142,12 @@ class L2plots():
         self.ensure_dir_exists(self.outpath + 'ps_chi2')
 
         plt.savefig(self.outpath + "ps_chi2/" + outname, bbox_inches = 'tight', dpi=100)
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
         
     def plot_obsid_correlation(self):
         fig = plt.figure()
@@ -1110,6 +1180,12 @@ class L2plots():
         
         plt.savefig(self.outpath + 'corr_hr/' + 'corr_highres' + save_string, bbox_inches='tight', dpi=800) 
         plt.savefig(self.outpath + 'corr_lr/' + 'corr_lowres' + save_string, bbox_inches='tight', dpi=150) 
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
         
     def plot_obsid_acc_chi2(self):
         fig = plt.figure(figsize = (6, 6))
@@ -1205,6 +1281,12 @@ class L2plots():
 
         self.ensure_dir_exists(self.outpath + 'acc_chi2')
         plt.savefig(self.outpath + 'acc_chi2/' + save_string, bbox_inches='tight')
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
     
     def plot_obsid_spikes(self):
         sortedlists = self.my_spikes.sorted()
@@ -1245,7 +1327,11 @@ class L2plots():
         self.ensure_dir_exists(self.outpath + 'spikes')
 
         plt.savefig(self.outpath + 'spikes/' + save_string, bbox_inches='tight')
-
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
         plt.close('all')
 
 
@@ -1304,6 +1390,12 @@ class L2plots():
         save_string = 'obsid_info_%07i.png' % (int(self.obsid))
 
         plt.savefig(infodir + save_string, dpi=300, bbox_inches='tight')
+        # Clear the current axes.
+        plt.cla() 
+        # Clear the current figure.
+        plt.clf() 
+        # Closes all the figure windows.
+        plt.close('all')
 
 
 

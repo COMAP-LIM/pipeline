@@ -30,6 +30,13 @@ parser.add_argument(
     help="Debug mode. If True unit tests are run. Default False.",
 )
 
+parser.add_argument(
+    "--print_progress_bar",
+    type=str2bool,
+    default=True,
+    help="Whether to print the self-updating progress bar to terminal (turn off if e.g. inserting debug-prints)."
+)
+
 ### Parameter file and runlist
 parser.add_argument(
     "-p",
@@ -149,10 +156,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--cal_database_file",
+    "--cal_database_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/level1_database.h5",
-    help="Location of calibration hdf5 database.",
+    default="/mn/stornext/d22/cmbco/comap/protodir/aux_data/level1_database_files/",
+    help="Location of level1 database files, which include the Tsys calibration data.",
 )
 
 parser.add_argument(
@@ -583,6 +590,12 @@ parser.add_argument(
     help="(comap2fpxs) The path to the binned white noise (no filtering) map, used to generate error bars in power spectra.",
 )
 
+parser.add_argument(
+    "--psx_map_name_postfix",
+    type=str,
+    default="",
+    help="If set, the PSX code will add this to the end of the map-name before reading. Currently used for easier compatibility with the names written by the clean_maps.py mPCA subtractor (remember to add '_' to the postfix name).",
+)
 
 parser.add_argument(
     "--psx_chi2_import_path",
@@ -1137,4 +1150,59 @@ parser.add_argument(
     type=int,
     default=None,
     help="(Replace_TOD_with_WN) What seed to use for white noise TOD replacement. None = no seed.",
+)
+
+
+
+###### pca_subtractor/clean_maps.py stuff ######
+parser.add_argument("--mpca_inname", type=str, help="""Path to input map.""")
+
+parser.add_argument(
+    "--mpca_outname", type=str, help="""Name of output map.""", default=None
+)
+
+parser.add_argument(
+    "--mpca_rmsnorm",
+    type=str,
+    help="""Which normalistion to use before PCA decomposition.
+    Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
+    default="sigma_wn",
+)
+
+parser.add_argument(
+    "--mpca_approx_noise",
+    help="""Whether to approximate noise weights by PCA to conserve outer product""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_maskrms",
+    type=float,
+    help="""Factor of mean of bottom 100 sigma_wn of each feed and frequency beyond which map is masked.""",
+    default=None,
+)
+
+parser.add_argument(
+    "--mpca_ncomps",
+    type=int,
+    help="""How many PCA modes to subtract from input map. Default is 5. """,
+    default=5,
+)
+
+parser.add_argument(
+    "--mpca_verbose",
+    help="""Whether to run in verbose mode or not. Default is False""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_subtract_mean",
+    help="""Whether to subtract line-of-sight mean per pixel prior to PCA. Default is False""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_save_reconstruction",
+    help="""Whether to save PCA reconstrucion in its own map file(s). Default is False""",
+    action="store_true",
 )

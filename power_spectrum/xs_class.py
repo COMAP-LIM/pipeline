@@ -101,6 +101,11 @@ class CrossSpectrum_nmaps:
         self.map_dy = split_map1.dy
         self.map_dz = split_map1.dz
 
+        self.angle2Mpc = split_map1.angle2Mpc.value
+        self.map_dx = split_map1.dx
+        self.map_dy = split_map1.dy
+        self.map_dz = split_map1.dz
+
         self.maps.append(split_map1)
         self.maps.append(split_map2)
 

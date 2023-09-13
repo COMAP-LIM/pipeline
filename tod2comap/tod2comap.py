@@ -448,10 +448,10 @@ class Mapmaker:
 
                 time_array[5] += time.perf_counter() - ti
 
-
-        # Get frequency bin centers and edges from last level2 file.
-        full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
-        full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
+        if self.rank == 0:
+            # Get frequency bin centers and edges from last level2 file.
+            full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
+            full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
 
         self.comm.Reduce(
             [time_array, MPI.DOUBLE], [time_buffer, MPI.DOUBLE], op=MPI.SUM, root=0
