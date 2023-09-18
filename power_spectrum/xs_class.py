@@ -95,6 +95,11 @@ class CrossSpectrum_nmaps:
             self.feed2 - 1, # feed index to use for loading map is base-0
             self.split_keys[1],
             )
+        
+        self.angle2Mpc = split_map1.angle2Mpc.value
+        self.map_dx = split_map1.dx
+        self.map_dy = split_map1.dy
+        self.map_dz = split_map1.dz
 
         self.angle2Mpc = split_map1.angle2Mpc.value
         self.map_dx = split_map1.dx
@@ -206,7 +211,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
 
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
             
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -290,7 +295,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
 
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
             
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -371,7 +376,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
             
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
 
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0

@@ -123,7 +123,8 @@ class COmap:
         else:
             standard_geometry_path = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),
-                f"standard_geometries/{fieldname}_standard_geometry.fits",
+                # f"standard_geometries/{fieldname}_standard_geometry.fits",
+                f"standard_geometries/{fieldname}_standard_geometry_rectangular.fits",
             )
 
         self.standard_geometry = enmap.read_map(standard_geometry_path).copy()
@@ -179,12 +180,12 @@ class COmap:
                 hit_key = re.sub(r"numerator_map", "nhit", numerator_key)
 
                 self._data[hit_key] = np.zeros(
-                    (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.int32
+                    (NFEED, NSIDE_DEC, NSIDE_RA, NSB * decimation_freqs), dtype=np.int32
                 )
 
             # Empty denomitator map containing sum TOD / sigma^2
             self._data[numerator_key] = np.zeros(
-                (NFEED, NSIDE_RA, NSIDE_DEC, NSB * decimation_freqs), dtype=np.float32
+                (NFEED, NSIDE_DEC, NSIDE_RA, NSB * decimation_freqs), dtype=np.float32
             )
 
             # Empty denomitator map containing sum 1 / sigma^2

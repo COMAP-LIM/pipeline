@@ -329,7 +329,7 @@ class Mapmaker:
 
         if os.path.exists(full_map_name):
             if self.rank == 0:
-                print("Map already exists. Please delete or rename existing map to make new one.")
+                print(f"Map {full_map_name} already exists. Please delete or rename existing map to make new one.")
             sys.exit() 
 
         # Define and initialize empty map object to acumulate data
@@ -763,8 +763,8 @@ class Mapmaker:
 
                 nhit = nhit.reshape(
                     20,
-                    mapdata["n_ra"],
                     mapdata["n_dec"],
+                    mapdata["n_ra"],
                     mapdata["n_sidebands"],
                     mapdata["n_channels"],
                 )
@@ -773,8 +773,8 @@ class Mapmaker:
 
                 if hit_key == "nhit":
                     nhit_coadd = nhit_coadd.reshape(
-                        mapdata["n_ra"],
                         mapdata["n_dec"],
+                        mapdata["n_ra"],
                         mapdata["n_sidebands"],
                         mapdata["n_channels"],
                     )
@@ -783,15 +783,15 @@ class Mapmaker:
             if map_key == "map":
                 # Saving coadded and reshaped data to map object
                 map_coadd = map_coadd.reshape(
-                    mapdata["n_ra"],
                     mapdata["n_dec"],
+                    mapdata["n_ra"],
                     mapdata["n_sidebands"],
                     mapdata["n_channels"],
                 )
 
                 sigma_coadd = sigma_coadd.reshape(
-                    mapdata["n_ra"],
                     mapdata["n_dec"],
+                    mapdata["n_ra"],
                     mapdata["n_sidebands"],
                     mapdata["n_channels"],
                 )
@@ -807,16 +807,16 @@ class Mapmaker:
             # Saving and reshaping map data to map object
             map = map.reshape(
                 20,
-                mapdata["n_ra"],
                 mapdata["n_dec"],
+                mapdata["n_ra"],
                 mapdata["n_sidebands"],
                 mapdata["n_channels"],
             )
 
             sigma = sigma.reshape(
                 20,
-                mapdata["n_ra"],
                 mapdata["n_dec"],
+                mapdata["n_ra"],
                 mapdata["n_sidebands"],
                 mapdata["n_channels"],
             )
