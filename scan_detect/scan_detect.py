@@ -10,6 +10,7 @@ import pwd
 import grp
 import sys
 import math
+from tqdm import tqdm
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
@@ -184,8 +185,7 @@ def find_file_dict(foldername, params, verb, mem={}, bad=[]):
     # os.chdir(foldername)
     # for file in glob.glob(foldername + "/**/*.hd5", recursive=True):
     # for file in glob.glob(foldername + "/**/comp_*.hd5", recursive=True):
-    from tqdm import tqdm
-    for file in tqdm(glob.glob(foldername + "/20[0-9][0-9]-[0-9][0-9]/comap-*.hd5", recursive=True)):
+    for file in tqdm(glob.glob(foldername + "/20[0-9][0-9]-[0-9][0-9]/comap-*.hd5", recursive=True), file=sys.stdout):
         if file in bad:
             pass
         else:
