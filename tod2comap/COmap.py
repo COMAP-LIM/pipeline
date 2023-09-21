@@ -123,8 +123,8 @@ class COmap:
         else:
             standard_geometry_path = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),
-                # f"standard_geometries/{fieldname}_standard_geometry.fits",
-                f"standard_geometries/{fieldname}_standard_geometry_rectangular.fits",
+                f"standard_geometries/{fieldname}_standard_geometry.fits",
+                # f"standard_geometries/{fieldname}_standard_geometry_rectangular.fits",
             )
 
         self.standard_geometry = enmap.read_map(standard_geometry_path).copy()
