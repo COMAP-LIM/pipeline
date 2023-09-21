@@ -69,14 +69,9 @@ class Cube2TOD:
                 "To run signal injection from a signal cube make sure to specify the path to the signal cube HDF5 file."
             )
 
-
         # Setting up simulation cube object
         simdata = SimCube(self.simpath)
 
-        # Testing if frequency array in new simulation format has same bin centers as level2 data
-        if ".npz" in self.simpath:
-            np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
-        
         simdata.read_cube_geometry()
 
         # Defining simulation cube geometry using standard geometies and boost signal
@@ -110,7 +105,6 @@ class Cube2TOD:
         if min_ra_idx < 0 or min_ra_idx > N_dec: 
             min_ra_idx = 0
 
-
         # Slice equatorial box geometry. Pixel centers will automatically also be updated
         # if they are produced by simdata.equator_geometry.posmap or the like. 
         simdata.equator_geometry = simdata.equator_geometry[min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx]
@@ -122,6 +116,10 @@ class Cube2TOD:
             (min_ra_idx, max_ra_idx)
         )
 
+        # Testing if frequency array in new simulation format has same bin centers as level2 data
+        if ".npz" in self.simpath:
+            np.testing.assert_allclose(l2file.freq_bin_centers, simdata["frequencies"], atol = 0)
+        
         # Get new pixel centers of sliced equatorial geometry 
         ra_grid, dec_grid = simdata.get_bin_centers()
 

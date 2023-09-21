@@ -179,7 +179,7 @@ class SimCube:
                 self._data["y_edges"][-1] = self._data["y_centers"][-1] + dy / 2
                 
                 self._data["frequencies"] = infile["map_frequencies"][::-1] 
-                nfreq, ndec, nra = self._data["simulation"].shape
+                nfreq, = self._data["frequencies"].shape
                 self._data["frequencies"] = self._data["frequencies"].reshape(4, nfreq // 4) 
         else:
             raise NameError("Provided path to simulation cube is not of a valid format. Please use HDF5 or npz format.")
