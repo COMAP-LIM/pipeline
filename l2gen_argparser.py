@@ -296,7 +296,7 @@ parser.add_argument(
 parser.add_argument(
     "--min_pca_comp",
     type=int,
-    default=0,
+    default=2,
     help="(pca) Minimum number of feed-global PCA components which will always be subtracted.",
 )
 
@@ -312,6 +312,13 @@ parser.add_argument(
     type=float,
     default=1.0,
     help="(pca) Singular value threshold for which to stop subtracting PCA components, relative to expected white noise value.",
+)
+
+parser.add_argument(
+    "--pcaf_lambda_threshold",
+    type=float,
+    default=1.035,
+    help="(pca) Singular value threshold for which to stop subtracting per-feed PCA components, relative to expected white noise value.",
 )
 
 parser.add_argument(

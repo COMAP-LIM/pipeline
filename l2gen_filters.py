@@ -991,7 +991,8 @@ class PCA_filter(Filter):
             M = M[l2.freqmask.flatten(), :]
             M[~np.isfinite(M)] = 0
             M = M[np.sum(M != 0, axis=-1) != 0]
-            if M.shape[0] > 20:
+            N_effective = M.shape[0]
+            if N_effective > 20:
                 pca = PCA(n_components=self.max_pca_comp, random_state=49)
                 comps = pca.fit_transform(M.T)
                 singular_values = pca.singular_values_
@@ -1002,99 +1003,103 @@ class PCA_filter(Filter):
             for i in range(self.max_pca_comp):
                 comps[:,i] /= np.linalg.norm(comps[:,i])
 
-            N_actual = np.sum(M.shape[0])
-            sigma0 = 1.0/np.sqrt(1.0/50*(2e9/1024))
-            lambda_threshold = self.params.pca_lambda_threshold*(np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
-            self.n_pca_comp = np.sum(singular_values**2 > lambda_threshold)
+            N_effective = np.sum(M.shape[0])
+            sigma0 = np.nanmean(np.std(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2))
+            # Don't ask:
+            empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00476 - 3.957e-03*np.log10(P)*np.log10(N_effective) + 8.757e-05*(np.log10(P)*np.log10(N_effective))**2
+            lambda_threshold = self.params.pca_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
+            self.n_pca_comp = np.sum(singular_values > lambda_threshold)
+            if self.params.debug:
+                print(f"PCA scan {l2.scanid} num of modes: {self.n_pca_comp}")
             self.n_pca_comp = min(self.n_pca_comp, self.params.min_pca_comp)
-            comps = comps[:,:self.n_pca_comp]
+            comps = comps
             del(M)
 
             for ifeed in range(l2.Nfeeds):
-                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
-                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
+                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:self.n_pca_comp], axis=-1)
                 pca_ampl[:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
-            l2.tofile_dict["pca_ampl"] = pca_ampl[:self.n_pca_comp]#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
+            l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
             l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
             l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
-            l2.tofile_dict["pca_eigvals"] = singular_values[:self.n_pca_comp]**2
-        else:
-            pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
-            pca_comp = np.zeros((self.max_pca_comp, l2.Ntod))
-            pca_eigval = np.zeros((self.max_pca_comp))
-            n = l2.Nfeeds*l2.Nsb*l2.Nfreqs
-            p = l2.Ntod
-            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
-            PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
-            float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
-            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
-            float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
-            float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
-            bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_double]
-            PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
-            max_iter = self.params.pca_max_iter
-            err_tol = self.params.pca_error_tol
-            l2.tofile_dict["PCA_err"] = np.zeros((self.max_pca_comp, max_iter))
-            t0 = time.time()
-            # sigma0 = np.nanstd(l2.tod[:,:,:,1:] - l2.tod[:,:,:,:-1], axis=-1)/np.sqrt(2)
-            # sigma0 = np.nanmean(sigma0, where=l2.freqmask)
-            sigma0 = 1.0/np.sqrt(1.0/50*(2e9/1024))
+            l2.tofile_dict["pca_eigvals"] = singular_values**2
+            l2.tofile_dict["pca_lambda_threshold"] = lambda_threshold
+            # pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            # pca_comp = np.zeros((self.max_pca_comp, l2.Ntod))
+            # pca_eigval = np.zeros((self.max_pca_comp))
+            # n = l2.Nfeeds*l2.Nsb*l2.Nfreqs
+            # p = l2.Ntod
+            # C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
+            # PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            # float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+            # float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            # float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
+            # float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
+            # bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
+            # PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_double]
+            # PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
+            # max_iter = self.params.pca_max_iter
+            # err_tol = self.params.pca_error_tol
+            # l2.tofile_dict["PCA_err"] = np.zeros((self.max_pca_comp, max_iter))
+            # t0 = time.time()
+            # # sigma0 = np.nanstd(l2.tod[:,:,:,1:] - l2.tod[:,:,:,:-1], axis=-1)/np.sqrt(2)
+            # # sigma0 = np.nanmean(sigma0, where=l2.freqmask)
+            # sigma0 = 1.0/np.sqrt(1.0/50*(2e9/1024))
 
-            n_actual = np.sum(l2.freqmask.flatten())
-            lambda_treshold = 1.1*(np.sqrt(n_actual) + np.sqrt(p))**2*sigma0**2
-            # print(time.time()-t0)
-            # print("PCA lambda_treshold:", lambda_treshold)
-            self.n_pca_comp = 0
-            for i in range(self.max_pca_comp):
-                t0 = time.time()
-                M = l2.tod.reshape((n, p))
-                mask = l2.freqmask.reshape(n)
-                # M = M[l2.freqmask.reshape(n), :]
-                # M[~np.isfinite(M)] = 0
-                # M = M[np.sum(M != 0, axis=-1) != 0]
-                if M.shape[0] > 10:
-                    n_actual = M.shape[0]
-                    r = np.ones(p)
-                    r /= np.linalg.norm(r)
-                    err = np.zeros(max_iter)
-                    eigvals = np.zeros(max_iter)
-                    # print("1:", time.time() - t0)
-                    # print(M.shape)
-                    # print(n, n_actual, p)
-                    # print(np.sum(~np.isfinite(M)))
-                    # print(M.shape, mask.shape, r.shape, eigvals.shape, err.shape, n_actual, p, max_iter, err_tol)
-                    # print(M)
-                    # print(np.sum(mask != 0))
-                    t0 = time.time()
-                    PCAlib.PCA(M, mask, r, eigvals, err, n_actual, p, max_iter, err_tol)
-                    pca_eigval[i] = eigvals[-1]
-                    # print("PCA", i, eigvals[-1])
-                    # print("2:", time.time() - t0)
-                    t0 = time.time()
-                    pca_comp[i] = r
-                    # for ifeed in range(l2.Nfeeds):
-                    #     ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
-                    #     l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
-                    #     pca_ampl[i,ifeed] = ak
-                    # print("3:", time.time() - t0)
-                    ak = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
-                    PCAlib.subtract_eigcomp(l2.tod, r, ak, l2.Nfeeds*l2.Nsb*l2.Nfreqs, l2.Ntod)
-                    pca_ampl[i] = ak
-                    l2.tofile_dict["PCA_err"][i] = err
-                    self.n_pca_comp = i+1
+            # n_actual = np.sum(l2.freqmask.flatten())
+            # lambda_threshold = 1.0*(np.sqrt(n_actual) + np.sqrt(p))**2*sigma0**2
+            # # print(time.time()-t0)
+            # # print("PCA lambda_threshold:", lambda_threshold)
+            # self.n_pca_comp = 0
+            # for i in range(self.max_pca_comp):
+            #     t0 = time.time()
+            #     M = l2.tod.reshape((n, p))
+            #     mask = l2.freqmask.reshape(n)
+            #     # M = M[l2.freqmask.reshape(n), :]
+            #     # M[~np.isfinite(M)] = 0
+            #     # M = M[np.sum(M != 0, axis=-1) != 0]
+            #     if M.shape[0] > 10:
+            #         n_actual = M.shape[0]
+            #         r = np.ones(p)
+            #         r /= np.linalg.norm(r)
+            #         err = np.zeros(max_iter)
+            #         eigvals = np.zeros(max_iter)
+            #         # print("1:", time.time() - t0)
+            #         # print(M.shape)
+            #         # print(n, n_actual, p)
+            #         # print(np.sum(~np.isfinite(M)))
+            #         # print(M.shape, mask.shape, r.shape, eigvals.shape, err.shape, n_actual, p, max_iter, err_tol)
+            #         # print(M)
+            #         # print(np.sum(mask != 0))
+            #         t0 = time.time()
+            #         PCAlib.PCA(M, mask, r, eigvals, err, n_actual, p, max_iter, err_tol)
+            #         pca_eigval[i] = eigvals[-1]
+            #         # print("PCA", i, eigvals[-1])
+            #         # print("2:", time.time() - t0)
+            #         t0 = time.time()
+            #         pca_comp[i] = r
+            #         # for ifeed in range(l2.Nfeeds):
+            #         #     ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
+            #         #     l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+            #         #     pca_ampl[i,ifeed] = ak
+            #         # print("3:", time.time() - t0)
+            #         ak = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            #         PCAlib.subtract_eigcomp(l2.tod, r, ak, l2.Nfeeds*l2.Nsb*l2.Nfreqs, l2.Ntod)
+            #         pca_ampl[i] = ak
+            #         l2.tofile_dict["PCA_err"][i] = err
+            #         self.n_pca_comp = i+1
 
-                    if eigvals[-1] < lambda_treshold:
-                        pca_ampl = pca_ampl[:i+1]
-                        pca_comp = pca_comp[:i+1]
-                        pca_eigval = pca_eigval[:i+1]
-                        break
+            #         if eigvals[-1] < lambda_threshold:
+            #             pca_ampl = pca_ampl[:i+1]
+            #             pca_comp = pca_comp[:i+1]
+            #             pca_eigval = pca_eigval[:i+1]
+            #             break
 
-            l2.tofile_dict["pca_ampl"] = pca_ampl
-            l2.tofile_dict["pca_comp"] = pca_comp
-            l2.tofile_dict["pca_eigval"] = pca_eigval
-            l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
-            # print("num PCA comp: ", self.n_pca_comp)
+            # l2.tofile_dict["pca_ampl"] = pca_ampl
+            # l2.tofile_dict["pca_comp"] = pca_comp
+            # l2.tofile_dict["pca_eigval"] = pca_eigval
+            # l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
+            # # print("num PCA comp: ", self.n_pca_comp)
 
 class PCA_feed_filter(Filter):
     name = "pcaf"
@@ -1166,6 +1171,7 @@ class PCA_feed_filter(Filter):
         l2.tofile_dict["pca_feed_comp"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Ntod))
         l2.tofile_dict["n_pca_feed_comp"] = np.zeros((l2.Nfeeds), dtype=int)
         l2.tofile_dict["pca_feed_eigvals"] = np.zeros((l2.Nfeeds, self.max_pca_comp))
+        l2.tofile_dict["pca_feed_lambda_threshold"] = np.zeros((l2.Nfeeds))
         
         N = l2.Nsb*self.N_deci_freqs
         P = l2.Ntod
@@ -1196,102 +1202,107 @@ class PCA_feed_filter(Filter):
                 singular_values = pca.singular_values_
                 for i in range(self.max_pca_comp):
                     comps[:,i] /= np.linalg.norm(comps[:,i])
-                N_actual = M.shape[0]
-                sigma0 = np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2)
-                sigma0 = np.nanmean(sigma0)
-                lambda_threshold = self.params.pca_lambda_threshold*(np.sqrt(N_actual) + np.sqrt(P))**2*sigma0**2
-                self.n_pca_comp = np.sum(singular_values**2 > lambda_threshold)
+                N_effective = M.shape[0]
+                sigma0 = np.nanmean(np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2))
+                empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00476 - 3.957e-03*np.log10(P)*np.log10(N_effective) + 8.757e-05*(np.log10(P)*np.log10(N_effective))**2
+                lambda_threshold = self.params.pcaf_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
+                l2.tofile_dict["pca_feed_lambda_threshold"][ifeed] = lambda_threshold
+                self.n_pca_comp = np.sum(singular_values > lambda_threshold)
+                if self.params.debug:
+                    print(f"fPCA scan {l2.scanid} num of modes feed {l2.feeds[ifeed]:02d}: {self.n_pca_comp}")
                 self.n_pca_comp = min(self.n_pca_comp, self.params.min_feed_pca_comp)
-                comps = comps[:,:self.n_pca_comp]
+                comps = comps
                 del(M, pca)
                 
-                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps, axis=2)
-                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:], axis=-1)
+                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
+                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:self.n_pca_comp], axis=-1)
                 l2.tofile_dict["pca_feed_ampl"][:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
-                l2.tofile_dict["pca_feed_comp"][:self.n_pca_comp,ifeed] = np.transpose(comps, (1,0))
-                l2.tofile_dict["n_pca_feed_comp"][ifeed] = self.n_pca_comp
-                l2.tofile_dict["pca_feed_eigvals"][ifeed, :self.n_pca_comp] = singular_values[:self.n_pca_comp]**2
+                l2.tofile_dict["pca_feed_comp"][:,ifeed] = np.transpose(comps, (1,0))
+                l2.tofile_dict["n_pca_comp"][ifeed] = self.n_pca_comp
+                l2.tofile_dict["pca_feed_eigvals"][ifeed, :] = singular_values[:]**2
         else:
-            t0 = time.time()
-            n = l2.Nsb*l2.Nfreqs
-            p = l2.Ntod
-            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
-            PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
-            float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
-            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
-            float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
-            float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
-            bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
-            PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_double]
-            PCAlib.subtract_eigcomp.argtypes = [float32_array3, float64_array1, float64_array2, ctypes.c_long, ctypes.c_long]
-            max_iter = self.params.pca_max_iter
-            err_tol = self.params.pca_error_tol
-            l2.tofile_dict["PCAf_err"] = np.zeros((self.max_pca_comp, l2.Nfeeds, max_iter))
-            pca_eigval = np.zeros((self.max_pca_comp, l2.Nfeeds))
+            raise ValueError("Depricated.")
 
-            # weight = 1.0/l2.Tsys**2
-            weight = 1.0/l2.Tsys
-            weight[~l2.freqmask] = 0.0
-            # print("1:", time.time() - t0); t0=time.time()
-            self.n_pca_comp = np.zeros(l2.Nfeeds, dtype=int)
-            for ifeed in range(l2.Nfeeds):
-                for icomp in range(self.max_pca_comp):
-                    M = np.zeros((N, p), dtype=np.float32)
-                    mask = np.zeros((N), dtype=bool)
-                    for isb in range(l2.Nsb):
-                        for ifreq in range(self.N_deci_freqs):
-                            i = isb*self.N_deci_freqs + ifreq
-                            M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
-                            w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
-                            M[i,:] /= w
-                            M[i,:] /= (self.deci_factor/np.sqrt(w))
-                            mask[i] = l2.freqmask[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor].any()
+            # t0 = time.time()
+            # n = l2.Nsb*l2.Nfreqs
+            # p = l2.Ntod
+            # C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
+            # PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            # float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
+            # float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            # float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
+            # float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
+            # bool_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_bool, ndim=1, flags="contiguous")
+            # PCAlib.PCA.argtypes = [float32_array2, bool_array1, float64_array1, float64_array1, float64_array1, ctypes.c_long, ctypes.c_long, ctypes.c_long, ctypes.c_double]
+            # PCAlib.subtract_eigcomp.argtypes = [float32_array3, float64_array1, float64_array2, ctypes.c_long, ctypes.c_long]
+            # max_iter = self.params.pca_max_iter
+            # err_tol = self.params.pca_error_tol
+            # l2.tofile_dict["PCAf_err"] = np.zeros((self.max_pca_comp, l2.Nfeeds, max_iter))
+            # pca_eigval = np.zeros((self.max_pca_comp, l2.Nfeeds))
 
-                    if (mask == 0).all():
-                        self.n_pca_comp[ifeed] = 0
-                        break
-                    M[~np.isfinite(M)] = 0
-                    M = M[(M != 0).any(axis=1)]
+            # # weight = 1.0/l2.Tsys**2
+            # weight = 1.0/l2.Tsys
+            # weight[~l2.freqmask] = 0.0
+            # # print("1:", time.time() - t0); t0=time.time()
+            # self.n_pca_comp = np.zeros(l2.Nfeeds, dtype=int)
+            # for ifeed in range(l2.Nfeeds):
+            #     for icomp in range(self.max_pca_comp):
+            #         M = np.zeros((N, p), dtype=np.float32)
+            #         mask = np.zeros((N), dtype=bool)
+            #         for isb in range(l2.Nsb):
+            #             for ifreq in range(self.N_deci_freqs):
+            #                 i = isb*self.N_deci_freqs + ifreq
+            #                 M[i,:] = np.nansum(l2.tod[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,:]*weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor,None], axis=0)
+            #                 w = np.nansum(weight[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor]**2, axis=0)
+            #                 M[i,:] /= w
+            #                 M[i,:] /= (self.deci_factor/np.sqrt(w))
+            #                 mask[i] = l2.freqmask[ifeed,isb,ifreq*self.deci_factor:(ifreq+1)*self.deci_factor].any()
 
-                    # M = M[np.sum(M != 0, axis=-1) != 0]
-                    n_actual = M.shape[0]
+            #         if (mask == 0).all():
+            #             self.n_pca_comp[ifeed] = 0
+            #             break
+            #         M[~np.isfinite(M)] = 0
+            #         M = M[(M != 0).any(axis=1)]
 
-                    sigma0 = np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2)
-                    sigma0 = np.nanmean(sigma0)
-                    lambda_treshold = 1.0*(np.sqrt(n_actual) + np.sqrt(p))**2*sigma0**2
-                    if lambda_treshold == 0:
-                        self.n_pca_comp[ifeed] = 0
-                        break
+            #         # M = M[np.sum(M != 0, axis=-1) != 0]
+            #         n_actual = M.shape[0]
 
-                    # mask = np.ones(n_actual, dtype=bool)
-                    r = np.ones(p)
-                    r /= np.linalg.norm(r)
-                    err = np.zeros(max_iter)
-                    eigvals = np.zeros(max_iter)
-                    # print("2:", time.time() - t0); t0=time.time()
-                    PCAlib.PCA(M, mask, r, eigvals, err, n_actual, p, max_iter, err_tol)
-                    pca_eigval[icomp,ifeed] = eigvals[-1]
-                    # print("PCAf:", ifeed, icomp, eigvals[-1])
-                    # print("3:", time.time() - t0); t0=time.time()
+            #         sigma0 = np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2)
+            #         sigma0 = np.nanmean(sigma0)
+            #         lambda_threshold = 1.0*(np.sqrt(n_actual) + np.sqrt(p))**2*sigma0**2
+            #         if lambda_threshold == 0:
+            #             self.n_pca_comp[ifeed] = 0
+            #             break
 
-                    # ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
-                    # l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
-                    ak = np.zeros((l2.Nsb, l2.Nfreqs))
-                    PCAlib.subtract_eigcomp(l2.tod[ifeed], r, ak, l2.Nsb*l2.Nfreqs, l2.Ntod)
+            #         # mask = np.ones(n_actual, dtype=bool)
+            #         r = np.ones(p)
+            #         r /= np.linalg.norm(r)
+            #         err = np.zeros(max_iter)
+            #         eigvals = np.zeros(max_iter)
+            #         # print("2:", time.time() - t0); t0=time.time()
+            #         PCAlib.PCA(M, mask, r, eigvals, err, n_actual, p, max_iter, err_tol)
+            #         pca_eigval[icomp,ifeed] = eigvals[-1]
+            #         # print("PCAf:", ifeed, icomp, eigvals[-1])
+            #         # print("3:", time.time() - t0); t0=time.time()
+
+            #         # ak = np.sum(l2.tod[ifeed,:,:,:]*r, axis=-1)
+            #         # l2.tod[ifeed] = l2.tod[ifeed] - ak[:,:,None]*r[None,None,:]
+            #         ak = np.zeros((l2.Nsb, l2.Nfreqs))
+            #         PCAlib.subtract_eigcomp(l2.tod[ifeed], r, ak, l2.Nsb*l2.Nfreqs, l2.Ntod)
 
 
-                    # pca_ampl[icomp,ifeed] = ak
-                    # pca_comp[icomp,ifeed] = r
-                    l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
-                    # print("4:", time.time() - t0); t0=time.time()
+            #         # pca_ampl[icomp,ifeed] = ak
+            #         # pca_comp[icomp,ifeed] = r
+            #         l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
+            #         # print("4:", time.time() - t0); t0=time.time()
 
-                    self.n_pca_comp[ifeed] = icomp+1
-                    if eigvals[-1] < lambda_treshold:
-                        break
+            #         self.n_pca_comp[ifeed] = icomp+1
+            #         if eigvals[-1] < lambda_threshold:
+            #             break
 
-            l2.tofile_dict["pca_feed_eigval"] = pca_eigval
-            l2.tofile_dict["n_pca_feed_comp"] = self.n_pca_comp
-            # print("num PCAf comp: ", self.n_pca_comp)
+            # l2.tofile_dict["pca_feed_eigval"] = pca_eigval
+            # l2.tofile_dict["n_pca_feed_comp"] = self.n_pca_comp
+            # # print("num PCAf comp: ", self.n_pca_comp)
 
 
         if masking_run:
