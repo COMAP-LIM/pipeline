@@ -31,6 +31,33 @@ warnings.filterwarnings("ignore", message="Degrees of freedom <= 0 for slice.")
 warnings.filterwarnings("ignore", message="Mean of empty slice")
 
 
+class Printing:
+    def __init__(self, params):
+        self.verbose = params.verbose
+        self.debug = params.debug
+
+
+    def verbose_print(self, string):
+        """ Dual purpose function for normal verbose prints:
+            1. Writes the prints to the log.
+            2. If verbose parameter is True, also print to terminal.
+        """
+        logging.info(string)
+        if self.verbose:
+            print(string)
+
+
+    def debug_print(self, string):
+        """ Dual purpose function for debug prints:
+            1. Writes the prints to the log.
+            2. If debug parameter is True, also print to terminal.
+        """
+        logging.debug(string)
+        if self.debug:
+            print(string)
+
+
+
 class Terminal_print:
     def __init__(self, filter_list, Nscans, Nranks):
         self.Nscans = Nscans
@@ -165,7 +192,7 @@ class l2gen_runner:
 
         ##### Master #####
         if self.rank == 0:
-            if self.params.print_progress_bar:
+            if not self.params.verbose:
                 term = Terminal_print(self.filter_list, Nscans, self.Nranks)
                 term.rewrite_terminal()
 
@@ -188,7 +215,7 @@ class l2gen_runner:
                 status = MPI.Status()
                 info = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
                 if status.Get_tag() == DONE_TAG:
-                    if self.params.print_progress_bar:
+                    if not self.params.verbose:
                         term.scan_done_update(info)
                         term.rewrite_terminal()
                     self.tasks_done += 1
@@ -197,7 +224,7 @@ class l2gen_runner:
                     self.tasks_started += 1
                     time.sleep(0.01)
                 elif status.Get_tag() == PROGRESS_TAG:
-                    if self.params.print_progress_bar:
+                    if not self.params.verbose:
                         term.scan_progress_update(info)
                         term.rewrite_terminal()
                 else:
@@ -207,7 +234,7 @@ class l2gen_runner:
                 status = MPI.Status()
                 info = self.comm.recv(source=MPI.ANY_SOURCE, status=status)
                 if status.Get_tag() == DONE_TAG:
-                    if self.params.print_progress_bar:
+                    if not self.params.verbose:
                         term.scan_done_update(info)
                         term.rewrite_terminal()
                     self.tasks_done += 1
@@ -215,7 +242,7 @@ class l2gen_runner:
                     self.comm.send(-1, dest=workerID, tag=DIE_TAG)
                     time.sleep(0.01)
                 elif status.Get_tag() == PROGRESS_TAG:
-                    if self.params.print_progress_bar:
+                    if not self.params.verbose:
                         term.scan_progress_update(info)
                         term.rewrite_terminal()
                 else:
@@ -230,11 +257,15 @@ class l2gen_runner:
                     break
                 # print(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})...")
                 logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
+                if self.params.verbose:
+                    print(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})...")
                 l2 = l2gen(self.runlist[iscan], self.filter_list, self.params, omp_num_threads=self.omp_num_threads)
                 l2.run()
                 dt = time.time() - t0; pdt = time.process_time() - pt0
                 # print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
                 logging.info(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
+                if self.params.verbose:
+                    print(f"[{self.rank}] >>> Fishinsed scan {self.runlist[iscan][0]} ({iscan+1:}/{Nscans}) in {dt/60.0:.1f} minutes. Acceptrate: {np.mean(l2.l2file.acceptrate)*100:.1f}%")
 
                 return_dict = {}
                 return_dict["filter_runtimes"] = l2.filter_runtimes
@@ -292,6 +323,7 @@ class l2gen_runner:
 
 class l2gen:
     def __init__(self, scan_info, filter_list, params, omp_num_threads):
+        self.printer = Printing(params)
         self.comm = MPI.COMM_WORLD
         self.Nranks = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
@@ -306,49 +338,50 @@ class l2gen:
 
 
     def run(self):
-        logging.debug(f"[{self.rank}] Reading level1 data...")
+        self.printer.debug_print(f"[{self.rank}] Reading level1 data...")
         info = {}
         info["rank"] = self.rank
         info["status"] = "r"
         self.comm.send(info, dest=0, tag=8)
         t0 = time.time(); pt0 = time.process_time()
         self.l2file.load_level1_data()
+        self.l2file.printer = self.printer
         t1 = time.time(); pt1 = time.time()
         self.filter_runtimes["l1_read"] = t1 - t0
         self.filter_processtimes["l1_read"] = pt1 - pt0
-        logging.debug(f"[{self.rank}] Finished l1 file read in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
+        self.printer.debug_print(f"[{self.rank}] Finished l1 file read in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
 
         if self.params.write_inter_files:
-            logging.debug(f"[{self.rank}] Writing pre-filtered data to file...")
+            self.printer.debug_print(f"[{self.rank}] Writing pre-filtered data to file...")
             self.l2file.write_level2_data(name_extension="_0")
         for i in range(len(self.filter_list)):
             filter = self.filter_list[i](self.params, omp_num_threads=self.omp_num_threads)
-            if self.params.print_progress_bar:
+            if not self.params.verbose:
                 info = {}
                 info["rank"] = self.rank
                 info["status"] = filter.name[0]
                 self.comm.send(info, dest=0, tag=8)
-            logging.debug(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
+            self.printer.debug_print(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
             t0 = time.time(); pt0 = time.process_time()
             filter.run(self.l2file)
             t1 = time.time(); pt1 = time.process_time()
-            logging.debug(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
-            if self.params.print_progress_bar:
+            self.printer.debug_print(f"[{self.rank}] [{filter.name}] Finished {filter.name_long} in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
+            if not self.params.verbose:
                 self.filter_runtimes[self.filter_names[i]] = t1 - t0
                 self.filter_processtimes[self.filter_names[i]] = pt1 - pt0
             if self.params.write_inter_files:
-                logging.debug(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
+                self.printer.debug_print(f"[{self.rank}] [{filter.name}] Writing result of {filter.name_long} to file...")
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
 
 
-        logging.debug(f"[{self.rank}] Writing level2 file...")
+        self.printer.debug_print(f"[{self.rank}] Writing level2 file...")
         t0 = time.time()
         self.l2file.write_level2_data()
         t1 = time.time()
         self.filter_runtimes["l2_write"] = t1 - t0
         self.filter_processtimes["l2_write"] = pt1 - pt0
-        logging.debug(f"[{self.rank}] Finished l2 file write.")
+        self.printer.debug_print(f"[{self.rank}] Finished l2 file write.")
 
 
 

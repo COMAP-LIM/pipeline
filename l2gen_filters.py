@@ -964,7 +964,7 @@ class PCA_filter(Filter):
             filename = os.path.join(path, l2.l2_filename + ".h5")
             if not os.path.isfile(filename):
                 raise ValueError(f"Specified l2 file for loading PCA components does not exist: {filename}.")
-            logging.debug(f"Using imported PCA components from {filename}.")
+            l2.printer.debug_print(f"Using imported PCA components from {filename}.")
             with h5py.File(filename, "r") as f:
                 comps = f["pca_comp"][()]
                 n_pca_comp = f["n_pca_comp"][()]
@@ -1009,9 +1009,9 @@ class PCA_filter(Filter):
             empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00476 - 3.957e-03*np.log10(P)*np.log10(N_effective) + 8.757e-05*(np.log10(P)*np.log10(N_effective))**2
             lambda_threshold = self.params.pca_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
             self.n_pca_comp = np.sum(singular_values > lambda_threshold)
-            if self.params.debug:
+            if self.params.verbose:
                 print(f"PCA scan {l2.scanid} num of modes: {self.n_pca_comp}")
-            self.n_pca_comp = min(self.n_pca_comp, self.params.min_pca_comp)
+            self.n_pca_comp = max(self.n_pca_comp, self.params.min_pca_comp)
             comps = comps
             del(M)
 
@@ -1145,7 +1145,7 @@ class PCA_feed_filter(Filter):
             filename = os.path.join(path, l2.l2_filename + ".h5")
             if not os.path.isfile(filename):
                 raise ValueError(f"Specified l2 file for loading PCAf components does not exist: {filename}.")
-            logging.debug(f"Using imported PCAf components from {filename}.")
+            l2.printer.debug_print(f"Using imported PCAf components from {filename}.")
             with h5py.File(filename, "r") as f:
                 comps = f["pca_feed_comp"][()]
                 n_pca_comp = f["n_pca_feed_comp"][()]
@@ -1208,9 +1208,7 @@ class PCA_feed_filter(Filter):
                 lambda_threshold = self.params.pcaf_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
                 l2.tofile_dict["pca_feed_lambda_threshold"][ifeed] = lambda_threshold
                 self.n_pca_comp = np.sum(singular_values > lambda_threshold)
-                if self.params.debug:
-                    print(f"fPCA scan {l2.scanid} num of modes feed {l2.feeds[ifeed]:02d}: {self.n_pca_comp}")
-                self.n_pca_comp = min(self.n_pca_comp, self.params.min_feed_pca_comp)
+                self.n_pca_comp = max(self.n_pca_comp, self.params.min_feed_pca_comp)
                 comps = comps
                 del(M, pca)
                 
@@ -1218,8 +1216,10 @@ class PCA_feed_filter(Filter):
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:self.n_pca_comp], axis=-1)
                 l2.tofile_dict["pca_feed_ampl"][:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
                 l2.tofile_dict["pca_feed_comp"][:,ifeed] = np.transpose(comps, (1,0))
-                l2.tofile_dict["n_pca_comp"][ifeed] = self.n_pca_comp
+                l2.tofile_dict["n_pca_feed_comp"][ifeed] = self.n_pca_comp
                 l2.tofile_dict["pca_feed_eigvals"][ifeed, :] = singular_values[:]**2
+            if self.params.verbose:
+                print(f"fPCA scan {l2.scanid} num of modes: {l2.tofile_dict['n_pca_comp']}")
         else:
             raise ValueError("Depricated.")
 
@@ -1350,14 +1350,14 @@ class Masking(Filter):
         rank = comm.Get_rank()
         t0 = time.time(); pt0 = time.process_time()
 
-        logging.debug(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
+        l2.printer.debug_print(f"[{rank}] [{self.name}] Starting correlation calculations and masking...")
         
         if len(self.params.load_freqmask_path) > 0:  # If not empty string, load freqmasks from this directory instead of computing it.
             path = os.path.join(self.params.load_freqmask_path, l2.fieldname)
             filename = os.path.join(path, l2.l2_filename + ".h5")
             if not os.path.isfile(filename):
                 raise ValueError(f"Specified l2 file for loading freqmask does not exist: {filename}.")
-            logging.debug(f"Using imported freqmask from {filename}.")
+            l2.printer.debug_print(f"Using imported freqmask from {filename}.")
             with h5py.File(filename, "r") as f:
                 feeds = f["feeds"][()]
                 feedmask = feeds != 20
@@ -1396,14 +1396,14 @@ class Masking(Filter):
                 if masking_filter.run_when_masking:
                     if masking_filter.name == "freq":  # TODO: Needs to done differently.
                         masking_filter = Polynomial_filter
-                    logging.debug(f"[{rank}] [{self.name}] Running local {masking_filter.name_long} for masking purposes...")
+                    l2.printer.debug_print(f"[{rank}] [{self.name}] Running local {masking_filter.name_long} for masking purposes...")
                     t0 = time.time(); pt0 = time.process_time()
                     filter_local = masking_filter(self.params)
                     filter_local.run(l2_local, masking_run=True)
                     del(filter_local)
                     if self.params.write_inter_files:
                         l2_local.write_level2_data(name_extension=f"_premask_{masking_filter.name}")
-                    logging.debug(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+                    l2.printer.debug_print(f"[{rank}] [{self.name}] Finished local/masking {masking_filter.name_long} in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
 
             for key in l2_local.tofile_dict.keys():
                 if not key in premask_tofile_dict_keys:  # If something new was added to the tofile_dict of l2_local during the premask filters, we need to explicitly move it to the main l2 file not to lose them.
@@ -1725,10 +1725,9 @@ class Masking(Filter):
             for ifeed in range(l2.Nfeeds):
                 acc = np.sum(l2.acceptrate[ifeed,isb])*100
                 printstring += f"{get_color(acc)}{acc:6.1f}%\033[0m"
-        if not self.params.print_progress_bar:
-            print(printstring)
-        logging.debug(printstring)
-        logging.debug(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+        l2.printer.verbose_print(printstring)
+        l2.printer.debug_print(f"[{rank}] [{self.name}] Finished correlation calculations and masking in {time.time()-t0:.1f} s. Process time: {time.process_time()-pt0:.1f} s.")
+
 
 class Tsys_calc(Filter):
     name = "tsys"
