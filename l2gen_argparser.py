@@ -21,20 +21,17 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-v", "--verbose", type=str2bool, default=True, help="Enable verbose printing.")
+parser.add_argument("-v",
+    "--verbose",
+    type=str2bool,
+    default=False,
+    help="Enable verbose printing and turn off the terminal rewriting progress bar.")
 
 parser.add_argument(
     "--debug",
     type=str2bool,
     default=False,
-    help="Debug mode. If True unit tests are run. Default False.",
-)
-
-parser.add_argument(
-    "--print_progress_bar",
-    type=str2bool,
-    default=True,
-    help="Whether to print the self-updating progress bar to terminal (turn off if e.g. inserting debug-prints)."
+    help="Debug mode. If True unit tests are run and debug prints are enabled.",
 )
 
 ### Parameter file and runlist
@@ -296,7 +293,7 @@ parser.add_argument(
 parser.add_argument(
     "--min_pca_comp",
     type=int,
-    default=0,
+    default=2,
     help="(pca) Minimum number of feed-global PCA components which will always be subtracted.",
 )
 
@@ -310,23 +307,30 @@ parser.add_argument(
 parser.add_argument(
     "--pca_lambda_threshold",
     type=float,
-    default=1.0,
+    default=1.005,
     help="(pca) Singular value threshold for which to stop subtracting PCA components, relative to expected white noise value.",
 )
 
 parser.add_argument(
-    "--pca_max_iter",
-    type=int,
-    default=20,
-    help="(pca) Max number of power iterations used to solve for PCA.",
+    "--pcaf_lambda_threshold",
+    type=float,
+    default=1.033,
+    help="(pca) Singular value threshold for which to stop subtracting per-feed PCA components, relative to expected white noise value.",
 )
 
-parser.add_argument(
-    "--pca_error_tol",
-    type=float,
-    default=1e-12,
-    help="(pca) Error toleranse (|r - s/lamb|/n) when using power iterations to solve for PCA.",
-)
+# parser.add_argument(
+#     "--pca_max_iter",
+#     type=int,
+#     default=20,
+#     help="(pca) Max number of power iterations used to solve for PCA.",
+# )
+
+# parser.add_argument(
+#     "--pca_error_tol",
+#     type=float,
+#     default=1e-12,
+#     help="(pca) Error toleranse (|r - s/lamb|/n) when using power iterations to solve for PCA.",
+# )
 
 
 ### PCA feed filter
