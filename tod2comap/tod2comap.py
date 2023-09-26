@@ -905,7 +905,6 @@ class Mapmaker:
 
         mapdata[denominator_key][mask] = 0
 
-
         # Masking all channels that have a factor self.params.t2m_rms_mask_factor larger aritmetic average noise per channel than the totally arithmetically averaged sigma_wn.
 
         sigma = 1 / np.sqrt(inv_var)
