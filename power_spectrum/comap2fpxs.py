@@ -17,6 +17,9 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import time 
 import scipy.interpolate as interpolate
 
+from astropy import units as u
+import astropy.cosmology
+
 import tqdm
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -68,8 +71,7 @@ class COMAP2FPXS():
             # CURRENTLY THERE IS NO SUPPORT FOR MORE THAN ONE FEED CROSS-CORRELATION VARIABLE
             ####
             raise ValueError("Cannot have more than one feed cross-correlation variable")
-        
-
+    
         if self.params.psx_null_diffmap:
             if len(self.secondary_variables) > 1:
                 ######
@@ -239,9 +241,7 @@ class COMAP2FPXS():
                         mappaths, 
                         self.cosmology, 
                     )
-
-                    self.full_transfer_function_interp
-
+                    
                     # Compute cross-spectrum for current FPXS combination
                     cross_spectrum.calculate_xs_2d(
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
@@ -1589,6 +1589,10 @@ class COMAP2FPXS():
 
         with open(cosmology_path, mode="rb") as file:
             self.cosmology = pickle.load(file)
+        
+        self.angle2Mpc = self.cosmology.kpc_comoving_per_arcmin(
+            self.params.phy_center_redshift
+        ).to(u.Mpc / u.arcmin)
 
     def read_jackknife_definition_file(self):
         """Method that reads the jackknife/split definition file and outputs definition of split variables.
@@ -1845,6 +1849,108 @@ class COMAP2FPXS():
             kx = 3, # Use bi-cubic spline in x-direction
             ky = 3, # Use bi-cubic spline in x-direction
             )
+    
+    def pix_window(self, k, dx):
+        """Method for returning pixel window transfer function for target grid.
+
+        Args:
+            k (npt.NDArray): Input array of wave number k-bin centers in cosmological units
+            dx (float): Grid resolution in cosmological units
+
+        Returns:
+            npt.NDArray: Gaussian beam transfer function in perpendicular space.
+        """
+        # NOTE: 1 / np.pi to get rid of pi in np.sinc = np.sin(pi*x) / (pi*x)
+        return np.sinc(0.5 * dx * L / np.pi) ** 2 
+
+    def gaussian_beam_transfer_function(self, k, FWHM):
+        """Method for returning beam transfer function for Gaussian beam.
+
+        Args:
+            k (npt.NDArray): Input array of wave number k-bin centers in cosmological units
+            FWHM (npt.NDArray): Full-width at half-maximum of the Gaussian beam in cosmological units
+
+        Returns:
+            npt.NDArray: Gaussian beam transfer function in perpendicular space.
+        """
+        return np.exp(-(FWHM * k) ** 2 / (8 * np.log(2)))
+
+    def beam_transfer_function(self):
+        """Method for returning beam transfer function for realistic beam model.
+
+        Args:
+            k (npt.NDArray): Input array of wave number k-bin centers in cosmological units
+        Returns:
+            npt.NDArray: COMAP beam transfer function in perpendicular space.
+        """
+        transfer_function_dir = os.path.join(current, "transfer_functions")
+
+        # Loading real space beam model from txt file
+        beam_r = np.loadtxt(
+            os.path.join(transfer_function_dir, "beam_r.txt")
+        )   # degrees
+        beam = np.loadtxt(
+            os.path.join(transfer_function_dir, "beam.txt")
+        ) # beam as function of radius in degrees
+
+        # Interpolating beam model as function of radius in degrees
+        beam_interp = interpolate.CubicSpline(beam_r, beam)
+
+        # Defining 2D grid to use to compute beam transfer function
+        dx = 1e-3 * u.deg
+        dx_cosmo = (dx * self.angle2Mpc).to(u.Mpc)
+        x_kernel = np.arange(-1, 1, dx.value)
+        y_kernel = np.arange(-1, 1, dx.value)
+        X, Y = np.meshgrid(x_kernel, y_kernel)
+        R = np.sqrt(X ** 2 + Y ** 2)
+
+        beam_2D = beam_interp(R)
+
+        # Nulling beam at 1 degree scale 
+        beam_2D[R > 1] *= 0 
+        
+        # Normalising beam to integrate to 1
+        beam_2D /= np.sum(beam_2D)
+        
+        # Real COMAP beam is known to have 72% of total power within 6.4 arcmin
+        normalisation = 0.72 / np.sum(beam_2D[R * 60 <= 6.4])
+        beam_2D *= normalisation
+
+        # Find beam transfer function by fourier transform
+        tf_beam_fourier = np.abs(np.fft.fftn(beam_2D)) ** 2 
+        kx = 2 * np.pi * np.fft.fftfreq(beam_2D.shape[0], dx_cosmo)
+        ky = kx.copy()
+
+        # Sorting mirrored values to correct symmetric order
+        tf_beam_fourier = tf_beam_fourier[np.argsort(ky), :]
+        tf_beam_fourier = tf_beam_fourier[:, np.argsort(kx)]
+
+        tf_beam_fourier = tf_beam_fourier[np.argsort(ky), :]
+        tf_beam_fourier = tf_beam_fourier[:, np.argsort(kx)]
+        
+        kx = kx[np.argsort(kx)]
+        ky = ky[np.argsort(ky)]
+
+        KX, KY = np.meshgrid(kx, ky)
+
+        NX, NY = KX.shape
+        
+        kx = kx[NX // 2:]
+        ky = ky[NY // 2:]
+        
+        tf_beam_fourier = tf_beam_fourier[NX // 2:, NY // 2:]
+        
+        # Returning a interpolation of beam transfer unction
+        tf_beam_interp = interpolate.RectBivariateSpline(
+            kx,
+            ky,
+            tf_beam_fourier, 
+            s = 0, # No smoothing when splining
+            kx = 3, # Use bi-cubic spline in x-direction
+            ky = 3, # Use bi-cubic spline in x-direction
+            )
+        
+        return tf_beam_interp
 
     def generate_new_monte_carlo_seed(self):
             """Method that generates global Monte Carlo seed from current time.time() used in white noise simulations.
