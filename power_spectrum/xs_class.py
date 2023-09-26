@@ -435,7 +435,6 @@ class CrossSpectrum_nmaps:
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
         self.all_noise_simulations = []
-
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
 
@@ -449,7 +448,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
             
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
 
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -463,14 +462,16 @@ class CrossSpectrum_nmaps:
             rms_xs = np.zeros(
                 (len(self.k_bin_edges_perp) - 1, len(self.k_bin_edges_par) - 1, n_sims)
             )
+
             for g in range(n_sims):
+
                 randmap = [
                     np.zeros(self.maps[i].rms.shape),
                     np.zeros(self.maps[i].rms.shape),
                 ]
                 for l in range(2):
                     if seed is not None:
-                        np.random.seed(seed * (g + 1) * (l + 1) * feeds[l])
+                        np.random.seed(seed * (g + 1) * (l + 1) + feeds[l])
                     randmap[l] = (
                         np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
                     )
@@ -482,8 +483,8 @@ class CrossSpectrum_nmaps:
                     dy=self.maps[i].dy,
                     dz=self.maps[i].dz,
                 )[0]
-            
-            rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
+
+            # rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
             
             self.reverse_normalization(
                 i, j
@@ -546,6 +547,7 @@ class CrossSpectrum_nmaps:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
                 outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
                 outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
                 outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
             else:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
