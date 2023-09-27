@@ -306,7 +306,7 @@ def compute_cross_spec_perp_vs_par(
 
 
 def compute_cross_spec_2d_and_1d(
-    x, k_bin_edges, transfer_function_interp, wn_transfer_function_interp, dx=1, dy=1, dz=1
+    x, k_bin_edges, params, is_wn, dx=1, dy=1, dz=1
 ):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
     n_x, n_y, n_z = x[0].shape
     if os.environ.get("OMP_NUM_THREADS") is None:
@@ -338,8 +338,8 @@ def compute_cross_spec_2d_and_1d(
 
     kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, kz, indexing="ij")))
 
-    transfer_function = transfer_function_interp(kperp, kpar)
-    transfer_function_wn = wn_transfer_function_interp(kperp, kpar)
+    # transfer_function = transfer_function_interp(kperp, kpar)
+    # transfer_function_wn = wn_transfer_function_interp(kperp, kpar)
         
     Ck_3D *= transfer_function
 
@@ -374,7 +374,7 @@ def compute_cross_spec_2d_and_1d(
         Ck_nmodes[np.where(nmodes_1d > 0)] / nmodes_1d[np.where(nmodes_1d > 0)]
     )
 
-    return Ck, k, nmodes, Ck1, k1, nmodes1
+    return (Ck, Ck_1d), (k, k_1d), (Ck_nmodes, Ck_nmodes_1d)
 
 def compute_cross_spec_angular2d_vs_par(
     x, k_bin_edges, dx=1, dy=1, dz=1
