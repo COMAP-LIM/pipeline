@@ -228,7 +228,7 @@ class COMAP2FPXS():
                         )
                 except KeyError:
                     # If some split dataset is not found skip and continue to next
-                    print(f"\033[95m WARNING: Split {split1} of {split2} not found in map file\033[00m")
+                    print(f"\033[95m WARNING: Split {split1} or {split2} not found in map file\033[00m")
                     continue                
                 
                 # If map difference null test is computed the output is saved in separate directory
@@ -406,13 +406,14 @@ class COMAP2FPXS():
                             splits, 
                             self.included_feeds[feed1], 
                             self.included_feeds[feed2],
-                        )
-                        if not os.path.exists(indir):
-                            # If some split dataset is not found skip and continue to next
-                            print(f"\033[95m WARNING: Split {split1} of {split2} not found in map file\033[00m")
+                        )                        
+                        try:
+                            cross_spectrum.read_spectrum(indir)
+                        except (FileNotFoundError, KeyError):
+                            print(f"\033[95m WARNING: Split {splits[0]} or {splits[1]} not found in map file. Skipping split in averaging.\033[00m")
                             continue            
                         
-                        cross_spectrum.read_spectrum(indir)
+                        
                         cross_spectrum.read_and_append_attribute(["white_noise_simulation"], indir)
                         #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
