@@ -192,7 +192,7 @@ class COMAP2FPXS():
                     os.path.join(self.params.map_dir, map1),
                     os.path.join(self.params.map_dir, map2),
                 ]
-
+                
                 # Generate name of outpute data directory
                 mapname1 = map1.split("/")[-1]
                 mapname2 = map2.split("/")[-1]
@@ -217,14 +217,19 @@ class COMAP2FPXS():
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
                         else:
                             print(f"\033[91m Rank {self.rank} ({i + 1} / {Number_of_combinations}): \033[00m \033[94m {mapname1.split('_')[0]} X {mapname2.split('_')[0]} \033[00m \033[00m \033[92m {split1.split('/map_')[-1]} X {split2.split('/map_')[-1]} \033[00m \033[93m Feed {feed1} X Feed {feed2} \033[00m")  
-                    
-                # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
-                cross_spectrum = xs_class.CrossSpectrum_nmaps(
-                        self.params, 
-                        splits, 
-                        feed1, 
-                        feed2
-                    )
+                
+                try:
+                    # Generate cross-spectrum instance from split keys and feeds of current FPXS combo 
+                    cross_spectrum = xs_class.CrossSpectrum_nmaps(
+                            self.params, 
+                            splits, 
+                            feed1, 
+                            feed2
+                        )
+                except KeyError:
+                    # If some split dataset is not found skip and continue to next
+                    print(f"\033[95m WARNING: Split {split1} of {split2} not found in map file\033[00m")
+                    continue                
                 
                 # If map difference null test is computed the output is saved in separate directory
                 if self.params.psx_null_diffmap:
@@ -396,14 +401,17 @@ class COMAP2FPXS():
                 
                 for feed1 in range(N_feed):
                     for feed2 in range(N_feed):
-                
                         cross_spectrum = xs_class.CrossSpectrum_nmaps(
                             self.params, 
                             splits, 
                             self.included_feeds[feed1], 
                             self.included_feeds[feed2],
                         )
-
+                        if not os.path.exists(indir):
+                            # If some split dataset is not found skip and continue to next
+                            print(f"\033[95m WARNING: Split {split1} of {split2} not found in map file\033[00m")
+                            continue            
+                        
                         cross_spectrum.read_spectrum(indir)
                         cross_spectrum.read_and_append_attribute(["white_noise_simulation"], indir)
                         #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
@@ -486,10 +494,16 @@ class COMAP2FPXS():
                                     xs_inv_var += 1 / xs_sigma ** 2
                                    
                 if self.params.psx_null_diffmap:
-                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(loaded_chi2_grid[current_cross_variable, ...]) < self.params.psx_chi2_cut_limit))
+                    _chi2 = loaded_chi2_grid[current_cross_variable, ...].copy()
+                    for ii in range(_chi2.shape[0]):
+                        _chi2[ii, ii] = np.inf
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit))
                     # print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
                 else:
-                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                    _chi2 = chi2.copy()
+                    for ii in range(_chi2.shape[0]):
+                        _chi2[ii, ii] = np.inf
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit))
 
                 if self.params.psx_use_full_wn_covariance:
                     xs_covariance[i, ...] = np.linalg.inv(xs_inv_cov)
@@ -840,9 +854,11 @@ class COMAP2FPXS():
             lim_error = np.nanmax(xs_sigma)
             lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)))
 
-        norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
+        # norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
+        norm = matplotlib.colors.Normalize(vmin=-3e4, vmax=3e4)
         lim_error = matplotlib.colors.Normalize(vmin=0, vmax=lim_error)
-        lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
+        lim_significance = matplotlib.colors.Normalize(vmin=-3, vmax=3)
+        # lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
         
         k_contour_levels = np.logspace(-2.0, np.log10(1.5), len(k_bin_centers_perp) + 1)
         k_1d = np.logspace(-2.0, np.log10(1.5), 1000)
@@ -1131,7 +1147,7 @@ class COMAP2FPXS():
             outname (str): String with output directory for plot
         """
 
-        from scipy.stats import chi2, norm
+        import scipy.stats
 
         # Define default tick label fontsize
         matplotlib.rcParams["xtick.labelsize"] = 16
@@ -1191,6 +1207,7 @@ class COMAP2FPXS():
             k_1d,
             k_1d * xs_mean,
             s = 80,
+            label = r"$\sigma$ from coaddition",
         )
 
         ax[0].errorbar(
@@ -1206,6 +1223,7 @@ class COMAP2FPXS():
             k_1d * xs_mean,
             s = 80,
             color = "r",
+            label = r"$\sigma$ from $\mathrm{diag}(N)$",
         )
 
         ax[0].errorbar(
@@ -1225,16 +1243,51 @@ class COMAP2FPXS():
             fontsize = 16,
         )
         
+        
+        
         chi2_sum = np.nansum((xs_mean / xs_sigma) ** 2)
         
-        chi2_cdf = chi2.cdf(chi2_sum, df = np.sum(np.isfinite((xs_mean))))
+        chi2_cdf = scipy.stats.chi2.cdf(chi2_sum, df = np.sum(np.isfinite((xs_mean))))
 
-        PTE = chi2.sf(chi2_sum, df = np.sum(np.isfinite((xs_mean))))
+        PTE = scipy.stats.chi2.sf(chi2_sum, df = np.sum(np.isfinite((xs_mean))))
 
-        number_accepted_cross_spectra = np.sum(np.abs(chi2_grid) < self.params.psx_chi2_cut_limit)
+        _chi2_grid = chi2_grid.copy()
+        for i in range(_chi2_grid.shape[0]):
+            _chi2_grid[i, i] = np.inf
+        
+        number_accepted_cross_spectra = np.sum(np.abs(_chi2_grid) < self.params.psx_chi2_cut_limit)
 
-        ax[0].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + f"dof: {np.sum(np.isfinite((xs_mean)))}" + " " * 5 + rf"$\chi^2$ cdf: {chi2_cdf:.3f}" + " " * 5 + rf"PTE: {PTE:.3f}", fontsize = 16)
-
+        ax[0].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {_chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + f"dof: {np.sum(np.isfinite((xs_mean)))}" + " " * 5 + rf"$\chi^2$ cdf: {chi2_cdf:.3f}" + " " * 5 + rf"PTE: {PTE:.3f}", fontsize = 16)
+        
+        
+        if not self.params.psx_null_diffmap:
+            # Upper limit from S1:
+            ax[0].axhline(5.1e3, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3)
+            ax[0].text(k_1d[-1] - 0.1 * k_1d[-1]  , 6e3, r"95% $\mathrm{UL_{S1}}$", fontsize = 14, alpha = 0.8)
+            
+            all_pt_coadded = np.sum((xs_mean) / (xs_sigma) ** 2)
+            all_pt_coadded /= np.sum(1 / xs_sigma ** 2)
+            all_pt_error = np.sqrt(1 / np.sum(1 / (xs_sigma) ** 2))
+            
+            ax[0].errorbar(
+                0.24 + 0.24 * 0.05,
+                0.24 * all_pt_coadded,
+                0.24 * all_pt_error,
+                lw = 1,
+                fmt = " ",
+                color = "g",
+            )
+            print(all_pt_coadded)
+            ax[0].scatter(
+                0.24 + 0.24 * 0.05,
+                0.24 * all_pt_coadded,
+                s = 8,
+                color = "g",
+                marker = "x",
+                label = "coadded points"
+            )
+        ax[0].legend(ncols = 3)
+        
         # Plot scatter and error bar of significance plot
         ax[1].scatter(
             k_1d,
@@ -1325,7 +1378,7 @@ class COMAP2FPXS():
             label = r"$\mathbf{d}^T\mathbf{N}^{-1}\mathbf{d}$",
             )
 
-        chi2_analytical = chi2.pdf(x, df = np.sum(np.isfinite(xs_mean / xs_sigma)))
+        chi2_analytical = scipy.stats.chi2.pdf(x, df = np.sum(np.isfinite(xs_mean / xs_sigma)))
         ax[2].plot(
             x,
             chi2_analytical,
@@ -1458,7 +1511,9 @@ class COMAP2FPXS():
             zorder = 2
         )
         
-
+        for i in range(chi2_mask.shape[0]):
+            chi2_mask[i, i] = False
+        
         # chi2_masked = np.ma.masked_where(~(np.abs(chi2) < self.params.psx_chi2_cut_limit), chi2)
 
         chi2_masked = np.ma.masked_where(~chi2_mask.astype(bool), chi2)
@@ -1861,7 +1916,7 @@ class COMAP2FPXS():
             npt.NDArray: Gaussian beam transfer function in perpendicular space.
         """
         # NOTE: 1 / np.pi to get rid of pi in np.sinc = np.sin(pi*x) / (pi*x)
-        return np.sinc(0.5 * dx * L / np.pi) ** 2 
+        return np.sinc(0.5 * dx * k / np.pi) ** 2 
 
     def gaussian_beam_transfer_function(self, k, FWHM):
         """Method for returning beam transfer function for Gaussian beam.
@@ -1931,9 +1986,7 @@ class COMAP2FPXS():
         kx = kx[np.argsort(kx)]
         ky = ky[np.argsort(ky)]
 
-        KX, KY = np.meshgrid(kx, ky)
-
-        NX, NY = KX.shape
+        NX = NY = kx.shape
         
         kx = kx[NX // 2:]
         ky = ky[NY // 2:]
