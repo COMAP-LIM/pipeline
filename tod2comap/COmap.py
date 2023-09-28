@@ -426,6 +426,18 @@ class COmap:
             outpath = self.path[:-namelen]
             outpath += outname
 
+        if self._data["is_highpassed"]:
+            ncomps = self._data["mpca_highpass_Nmodes"]
+            outname = outpath.split("/")[-1]
+            namelen = len(outname)
+            outname = re.sub(
+                r".h5", rf"_highpass_n{ncomps}.h5", outname
+            )
+            outpath = outpath[:-namelen]
+            outpath += outname
+
+
+
         if save_fits:
             wcs_coadd, wcs_full = self.get_full_wcs()
 

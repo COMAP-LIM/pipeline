@@ -1210,3 +1210,16 @@ parser.add_argument(
     help="""Whether to save PCA reconstrucion in its own map file(s). Default is False""",
     action="store_true",
 )
+
+parser.add_argument(
+    "--mpca_highpass",
+    help="""Whether to highpass maps.""",
+    action="store_true",
+)
+
+parser.add_argument(
+    "--mpca_highpass_Nmodes",
+    help="""Whether to highpass maps.""",
+    type=int,
+    default=8
+)

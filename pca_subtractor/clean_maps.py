@@ -7,6 +7,7 @@ import sys
 
 from pca_subtractor import PCA_SubTractor
 from pca_subtractor_experimental import PCA_SubTractor_Experimental
+from highpass import Highpass_filter_map
 
 
 current = os.path.dirname(os.path.realpath(__file__))
@@ -89,6 +90,14 @@ def main():
 
     # PCA mode subtracted cleaned map object
     mymap_clean = pca_sub.compute_pca(norm=rmsnorm)
+
+    # Highpass map
+    if args.mpca_highpass:
+        highpass = Highpass_filter_map(
+            map=mymap_clean,
+            verbose=is_verbose,
+            Ncomp=args.mpca_highpass_Nmodes)
+        mymap_clean = highpass.run()
 
     # Writing cleaned map data to file
     mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True)
