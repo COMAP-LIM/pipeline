@@ -80,6 +80,7 @@ class CrossSpectrum_nmaps:
         if len(self.name_of_map) < 2:
             raise ValueError("Can only compute cross-spectra when two map paths are provided.")
 
+        
         split_map1 = map_cosmo.MapCosmo(
             self.params,
             mappaths[0], 
@@ -219,6 +220,70 @@ class CrossSpectrum_nmaps:
             my_xs, my_k, my_nmodes = tools.compute_cross_spec_perp_vs_par(
                 (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
                 (self.k_bin_edges_perp, self.k_bin_edges_par),
+                dx=self.maps[i].dx,
+                dy=self.maps[i].dy,
+                dz=self.maps[i].dz,
+            )
+
+            self.reverse_normalization(
+                i, j
+            )  # go back to the previous state to normalize again with a different map-pair
+
+            self.xs.append(my_xs)
+            self.k.append(my_k)
+            self.nmodes.append(my_nmodes)
+
+            # print(np.allclose(my_xs, np.zeros_like(my_xs)))
+            # print(np.any(np.isnan(my_xs)))
+
+            # print("------------------------------------------------")
+
+        self.xs = np.array(self.xs)
+        self.k = np.array(self.k)
+        self.nmodes = np.array(self.nmodes)
+
+        # print("all close to zero", np.allclose(self.xs, np.zeros_like(self.xs)))
+        return self.xs, self.k, self.nmodes
+
+    # COMPUTE ALL THE XS IN 1D AND 2D
+    def calculate_xs_1d_and_2d(self, n_k = 15): 
+        
+        self.k_bin_edges_1d = np.logspace(-2.0, np.log10(1.5), n_k)
+        self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), n_k)
+        self.k_bin_edges_perp = np.logspace(-2.0 + np.log10(2), np.log10(1.5), n_k)
+        
+        # store each cross-spectrum and corresponding k and nmodes by appending to these lists:
+        self.xs_2d = []
+        self.xs_1d = []
+        self.k_2d = []
+        self.k_1d = []
+        self.nmodes_2d = []
+        self.nmodes_1d = []
+        index = -1
+        for i in range(0, len(self.maps) - 1, 2):
+            j = i + 1
+            index += 1
+
+            self.normalize_weights(i, j)  # normalize weights for given xs pair of maps
+
+            wi = self.maps[i].w.copy()
+            wj = self.maps[j].w.copy()
+            
+            wh_i = np.where((np.log10(wi) < -0.5))
+            wh_j = np.where((np.log10(wj) < -0.5))
+            wi[wh_i] = 0.0
+            wj[wh_j] = 0.0
+
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
+            
+            full_weight[wi * wj == 0] = 0.0
+            full_weight[np.isnan(full_weight)] = 0.0
+
+            my_xs, my_k, my_nmodes = tools.compute_cross_spec_2d_and_1d(
+                (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
+                (self.k_bin_edges_perp, self.k_bin_edges_par),
+                self.params,
+                is_wn = False,
                 dx=self.maps[i].dx,
                 dy=self.maps[i].dy,
                 dz=self.maps[i].dz,
@@ -435,7 +500,6 @@ class CrossSpectrum_nmaps:
         self.rms_xs_mean_2D = []
         self.rms_xs_std_2D = []
         self.all_noise_simulations = []
-
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
 
@@ -449,7 +513,7 @@ class CrossSpectrum_nmaps:
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
             
-            full_weight = np.sqrt(wi * wj) #/ np.sqrt(np.mean((wi * wj).flatten()))
+            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
 
             full_weight[wi * wj == 0] = 0.0
             full_weight[np.isnan(full_weight)] = 0.0
@@ -463,14 +527,16 @@ class CrossSpectrum_nmaps:
             rms_xs = np.zeros(
                 (len(self.k_bin_edges_perp) - 1, len(self.k_bin_edges_par) - 1, n_sims)
             )
+
             for g in range(n_sims):
+
                 randmap = [
                     np.zeros(self.maps[i].rms.shape),
                     np.zeros(self.maps[i].rms.shape),
                 ]
                 for l in range(2):
                     if seed is not None:
-                        np.random.seed(seed * (g + 1) * (l + 1) * feeds[l])
+                        np.random.seed(seed * (g + 1) * (l + 1) + feeds[l])
                     randmap[l] = (
                         np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
                     )
@@ -482,8 +548,8 @@ class CrossSpectrum_nmaps:
                     dy=self.maps[i].dy,
                     dz=self.maps[i].dz,
                 )[0]
-            
-            rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
+
+            # rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
             
             self.reverse_normalization(
                 i, j
@@ -546,6 +612,7 @@ class CrossSpectrum_nmaps:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
                 outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
                 outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
                 outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
             else:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])

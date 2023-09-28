@@ -305,6 +305,77 @@ def compute_cross_spec_perp_vs_par(
     return Ck, k, nmodes
 
 
+def compute_cross_spec_2d_and_1d(
+    x, k_bin_edges, params, is_wn, dx=1, dy=1, dz=1
+):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
+    n_x, n_y, n_z = x[0].shape
+    if os.environ.get("OMP_NUM_THREADS") is None:
+        workers = 1
+    else:
+        workers = int(os.environ.get("OMP_NUM_THREADS"))
+
+    fourier_coeff0 = fft.fftn(x[0], workers = workers)
+    fourier_coeff1 = fft.fftn(x[1], workers = workers)
+
+    Ck_3D = (
+        np.real(fourier_coeff0 * np.conj(fourier_coeff1))
+        * dx
+        * dy
+        * dz
+        / (n_x * n_y * n_z)
+    )
+
+    kx = 2 * np.pi * np.fft.fftfreq(n_x, dx) 
+    ky = 2 * np.pi * np.fft.fftfreq(n_y, dy) 
+    kz = 2 * np.pi * np.fft.fftfreq(n_z, dz) 
+
+    kperp = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
+    kperp = kperp[:, :, None] + np.zeros_like(Ck_3D)
+
+
+    kpar = np.abs(kz)
+    kpar = kpar[None, None, :] + np.zeros_like(Ck_3D)
+
+    kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, kz, indexing="ij")))
+
+    # transfer_function = transfer_function_interp(kperp, kpar)
+    # transfer_function_wn = wn_transfer_function_interp(kperp, kpar)
+        
+    Ck_3D *= transfer_function
+
+    ####################################
+    # Binning up the 2D power spectrum #
+    ####################################
+    Ck_nmodes = np.histogram2d(
+        kperp.flatten(), kpar.flatten(), bins=k_bin_edges, weights=Ck_3D.flatten()
+    )[0]
+    nmodes = np.histogram2d(kperp.flatten(), kpar.flatten(), bins=k_bin_edges)[0]
+    
+    k = [(k_edges[1:] + k_edges[:-1]) / 2.0 for k_edges in k_bin_edges]
+    
+    Ck = np.zeros((len(k[0]), len(k[1])))
+
+    Ck[np.where(nmodes > 0)] = (
+        Ck_nmodes[np.where(nmodes > 0)] / nmodes[np.where(nmodes > 0)]
+    )
+
+    ####################################
+    # Binning up the 1D power spectrum #
+    ####################################
+
+    Ck_nmodes_1d = np.histogram(
+        kgrid[kgrid > 0], bins=k_bin_edges, weights=Ck_3D[kgrid > 0]
+    )[0]
+    nmodes_1d = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
+
+    k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
+    Ck_1d = np.zeros_like(k_1d)
+    Ck_1d[np.where(nmodes_1d > 0)] = (
+        Ck_nmodes[np.where(nmodes_1d > 0)] / nmodes_1d[np.where(nmodes_1d > 0)]
+    )
+
+    return (Ck, Ck_1d), (k, k_1d), (Ck_nmodes, Ck_nmodes_1d)
+
 def compute_cross_spec_angular2d_vs_par(
     x, k_bin_edges, dx=1, dy=1, dz=1
 ):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction

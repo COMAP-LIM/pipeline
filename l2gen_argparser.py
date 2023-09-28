@@ -739,6 +739,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_beam_transfer_function",
+    type=str,
+    default = "realistic",
+    help="(comap2fpxs) Which beam transfer function to use. Both 'gaussian' and 'realistic' beam model is supported.",
+)
+
+parser.add_argument(
     "--psx_white_noise_transfer_function_name",
     type=str,
     default = "tf_white_noise.h5",

@@ -81,6 +81,10 @@ class MapCosmo:
                     "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                 )
                 
+                if params.psx_mode == "saddlebag":
+                    split1 = re.sub(r"map", "map_saddlebag", split1)
+                    split2 = re.sub(r"map", "map_saddlebag", split2)
+                
                 sigma_key1 = re.sub(
                     r"map",
                     "sigma_wn",
@@ -118,7 +122,6 @@ class MapCosmo:
                     mapdata.read_and_append([split1, split2])
 
                     self.map = (mapdata[split1][feed] - mapdata[split2][feed]) / 2
-
                 # self.rms = np.sqrt(0.5 * (mapdata[sigma_key1][feed] ** 2 + mapdata[sigma_key2][feed] ** 2))
                 self.rms = np.sqrt(mapdata[sigma_key1][feed] ** 2 + mapdata[sigma_key2][feed] ** 2) / 2
 
@@ -127,7 +130,7 @@ class MapCosmo:
                     raise ValueError(
                         "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                     )
-
+                
                 if params.psx_mode == "saddlebag":
                     split = re.sub(r"map", "map_saddlebag", split)
 
