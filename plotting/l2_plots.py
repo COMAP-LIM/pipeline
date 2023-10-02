@@ -160,17 +160,18 @@ class L2plots():
             
             t0 = tm.time()
             self.plot_ps_chi2_data()
-            print("PS chi2 plot:", tm.time() - t0, "s")
+            # print("PS chi2 plot:", tm.time() - t0, "s")
             
             self.get_obsid_diagnostics()  # here we also make all the scan-level plots
             
             if len(self.corrs) == 0:
-                print('No working scans in obsid')
+                # print('No working scans in obsid')
                 continue
 
             t0 = tm.time()
             self.plot_obsid_diagnostics()
-            print("obsID plot:", tm.time() - t0, "s")
+            # print("obsID plot:", tm.time() - t0, "s")
+            print(f"Rank {self.rank} finished with obsID: {self.obsid}")
 
     def open_scan_data(self):
         print(self.id_string, self.patch_name)
@@ -279,7 +280,7 @@ class L2plots():
         mask      = np.zeros((self.n_det, self.n_sb, self.n_freq))
         mask_full = np.zeros((self.n_det, self.n_sb, self.n_freq_hr))
         acc       = np.zeros((self.n_det, self.n_sb))
-        self.ampl      = np.zeros((self.n_pca_comp, self.n_det, self.n_sb, self.n_freq_hr))
+        self.ampl      = np.zeros((12, self.n_det, self.n_sb, self.n_freq_hr))
         self.n_pca_feed_comp = np.zeros((self.n_det))
         self.ampl_feed = np.zeros((12, self.n_det, self.n_sb, self.n_freq_hr))
         self.pca_feed = np.zeros((12, self.n_det, self.n_samp))
@@ -361,7 +362,7 @@ class L2plots():
         self.t0s         = []
         self.rs          = []
 
-        for i in tqdm(range(self.n_scans)):
+        for i in range(self.n_scans):
             self.l2name = f"{self.patch_name}_{self.scanids[i]:09}.h5"
             self.corr, self.var, self.n_det, self.acc, self.chi2, self.tsys, self.t0, self.reasonarr = self.get_corr()
 
@@ -478,7 +479,7 @@ class L2plots():
         
         vmax = 0.1
         
-        im = ax.imshow(self.corr, vmin=-vmax, vmax=vmax,  #vmin=-1, vmax=1,#vmin=-0.1, vmax=0.1,
+        im = ax.imshow(self.corr, vmin=-vmax, vmax=vmax, cmap="RdBu_r",
                         extent=(0.5, self.n_det + 0.5, self.n_det + 0.5, 0.5))
 
         cbar = fig.colorbar(im)
@@ -517,7 +518,7 @@ class L2plots():
 
 
     def plot_scan_acc_chi2(self):
-        fig = plt.figure(figsize=(6, 6))
+        fig = plt.figure(figsize=(9, 9))
         ax = fig.add_subplot(311)
     
 
@@ -566,7 +567,7 @@ class L2plots():
         ymin = 20
         ymax = 100
 
-        x = np.linspace(0.5, self.n_det + 0.5, len(self.tsys) + 1)
+        x = np.linspace(0.5, self.n_det + 1.0, len(self.tsys) + 1)
         plotter = np.zeros((len(self.tsys) + 1))
         plotter[:-1] = self.tsys
         tsysmean = np.nanmean(self.tsys)
@@ -978,31 +979,31 @@ class L2plots():
         plt.close('all')
 
     def plot_scan_diagnostics(self): 
-        t0 = tm.time()
-        print(self.obsid, self.scan_id)
+        # t0 = tm.time()
+        # print(self.obsid, self.scan_id)
 
         self.plot_scan_spikes()
-        print("Spike plot:", tm.time() - t0, "s")
-        t0 = tm.time()
+        # print("Spike plot:", tm.time() - t0, "s")
+        # t0 = tm.time()
 
         self.plot_scan_correlation()
-        print("Correlation plot:", tm.time() - t0, "s")
-        t0 = tm.time()
+        # print("Correlation plot:", tm.time() - t0, "s")
+        # t0 = tm.time()
         
         self.plot_scan_acc_chi2()
-        print("Acc chi2 plot:", tm.time() - t0, "s")
-        t0 = tm.time()
+        # print("Acc chi2 plot:", tm.time() - t0, "s")
+        # t0 = tm.time()
         
         self.plot_feed_pca_components()
-        print("PCA feed. plot:", tm.time() - t0, "s")
-        t0 = tm.time()
+        # print("PCA feed. plot:", tm.time() - t0, "s")
+        # t0 = tm.time()
         # self.plot_scan_pca_amplitudes()
         # print("PCA ampl. plot:", tm.time() - t0, "s")
         # t0 = tm.time()
 
         self.plot_scan_pca_components()
-        print("PCA comp. plot:", tm.time() - t0, "s")
-        t0 = tm.time()
+        # print("PCA comp. plot:", tm.time() - t0, "s")
+        # t0 = tm.time()
 
 
         # self.plot_scan_histogram()
@@ -1035,7 +1036,7 @@ class L2plots():
             widths[2 * i] = 3
             widths[2 * i + 1] = 1
 
-        print("Generating ps chi2 plot:")
+        # print("Generating ps chi2 plot:")
 
         spec5 = fig5.add_gridspec(ncols=n_cols, nrows=n_rows, width_ratios=widths,
                                 height_ratios=heights)
@@ -1043,7 +1044,7 @@ class L2plots():
         self.n_det = 20
         row = 0
         ax1 = fig5.add_subplot(spec5[row, 0])
-        im = ax1.imshow(ps_chi2[0], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 4.5, self.n_det + 0.5, 0.5))
+        im = ax1.imshow(ps_chi2[0], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 4.5, self.n_det + 0.5, 0.5), cmap="RdBu_r")
         new_tick_locations = np.array(range(self.n_det)) + 1
         ax1.set_yticks(new_tick_locations)
         x_tick_loc = [1, 2, 3, 4]
@@ -1061,7 +1062,7 @@ class L2plots():
         cbar.set_label('ps_chi2')
 
         ax2 = fig5.add_subplot(spec5[row, 1], sharey=ax1)
-        ax2.imshow(ps_s_feed[0, :], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 1.5, self.n_det + 0.5, 0.5))
+        ax2.imshow(ps_s_feed[0, :], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 1.5, self.n_det + 0.5, 0.5), cmap="RdBu_r")
         new_tick_locations = np.array(range(self.n_det))+1
         ax2.set_yticks(new_tick_locations)
         x_tick_loc = []
@@ -1072,7 +1073,7 @@ class L2plots():
         row = 1
         ax = fig5.add_subplot(spec5[row, 0: 2])
         # print(ps_s_chi2[6])
-        ax.imshow(ps_s_chi2[0], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax)
+        ax.imshow(ps_s_chi2[0], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, cmap="RdBu_r")
         plt.setp(ax.get_yticklabels(), visible=False)
         plt.setp(ax.get_xticklabels(), visible=False)
         ax.set_xticks([])
@@ -1081,7 +1082,7 @@ class L2plots():
         for scan in range(1, self.n_scans):
             row = 0
             ax3 = fig5.add_subplot(spec5[row, 2 * scan], sharey=ax1)
-            ax3.imshow(ps_chi2[scan], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 4.5, self.n_det + 0.5, 0.5))
+            ax3.imshow(ps_chi2[scan], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 4.5, self.n_det + 0.5, 0.5), cmap="RdBu_r")
             new_tick_locations = np.array(range(self.n_det))+1
             ax3.set_yticks(new_tick_locations)
             #ax3.title.set_text(str(self.scanids[scan]), rotation = 45)
@@ -1092,7 +1093,7 @@ class L2plots():
             # ax1.set_xticklabels(x_tick_labels, rotation=90)
             plt.setp(ax3.get_yticklabels(), visible=False)
             ax4 = fig5.add_subplot(spec5[row, 2 * scan+1], sharey=ax1)
-            ax4.imshow(ps_s_feed[scan], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 1.5, self.n_det + 0.5, 0.5))
+            ax4.imshow(ps_s_feed[scan], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, 1.5, self.n_det + 0.5, 0.5), cmap="RdBu_r")
             new_tick_locations = np.array(range(self.n_det))+1
             ax4.set_yticks(new_tick_locations)
             x_tick_loc = []
@@ -1100,7 +1101,7 @@ class L2plots():
             plt.setp(ax4.get_yticklabels(), visible=False)
             row = 1
             ax = fig5.add_subplot(spec5[row, 2 * scan:2 * scan + 2])
-            ax.imshow(ps_s_chi2[scan], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax)
+            ax.imshow(ps_s_chi2[scan], interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, cmap="RdBu_r")
             plt.setp(ax.get_yticklabels(), visible=False)
             plt.setp(ax.get_xticklabels(), visible=False)
             ax.set_xticks([])
@@ -1111,8 +1112,8 @@ class L2plots():
         ax6 = fig5.add_subplot(spec5[row, :])
         ax6.title.set_text('Data from full obsid:')
         # print(ps_o_sb.T)
-        im = ax6.imshow(ps_o_sb.T, interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, self.n_det + 0.5, 4.5, 0.5))
-        new_tick_locations = np.array(range(self.n_det))+1
+        im = ax6.imshow(ps_o_sb.T, interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, self.n_det + 0.5, 4.5, 0.5), cmap="RdBu_r")
+        new_tick_locations = np.array(range(self.n_det))+1 
         ax6.set_xticks(new_tick_locations)
         y_tick_loc = [1, 2, 3, 4]
         y_tick_labels = ['LA', 'UA', 'LB', 'UB']
@@ -1121,7 +1122,7 @@ class L2plots():
         # ax1.title.set_text(str(self.scanids[0]))
         row = 3 
         ax7 = fig5.add_subplot(spec5[row, :])
-        im = ax7.imshow(ps_o_feed.T, interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, self.n_det + 0.5, 1.5, 0.5))
+        im = ax7.imshow(ps_o_feed.T, interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, extent=(0.5, self.n_det + 0.5, 1.5, 0.5), cmap="RdBu_r")
         new_tick_locations = np.array(range(self.n_det))+1
         ax7.set_xticks(new_tick_locations)
         ax7.set_xticklabels([])
@@ -1130,7 +1131,7 @@ class L2plots():
         ax7.set_yticks(y_tick_loc)
         row = 4 
         ax8 = fig5.add_subplot(spec5[row, :])
-        ax8.imshow(ps_o_chi2, interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax)
+        ax8.imshow(ps_o_chi2, interpolation = 'none', aspect = 'auto', vmin=-vmax, vmax=vmax, cmap="RdBu_r")
         plt.setp(ax8.get_yticklabels(), visible=False)
         plt.setp(ax8.get_xticklabels(), visible=False)
         ax8.set_xticks([])
@@ -1154,7 +1155,7 @@ class L2plots():
         ax = fig.add_subplot(111)
 
         vmax = 0.05
-        im = ax.imshow(self.corr, vmin = -vmax, vmax = vmax,
+        im = ax.imshow(self.corr, vmin = -vmax, vmax = vmax, cmap="RdBu_r",
                         extent = (0.5, self.n_det + 0.5, self.n_det + 0.5, 0.5))
         cbar = fig.colorbar(im)
         cbar.set_label('Correlation')
@@ -1188,7 +1189,7 @@ class L2plots():
         plt.close('all')
         
     def plot_obsid_acc_chi2(self):
-        fig = plt.figure(figsize = (6, 6))
+        fig = plt.figure(figsize = (9, 9))
         ax = fig.add_subplot(311)
         
         ax.set_title('Obsid: ' + str(self.obsid) + ', utc - 7: %02i [h]' % round(self.t0))
@@ -1228,7 +1229,8 @@ class L2plots():
         plotter = chi2
         self.chi2mean = np.nanmean(chi2)
 
-        ax.plot(x, plotter, label=r'$\langle \chi^2\rangle$: ' + '%.2f' % self.chi2mean)
+        ax.axhline(y=0, ls="--", c="k", lw=0.5)
+        ax.plot(x, plotter, '.', markersize = 0.5, label=r'$\langle \chi^2\rangle$: ' + '%.2f' % self.chi2mean)
 
         ax.vlines(np.linspace(0.5, self.n_det + 0.5, self.n_det + 1), ymin = ymin, ymax = ymax, linestyle = '--', color = 'k', lw = 0.6, alpha = 0.2)
         ax.vlines(np.linspace(0.5, self.n_det + 0.5, self.n_det * 4 + 1), ymin = ymin, ymax = ymax, linestyle = '--', color = 'k', lw = 0.2, alpha = 0.2)
@@ -1277,7 +1279,7 @@ class L2plots():
         figstring = "".join(figstrings)
 
         plt.figtext(0.92, 0.7, figstring[:-2])
-        save_string = 'acc_chi2_%07i.png' % (int(self.obsid))
+        save_string = 'acc_chi2_%07i.svg' % (int(self.obsid))
 
         self.ensure_dir_exists(self.outpath + 'acc_chi2')
         plt.savefig(self.outpath + 'acc_chi2/' + save_string, bbox_inches='tight')
