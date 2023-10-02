@@ -77,6 +77,10 @@ class COmap:
                 self._data["is_pca_subtr"] = infile["is_pca_subtr"][()]
             else:
                 self._data["is_pca_subtr"] = False
+            if "is_highpassed" in infile.keys():
+                self._data["is_highpassed"] = infile["is_highpassed"][()]
+            else:
+                self._data["is_highpassed"] = False
 
         self.keys = self._data.keys()
 
@@ -217,6 +221,7 @@ class COmap:
 
         # Map starts out not being PCA subtracted
         self._data["is_pca_subtr"] = False
+        self._data["is_highpassed"] = False
 
         # Save World-Coordinate-System parameters (WCS) for
         # construction fits headers later.
