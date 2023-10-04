@@ -1586,30 +1586,10 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         jk_list[:] += odd[:, None, None] * int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
 
-    elif string == 'rndA':
+    #elif string == 'rndA':
+    elif "rnd" in string:
         # random scan split
-        np.random.seed(83762)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'rndB':
-        # random scan split
-        np.random.seed(38826)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'rndC':
-        # random scan split
-        np.random.seed(23985)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'rndD':
-        # random scan split
-        np.random.seed(439927)
+        np.random.seed(83762 + ord(string[-1]))
         bits = np.random.randint(0, 2, int(1e8))
         bits = bits[scan_list.astype(int)]
         jk_list += bits[:, None, None] * int(2 ** n)
