@@ -309,6 +309,9 @@ def compute_cross_spec_2d_and_1d(
     x, k_bin_edges, params, is_wn, dx=1, dy=1, dz=1
 ):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
     n_x, n_y, n_z = x[0].shape
+    k_bin_edges_2d = k_bin_edges[:2]
+    k_bin_edges_1d = k_bin_edges[-1]
+    
     if os.environ.get("OMP_NUM_THREADS") is None:
         workers = 1
     else:
@@ -328,30 +331,46 @@ def compute_cross_spec_2d_and_1d(
     kx = 2 * np.pi * np.fft.fftfreq(n_x, dx) 
     ky = 2 * np.pi * np.fft.fftfreq(n_y, dy) 
     kz = 2 * np.pi * np.fft.fftfreq(n_z, dz) 
-
+    
     kperp = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
     kperp = kperp[:, :, None] + np.zeros_like(Ck_3D)
-
 
     kpar = np.abs(kz)
     kpar = kpar[None, None, :] + np.zeros_like(Ck_3D)
 
     kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, kz, indexing="ij")))
 
-    # transfer_function = transfer_function_interp(kperp, kpar)
-    # transfer_function_wn = wn_transfer_function_interp(kperp, kpar)
-        
-    Ck_3D *= transfer_function
+    transfer_function_wn = np.ones_like(Ck_3D)    
+    transfer_function_wn *= params.wn_transfer_function_interp(kperp, kpar, grid = False)
 
+    transfer_function = np.ones_like(Ck_3D)    
+    transfer_function *= params.beam_transfer_function(kperp)
+    transfer_function *= params.pixel_window(kx, dx)[:, None, None] 
+    transfer_function *= params.pixel_window(ky, dy)[None, :, None] 
+    transfer_function *= params.pixel_window(kpar, dz)
+
+    transfer_function *= params.filter_transfer_function(kperp, kpar, grid = False)
+    
+    transfer_function[transfer_function < 0] = 0
+    transfer_function_wn[transfer_function_wn < 0] = 0
+    
+    if is_wn:
+        # If running white noise simulation apply white noise transfer function to data as well as in weights
+        Ck_3D *= transfer_function_wn
+        
     ####################################
     # Binning up the 2D power spectrum #
     ####################################
     Ck_nmodes = np.histogram2d(
-        kperp.flatten(), kpar.flatten(), bins=k_bin_edges, weights=Ck_3D.flatten()
+        # kperp.flatten(), kpar.flatten(), bins=k_bin_edges_2d, weights=Ck_3D.flatten()
+        kperp.flatten(), kpar.flatten(), bins=k_bin_edges_2d, weights = (Ck_3D * transfer_function / transfer_function_wn ** 2).flatten()
     )[0]
-    nmodes = np.histogram2d(kperp.flatten(), kpar.flatten(), bins=k_bin_edges)[0]
+    # nmodes = np.histogram2d(kperp.flatten(), kpar.flatten(), bins=k_bin_edges_2d)[0]
+    nmodes = np.histogram2d(
+        kperp.flatten(), kpar.flatten(), bins=k_bin_edges_2d, weights = ((transfer_function / transfer_function_wn) ** 2).flatten()
+    )[0]
     
-    k = [(k_edges[1:] + k_edges[:-1]) / 2.0 for k_edges in k_bin_edges]
+    k = [(k_edges[1:] + k_edges[:-1]) / 2.0 for k_edges in k_bin_edges_2d]
     
     Ck = np.zeros((len(k[0]), len(k[1])))
 
@@ -364,17 +383,100 @@ def compute_cross_spec_2d_and_1d(
     ####################################
 
     Ck_nmodes_1d = np.histogram(
-        kgrid[kgrid > 0], bins=k_bin_edges, weights=Ck_3D[kgrid > 0]
+        kgrid[kgrid > 0], bins=k_bin_edges_1d, weights=(Ck_3D * transfer_function / transfer_function_wn ** 2)[kgrid > 0]
+        # kgrid[kgrid > 0], bins=k_bin_edges_1d, weights=Ck_3D[kgrid > 0]
     )[0]
-    nmodes_1d = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
+    nmodes_1d = np.histogram(
+        kgrid[kgrid > 0], bins=k_bin_edges_1d, weights = ((transfer_function / transfer_function_wn)** 2)[kgrid > 0] ,
+    )[0]
+    # nmodes_1d = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges_1d)[0]
 
-    k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
+    k_1d = (k_bin_edges_1d[1:] + k_bin_edges_1d[:-1]) / 2.0
     Ck_1d = np.zeros_like(k_1d)
     Ck_1d[np.where(nmodes_1d > 0)] = (
-        Ck_nmodes[np.where(nmodes_1d > 0)] / nmodes_1d[np.where(nmodes_1d > 0)]
+        Ck_nmodes_1d[np.where(nmodes_1d > 0)] / nmodes_1d[np.where(nmodes_1d > 0)]
     )
 
     return (Ck, Ck_1d), (k, k_1d), (Ck_nmodes, Ck_nmodes_1d)
+
+def bin_transfer_function_to_2d_and_1d(
+    mapshape, k_bin_edges, params, dx=1, dy=1, dz=1
+):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
+    n_x, n_y, n_z = mapshape
+    k_bin_edges_2d = k_bin_edges[:2]
+    k_bin_edges_1d = k_bin_edges[-1]
+    
+    kx = 2 * np.pi * np.fft.fftfreq(n_x, dx) 
+    ky = 2 * np.pi * np.fft.fftfreq(n_y, dy) 
+    kz = 2 * np.pi * np.fft.fftfreq(n_z, dz) 
+    
+    kshape = (kx.size, ky.size, kz.size)
+    
+    kperp = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
+    kperp = kperp[:, :, None] + np.zeros(kshape)
+
+    kpar = np.abs(kz)
+    kpar = kpar[None, None, :] + np.zeros(kshape)
+
+    kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, kz, indexing="ij")))
+
+    transfer_function_wn = np.ones(kshape)    
+    transfer_function_wn *= params.wn_transfer_function_interp(kperp, kpar, grid = False)
+
+    transfer_function = np.ones(kshape)    
+    transfer_function *= params.beam_transfer_function(kperp)
+    transfer_function *= params.pixel_window(kx, dx)[:, None, None] 
+    transfer_function *= params.pixel_window(ky, dy)[None, :, None] 
+    transfer_function *= params.pixel_window(kpar, dz)
+
+    transfer_function *= params.filter_transfer_function(kperp, kpar, grid = False)
+    
+    transfer_function[transfer_function < 0] = 0
+    transfer_function_wn[transfer_function_wn < 0] = 0
+            
+    ####################################
+    # Binning up the 2D power spectrum #
+    ####################################
+    binned_tf_2d = np.histogram2d(
+        kperp.flatten(), 
+        kpar.flatten(), 
+        bins = k_bin_edges_2d, 
+        weights = transfer_function.flatten()
+    )[0]
+    nmodes_tf_2d = np.histogram2d(
+        kperp.flatten(), 
+        kpar.flatten(), 
+        bins = k_bin_edges_2d,
+    )[0]
+            
+    binned_transfer_function_2d = np.zeros((k_bin_edges_2d[0].size - 1, k_bin_edges_2d[1].size - 1))
+
+    binned_transfer_function_2d[np.where(nmodes_tf_2d > 0)] = (
+        binned_tf_2d[np.where(nmodes_tf_2d > 0)] / nmodes_tf_2d[np.where(nmodes_tf_2d > 0)]
+    )
+
+    ####################################
+    # Binning up the 1D power spectrum #
+    ####################################
+
+
+    binned_tf_1d = np.histogram(
+        kgrid[kgrid > 0], 
+        bins = k_bin_edges_1d, 
+        weights = transfer_function[kgrid > 0]
+    )[0]
+    nmodes_tf_1d = np.histogram(
+        kgrid[kgrid > 0], 
+        bins=k_bin_edges_1d,
+    )[0]
+
+    binned_transfer_function_1d = np.zeros((k_bin_edges_1d.size - 1,))
+
+    binned_transfer_function_1d[np.where(nmodes_tf_1d > 0)] = (
+        binned_tf_1d[np.where(nmodes_tf_1d > 0)] / nmodes_tf_1d[np.where(nmodes_tf_1d > 0)]
+    )
+    
+    return binned_transfer_function_2d, binned_transfer_function_1d
 
 def compute_cross_spec_angular2d_vs_par(
     x, k_bin_edges, dx=1, dy=1, dz=1
