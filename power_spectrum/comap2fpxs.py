@@ -94,7 +94,17 @@ class COMAP2FPXS():
     def run(self):
         """Main run method to perform computation of cross-spectra
         """
+        
+        if self.params.psx_beam_transfer_function == "realistic":
+            self.params.beam_transfer_function = self.beam_transfer_function
+        else:
+            self.params.beam_transfer_function = self.gaussian_beam_transfer_function
+        
+        self.params.pixel_window = self.pix_window
+        self.params.filter_transfer_function = self.full_transfer_function_interp
+        self.params.wn_transfer_function = self.transfer_function_wn_interp
 
+        
         if self.params.psx_mode == "feed":
             # Only want to compute FPXS for included feeds (detectors)
             self.included_feeds = self.params.included_feeds
@@ -1981,9 +1991,6 @@ class COMAP2FPXS():
         tf_beam_fourier = tf_beam_fourier[np.argsort(ky), :]
         tf_beam_fourier = tf_beam_fourier[:, np.argsort(kx)]
 
-        tf_beam_fourier = tf_beam_fourier[np.argsort(ky), :]
-        tf_beam_fourier = tf_beam_fourier[:, np.argsort(kx)]
-        
         kx = kx[np.argsort(kx)]
         ky = ky[np.argsort(ky)]
 
@@ -1994,16 +2001,20 @@ class COMAP2FPXS():
         
         tf_beam_fourier = tf_beam_fourier[NX // 2:, NY // 2:]
         
-        # Returning a interpolation of beam transfer unction
-        tf_beam_interp = interpolate.RectBivariateSpline(
-            kx,
-            ky,
-            tf_beam_fourier, 
-            s = 0, # No smoothing when splining
-            kx = 3, # Use bi-cubic spline in x-direction
-            ky = 3, # Use bi-cubic spline in x-direction
-            )
-        
+        # # Returning a interpolation of beam transfer unction
+        # tf_beam_interp = interpolate.RectBivariateSpline(
+        #     kx,
+        #     ky,
+        #     tf_beam_fourier, 
+        #     s = 0, # No smoothing when splining
+        #     kx = 3, # Use bi-cubic spline in x-direction
+        #     ky = 3, # Use bi-cubic spline in x-direction
+        #     )
+            
+        tf_beam_interp = interpolate.CubicSpline(
+            kx, 
+            tf_beam_fourier[0, :]
+        ) 
         return tf_beam_interp
 
     def generate_new_monte_carlo_seed(self):
