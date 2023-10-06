@@ -96,13 +96,13 @@ class COMAP2FPXS():
         """
         
         if self.params.psx_beam_transfer_function == "realistic":
-            self.params.beam_transfer_function = self.beam_transfer_function
+            self.params.beam_transfer_function = self.beam_transfer_function()
         else:
             self.params.beam_transfer_function = self.gaussian_beam_transfer_function
         
         self.params.pixel_window = self.pix_window
         self.params.filter_transfer_function = self.full_transfer_function_interp
-        self.params.wn_transfer_function = self.transfer_function_wn_interp
+        self.params.wn_transfer_function_interp = self.transfer_function_wn_interp
 
         
         if self.params.psx_mode == "feed":
@@ -258,12 +258,18 @@ class COMAP2FPXS():
                     )
                     
                     # Compute cross-spectrum for current FPXS combination
-                    cross_spectrum.calculate_xs_2d(
-                        no_of_k_bins=self.params.psx_number_of_k_bins + 1,
-                    )
+                    # cross_spectrum.calculate_xs_2d(
+                    #     no_of_k_bins=self.params.psx_number_of_k_bins + 1,
+                    # )
 
-                    k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
+                    # k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
                     
+                    # Compute cross-spectrum for current FPXS combination
+                    print("hallo0")
+                    cross_spectrum.calculate_xs_1d_and_2d(
+                        n_k=self.params.psx_number_of_k_bins + 1,
+                    )
+                    print("hallo1")
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -285,8 +291,9 @@ class COMAP2FPXS():
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance", "white_noise_simulation"], outdir_data)
                     
                     # Save resulting FPXS from current combination to file
-                    cross_spectrum.make_h5_2d(outdir)
-                
+                    # cross_spectrum.make_h5_2d(outdir)
+                    cross_spectrum.make_h5_2d_and_1d(outdir)
+                    sys.exit()
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
         
@@ -1994,7 +2001,8 @@ class COMAP2FPXS():
         kx = kx[np.argsort(kx)]
         ky = ky[np.argsort(ky)]
 
-        NX = NY = kx.shape
+        NX = kx.size
+        NY = ky.size
         
         kx = kx[NX // 2:]
         ky = ky[NY // 2:]
@@ -2015,6 +2023,7 @@ class COMAP2FPXS():
             kx, 
             tf_beam_fourier[0, :]
         ) 
+
         return tf_beam_interp
 
     def generate_new_monte_carlo_seed(self):

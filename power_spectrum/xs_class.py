@@ -695,6 +695,58 @@ class CrossSpectrum_nmaps:
                 outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
                 outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
     
+    # MAKE SEPARATE H5 FILE FOR EACH 2D XS
+    def make_h5_2d_and_1d(self, outdir, outname=None):
+        if outname is None:
+            path = os.path.join("spectra_2D/", outdir)
+            path = os.path.join(self.params.power_spectrum_dir, path)
+
+            tools.ensure_dir_exists(path)
+    
+            outname = os.path.join(path, self.outname)
+
+        print(self.__dict__.keys())
+        sys.exit()
+        with h5py.File(outname, "w") as outfile:
+            outfile.create_dataset("mappath1", data=self.name_of_map[0])
+            outfile.create_dataset("mappath2", data=self.name_of_map[1])
+            outfile.create_dataset("xs_2d", data=self.xs_2d[0])
+            outfile.create_dataset("xs_1d", data=self.xs_1d[0])
+            outfile.create_dataset("k_2d", data=self.k_2d[0])
+            outfile.create_dataset("k_1d", data=self.k_1d[0])
+            outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
+            outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
+            outfile.create_dataset("nmodes_2d", data=self.nmodes_2d[0])
+            outfile.create_dataset("nmodes_1d", data=self.nmodes_1d[0])
+            
+            outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
+            outfile.create_dataset("dx", data = self.map_dx)
+            outfile.create_dataset("dy", data = self.map_dx)
+            outfile.create_dataset("dz", data = self.map_dx)
+
+            outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
+            outfile["dx"].attrs["unit"] = "Mpc"
+            outfile["dy"].attrs["unit"] = "Mpc"
+            outfile["dz"].attrs["unit"] = "Mpc"
+            
+
+            if self.params.psx_white_noise_sim_seed is not None:
+                outfile.create_dataset("noise_sim_mean_2d", data=self.noise_sim_mean_2D)
+                outfile.create_dataset("noise_sim_mean_1d", data=self.noise_sim_mean_2D)
+                outfile.create_dataset("noise_sim_std_2d", data=self.noise_sim_std_2D)
+                outfile.create_dataset("noise_sim_std_1d", data=self.noise_sim_std_1D)
+                outfile.create_dataset("white_noise_covariance_2d", data=self.white_noise_covariance_2d)
+                outfile.create_dataset("white_noise_covariance_1d", data=self.white_noise_covariance_1d)
+                outfile.create_dataset("white_noise_simulation_1d", data = self.all_noise_simulations_1d)
+                outfile.create_dataset("white_noise_simulation_", data = self.all_noise_simulations)
+                outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
+            else:
+                outfile.create_dataset("noise_sim_mean_2D", data=self.noise_sim_mean_2D[0])
+                outfile.create_dataset("noise_sim_std_2D", data=self.noise_sim_std_2D[0])
+                outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
+    
+    
     def read_spectrum(self, indir, inname = None):
         if inname is None:
             path = os.path.join("spectra_2D/", indir)
