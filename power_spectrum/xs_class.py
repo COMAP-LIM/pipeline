@@ -538,7 +538,7 @@ class CrossSpectrum_nmaps:
                 for l in range(2):
                     if seed is not None:
                         newseed = seed * (g + 1) * (l + 1) + feeds[l]
-                        
+                        # Make sure not to use same seed for any feed combo
                         while newseed in seeds:
                             newseed += 1
                         seeds.append(newseed)
