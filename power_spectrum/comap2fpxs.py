@@ -393,12 +393,6 @@ class COMAP2FPXS():
                 chi2 = np.zeros((N_feed, N_feed))
                 accepted_chi2 = np.zeros((N_feed, N_feed))
 
-                # xs_mean_wn_sim, xs_wn_sim_error = self.average_wn_ensemble(splits, indir)
-                # print(xs_mean_wn_sim.shape, xs_wn_sim_error.shape)
-                # np.save(f"mean_wn_sim_cov_v2_{cross_variable}", xs_wn_sim_error)
-
-                #sys.exit()
-                
                 for feed1 in range(N_feed):
                     for feed2 in range(N_feed):
                         cross_spectrum = xs_class.CrossSpectrum_nmaps(
