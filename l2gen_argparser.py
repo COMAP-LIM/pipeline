@@ -467,7 +467,7 @@ parser.add_argument(
 parser.add_argument(
     "--make_accept_mod_plots",
     type=str2bool,
-    default=False,
+    default=True,
 )
 
 
