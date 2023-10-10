@@ -2052,7 +2052,7 @@ if __name__ == "__main__":
                     return bins, data_binned
                 
 
-                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*4, Nstats))
+                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*3, Nstats*3/4))
                 for i in range(Nstats):
                     stat = stats_list[i]
                     stat_cut = stats_cut[stat]
@@ -2074,7 +2074,7 @@ if __name__ == "__main__":
                 plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_time_plot.png"), bbox_inches="tight", dpi=200)
                 
 
-                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*4, Nstats))
+                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*3, Nstats*3/4))
                 for i in range(Nstats):
                     stat = stats_list[i]
                     stat_cut = stats_cut[stat]
