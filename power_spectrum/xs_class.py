@@ -528,6 +528,7 @@ class CrossSpectrum_nmaps:
                 (len(self.k_bin_edges_perp) - 1, len(self.k_bin_edges_par) - 1, n_sims)
             )
 
+            seeds = []
             for g in range(n_sims):
 
                 randmap = [
@@ -536,7 +537,12 @@ class CrossSpectrum_nmaps:
                 ]
                 for l in range(2):
                     if seed is not None:
-                        np.random.seed(seed * (g + 1) * (l + 1) + feeds[l])
+                        newseed = seed * (g + 1) * (l + 1) + feeds[l]
+                        # Make sure not to use same seed for any feed combo
+                        while newseed in seeds:
+                            newseed += 1
+                        seeds.append(newseed)
+                        np.random.seed(newseed)
                     randmap[l] = (
                         np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
                     )

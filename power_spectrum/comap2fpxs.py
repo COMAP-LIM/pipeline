@@ -267,9 +267,8 @@ class COMAP2FPXS():
                         cross_spectrum.run_noise_sims_2d(
                             self.params.psx_noise_sim_number,
                             no_of_k_bins=self.params.psx_number_of_k_bins + 1,
-                            seed = seed,
+                            seed = seed + (i + 1),
                         )
-
                     else:
                         cross_spectrum.xs *= transfer_function_wn
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance", "white_noise_simulation"], outdir_data)
@@ -349,14 +348,17 @@ class COMAP2FPXS():
             xs_wn_mean = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k, N_k))
             chi2_wn = np.zeros((N_splits, self.params.psx_noise_sim_number))
             chi2_wn_cov = np.zeros((N_splits, self.params.psx_noise_sim_number))
-
+            chi2_data = np.zeros(N_splits)
+            chi2_data_cov = np.zeros(N_splits)
+            
             xs_mean_1d = np.zeros((N_splits, N_k))
             xs_error_1d = np.zeros((N_splits, N_k))
             xs_wn_mean_1d = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k))
             xs_wn_covariance_1d = np.zeros((N_splits, N_k, N_k))
             chi2_wn_1d = np.zeros((N_splits, self.params.psx_noise_sim_number))
             chi2_wn_cov_1d = np.zeros((N_splits, self.params.psx_noise_sim_number))
-
+            chi2_data_1d = np.zeros(N_splits)
+            chi2_data_cov_1d = np.zeros(N_splits)
 
 
             chi2_grids = np.zeros((N_splits, N_feed, N_feed))
@@ -519,26 +521,36 @@ class COMAP2FPXS():
                     chi2_wn[i, :] = np.nansum((chi2_wn_data  / xs_error[i, None, transfer_function_mask].T) ** 2, axis = 1)
                     # chi2_wn[i, :] = np.nansum((chi2_wn_data  / _error) ** 2, axis = 1)
                     
-                    flattened_mask = transfer_function_mask.flatten()
-                    flattened_chi2_wn_data = xs_wn_mean[i, :, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k)
                     
-                    # flattened_chi2_wn_data[:, ~flattened_mask] = 0
+                    flattened_mask = transfer_function_mask.flatten()
+                    flattened_chi2_wn_data = xs_wn_mean[i, :, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k)                    
                     flattened_chi2_wn_data = flattened_chi2_wn_data[:, flattened_mask]
                     
+                    flattened_data = xs_mean[i, ...].reshape(N_k * N_k)
+                    flattened_data = flattened_data[flattened_mask]
+                    
+                    # cov_2d = xs_wn_covariance[i, :, :].copy()
+                    # new_cov = np.zeros_like(xs_wn_covariance[i, ...])
+                    # for d in range(0, 14 * 14, 14):
+                    #     new_cov += np.diag(cov_2d.diagonal(d), d)
+                    #     new_cov += np.diag(cov_2d.diagonal(-d), -d)
+                    # cov_2d = new_cov
+                    
                     cov_2d = xs_wn_covariance[i, flattened_mask, :]
+                    # cov_2d = cov_2d[flattened_mask, :]
                     cov_2d = cov_2d[:, flattened_mask]
                     
-                    # inv_xs_wn_covariance = np.linalg.inv(xs_wn_covariance[i, ...])
                     inv_xs_wn_covariance = np.linalg.inv(cov_2d)
-
-
-                    # inv_xs_wn_covariance[:, ~flattened_mask] = 0
-                    # inv_xs_wn_covariance[~flattened_mask, :] = 0
 
                     for k in range(self.params.psx_noise_sim_number):
                         chi2_wn_cov[i, k] = flattened_chi2_wn_data[k, :].T @ inv_xs_wn_covariance @ flattened_chi2_wn_data[k, :]
-                        # chi2_wn_cov[i, k] = flattened_chi2_wn_data[k, :].T @ _cov_inv @ flattened_chi2_wn_data[k, :]
-                
+
+                    chi2_data_cov[i] = flattened_data.T @ inv_xs_wn_covariance @ flattened_data
+                    
+                    masked_data = xs_mean[i, transfer_function_mask].T
+                    # chi2_data[i] = np.nansum((masked_data  / xs_error[i, flattened_mask]) ** 2)
+                    chi2_data[i] = np.nansum((masked_data  / np.sqrt(cov_2d.diagonal())) ** 2)
+                                        
                 if np.all(~np.isfinite(chi2)):
                     continue
 
@@ -608,19 +620,24 @@ class COMAP2FPXS():
                 cov_1d = cov_1d[:, mask]
                 
                 chi2_wn_data_1d = xs_wn_mean_1d[i, :, mask].T
+                data_1d = xs_mean_1d[i, mask]
                 
                 _error_1d = np.sqrt(cov_1d.diagonal())
                 self._error_1d = _error_1d.copy()
 
                 chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / _error_1d) ** 2, axis = 1)
                 # chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / rms_1d[None, mask]) ** 2, axis = 1)
-
+                
+                
+                
                 inv_xs_wn_covariance_1d = np.linalg.inv(cov_1d)
 
                 for k in range(self.params.psx_noise_sim_number):
                     chi2_wn_cov_1d[i, k] = chi2_wn_data_1d[k, :].T @ inv_xs_wn_covariance_1d @ chi2_wn_data_1d[k, :]
 
-                # sys.exit()
+                chi2_data_cov_1d[i] = data_1d.T @ inv_xs_wn_covariance_1d @ data_1d
+                chi2_data_1d[i] = np.nansum((data_1d  / _error_1d) ** 2)
+                                
                 if not self.params.psx_generate_white_noise_sim:
                     if self.params.psx_mode == "saddlebag":
                         chi2_name = os.path.join(fig_dir, "chi2_grid_saddlebag")
@@ -750,8 +767,22 @@ class COMAP2FPXS():
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+                
+                # Normalized chi2 value for feed-feed split cross-spectra
                 outfile.create_dataset("chi2_grid", data = chi2_grids)
-
+                
+                # White noise simulation chi2 values
+                outfile.create_dataset("chi2_white_noise_sim_2d", data = chi2_wn)
+                outfile.create_dataset("chi2_white_noise_sim_cov_2d", data = chi2_wn_cov)
+                outfile.create_dataset("chi2_white_noise_sim_1d", data = chi2_wn_1d)
+                outfile.create_dataset("chi2_white_noise_sim_cov_1d", data = chi2_wn_cov_1d)
+                
+                # Data chi2 values
+                outfile.create_dataset("chi2_data_cov_2d", data = chi2_data_cov)
+                outfile.create_dataset("chi2_data_2d", data = chi2_data)
+                outfile.create_dataset("chi2_data_cov_1d", data = chi2_data_cov_1d)
+                outfile.create_dataset("chi2_data_1d", data = chi2_data_1d)
+                
                 if not self.params.psx_null_diffmap:                
                     outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(chi2_grids) < self.params.psx_chi2_cut_limit, axis = (1, 2)))
                 else:
