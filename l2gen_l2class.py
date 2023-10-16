@@ -22,6 +22,7 @@ class level2_file:
         self.l2_filename = fieldname + "_" + self.scanid_str
         self.feature_bit = scantype
         self.is_sim = False  # Whether this is or contains a simulation
+        self.is_wn_sim = False # Whether this is or contains a white noise simulation
         if scantype&2**4:
             self.scantype = "circ"
         elif scantype&2**5:
@@ -258,6 +259,7 @@ class level2_file:
             f["point_tel"][:,:,1] = self.el
             f["decimation_time"] = 1
             f["is_sim"] = self.is_sim
+            f["is_wn_sim"] = self.is_wn_sim
             f["git_hash"] = self.git_hash
             f["l1_filepath"] = self.l1_filename
             f["n_spikes"] = self.n_spikes

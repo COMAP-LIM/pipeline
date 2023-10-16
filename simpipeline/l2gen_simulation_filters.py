@@ -361,7 +361,8 @@ class Replace_TOD_with_Tsys_WN:
 
 
     def run(self, l2):
-        l2.is_sim = True
+        l2.is_sim = False
+        l2.is_wn_sim = True
 
         Gain = 10000
         tsys = l2.Tsys
@@ -396,8 +397,8 @@ class Replace_TOD_with_WN:
 
 
     def run(self, l2):
-        l2.is_sim = True
-
+        l2.is_sim = False
+        l2.is_wn_sim = True
         if not self.params.wn_sim_seed is None:
             np.random.seed(self.params.wn_sim_seed*l2.scanid)
 
