@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_With_Signal, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
 from scipy.interpolate import interp1d
 
+CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 class Filter:
     name = ""  # Short name of filter, used for compact writes.
@@ -243,7 +244,7 @@ class Normalize_Gain_Old(Filter):
     def run(self, l2):
         if not self.use_ctypes:
             # Ntod = l2.tod.shape[-1]
-            # fft_times = np.load("/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/fft_times_owl33_10runs.npy")
+            # fft_times = np.load(os.path.join(CURRENT_DIR, "/fft_times_owl33_10runs.npy")
             # search_start = int(Ntod*1.05)
             # search_stop = int(Ntod*1.10)  # We add at most 10% to the TOD to find fastest length during FFT.
             # if search_stop < fft_times.shape[-1]:  # If search search is within the catalogue, use it. Otherwise, use scipy.
@@ -260,7 +261,7 @@ class Normalize_Gain_Old(Filter):
                     l2.tod[feed,sb] = l2.tod[feed,sb]/tod_lowpass - 1
             del(tod_lowpass)
         else:
-            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/norm/normlib.so.1"
+            C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/norm/normlib.so.1")
             normlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
             normlib.normalize.argtypes = [float32_array2, ctypes.c_ulong, ctypes.c_ulong]
@@ -423,7 +424,8 @@ class Pointing_Template_Subtraction(Filter):
                         l2.tofile_dict["el_az_amp"][feed,sb,freq,:] = g, d, c
 
         else:
-            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/pointing/pointinglib.so.1"
+            C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/pointing/pointinglib.so.1")
+            
             pointinglib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
             float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
@@ -513,7 +515,7 @@ class Polynomial_filter(Filter):
                                 pass
 
         else:
-            C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/polyfit/polyfit.so.1"
+            C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/polyfit/polyfit.so.1")
             polylib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
             float32_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=1, flags="contiguous")
@@ -1029,7 +1031,7 @@ class PCA_filter(Filter):
             # pca_eigval = np.zeros((self.max_pca_comp))
             # n = l2.Nfeeds*l2.Nsb*l2.Nfreqs
             # p = l2.Ntod
-            # C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
+            # C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/PCA/PCAlib.so.1")
             # PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             # float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
             # float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
@@ -1226,7 +1228,7 @@ class PCA_feed_filter(Filter):
             # t0 = time.time()
             # n = l2.Nsb*l2.Nfreqs
             # p = l2.Ntod
-            # C_LIB_PATH = "/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/C_libs/PCA/PCAlib.so.1"
+            # C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/PCA/PCAlib.so.1")
             # PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
             # float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
             # float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
