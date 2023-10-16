@@ -135,7 +135,7 @@ parser.add_argument(
 parser.add_argument(
     "--log_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/jonas/l2gen_python/logs/",
+    default="./logs/",
     help="Path to outputed logs.",
 )
 parser.add_argument(
