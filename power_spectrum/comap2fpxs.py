@@ -252,8 +252,6 @@ class COMAP2FPXS():
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
 
-                    k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
-                    
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -283,23 +281,21 @@ class COMAP2FPXS():
                         
                         cross_spectrum.weighted_overlap = np.nanmean(cross_spectrum.weighted_overlap[cross_spectrum.weighted_overlap != 0])
                         
-                        
                         cross_spectrum.run_noise_sims_2d(
                             self.params.psx_noise_sim_number,
                             no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                             seed = seed + (i + 1),
                         )
-                        
+
                     else:
                         cross_spectrum.xs *= transfer_function_wn
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance", "white_noise_simulation"], outdir_data)
                                         
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
-                
+
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
-        
         if self.rank == 0:
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
@@ -1663,6 +1659,7 @@ class COMAP2FPXS():
         ax1.legend()
         ax1.set_ylabel("Number Count")
         ax1.set_xlabel("Overlap Statistic")
+        ax1.set_xlim(0, 1)
         
         fig.savefig(outname, bbox_inches="tight")
 
@@ -1825,7 +1822,7 @@ class COMAP2FPXS():
         )
         
         ax1.set_ylabel("Number Count")
-        ax1.set_ylabel(r"Normalized $\chi^2$")
+        ax1.set_xlabel(r"Normalized $\chi^2$")
         
         
         fig.savefig(outname, bbox_inches="tight")
