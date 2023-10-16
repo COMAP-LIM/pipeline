@@ -281,7 +281,8 @@ class CrossSpectrum_nmaps:
 
             my_xs, my_k, my_nmodes = tools.compute_cross_spec_2d_and_1d(
                 (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
-                (self.k_bin_edges_perp, self.k_bin_edges_par),
+                (self.k_bin_edges_perp, self.k_bin_edges_par, self.k_bin_edges_1d),
+                
                 self.params,
                 is_wn = False,
                 dx=self.maps[i].dx,
@@ -618,9 +619,9 @@ class CrossSpectrum_nmaps:
                 
                 my_xs, _, _ = tools.compute_cross_spec_2d_and_1d(
                     (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
-                    (self.k_bin_edges_perp, self.k_bin_edges_par),
+                    (self.k_bin_edges_perp, self.k_bin_edges_par, self.k_bin_edges_1d),
                     self.params,
-                    is_wn = False,
+                    is_wn = True,
                     dx=self.maps[i].dx,
                     dy=self.maps[i].dy,
                     dz=self.maps[i].dz,
@@ -656,7 +657,6 @@ class CrossSpectrum_nmaps:
             (self.noise_sim_std_2d, self.noise_sim_std_1d), 
             (self.white_noise_covariance_2d, self.white_noise_covariance_1d)
         )
-
 
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
     def make_h5_2d(self, outdir, outname=None):
@@ -726,12 +726,13 @@ class CrossSpectrum_nmaps:
         with h5py.File(outname, "w") as outfile:
             outfile.create_dataset("mappath1", data=self.name_of_map[0])
             outfile.create_dataset("mappath2", data=self.name_of_map[1])
-            outfile.create_dataset("xs_2d", data=self.xs_2d[0])
-            outfile.create_dataset("xs_1d", data=self.xs_1d[0]) 
-            outfile.create_dataset("k_2d", data=self.k_2d[0])
-            outfile.create_dataset("k_1d", data=self.k_1d[0])
+            outfile.create_dataset("xs_2d", data=self.xs_2d)
+            outfile.create_dataset("xs_1d", data=self.xs_1d) 
+            outfile.create_dataset("k_2d", data=self.k_2d)
+            outfile.create_dataset("k_1d", data=self.k_1d)
             outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
             outfile.create_dataset("k_bin_edges_par", data=self.k_bin_edges_par)
+            outfile.create_dataset("k_bin_edges_1d", data=self.k_bin_edges_1d)
             outfile.create_dataset("nmodes_2d", data=self.nmodes_2d[0])
             outfile.create_dataset("nmodes_1d", data=self.nmodes_1d[0])
             
@@ -739,6 +740,7 @@ class CrossSpectrum_nmaps:
             outfile.create_dataset("dx", data = self.map_dx)
             outfile.create_dataset("dy", data = self.map_dx)
             outfile.create_dataset("dz", data = self.map_dx)
+            outfile.create_dataset("mapshape", data = np.array(self.maps[0].w.shape))
 
             outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
             outfile["dx"].attrs["unit"] = "Mpc"

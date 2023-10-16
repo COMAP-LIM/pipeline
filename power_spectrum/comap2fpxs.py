@@ -28,6 +28,7 @@ sys.path.append(parent_directory)
 
 from TransferFunction import TransferFunction
 import xs_class
+import tools
 
 class COMAP2FPXS():
     """COMAP feed-feed pseudo cross-spectrum (FPXS) class
@@ -248,6 +249,15 @@ class COMAP2FPXS():
                     
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
+                    cross_spectrum.read_and_append_attribute(
+                        ["dx", "dy", "dz", "mapshape", "angle2Mpc"], 
+                        os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir)
+                    )
+                    self.mapshape = cross_spectrum.mapshape
+                    self.angle2Mpc = cross_spectrum.angle2Mpc
+                    self.map_dx = cross_spectrum.dx
+                    self.map_dy = cross_spectrum.dy
+                    self.map_dz = cross_spectrum.dz
                     continue
                 else:
                     # Read maps from generated map paths, and provide cosmology to translate from
@@ -265,7 +275,6 @@ class COMAP2FPXS():
                     # k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
                     
                     # Compute cross-spectrum for current FPXS combination
-                    print("hallo0")
                     cross_spectrum.calculate_xs_1d_and_2d(
                         n_k=self.params.psx_number_of_k_bins + 1,
                     )
@@ -291,17 +300,509 @@ class COMAP2FPXS():
                     
                     # Save resulting FPXS from current combination to file
                     # cross_spectrum.make_h5_2d(outdir)
-                    print("hallo1")
-                    
                     cross_spectrum.make_h5_2d_and_1d(outdir)
-                    sys.exit()
+                    
+                    self.mapshape = cross_spectrum.maps[0].w.shape
+                    self.angle2Mpc = cross_spectrum.angle2Mpc
+                    self.map_dx = cross_spectrum.map_dx
+                    self.map_dy = cross_spectrum.map_dy
+                    self.map_dz = cross_spectrum.map_dz
+                    
+        
+
+        
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
         
         if self.rank == 0:
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
-            self.compute_averages()
+            # self.compute_averages()
+            self.compute_averages_direct_bin()
+    
+    def compute_averages_direct_bin(self):
+            
+        if self.params.psx_mode == "saddlebag":
+            average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra_saddlebag")
+        else:
+            average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra")
+
+        fig_dir = os.path.join(self.power_spectrum_dir, "figs")
+
+        if not os.path.exists(average_spectrum_dir):
+            os.mkdir(average_spectrum_dir)
+    
+        if not os.path.exists(fig_dir):
+            os.mkdir(fig_dir)
+
+        if self.params.psx_mode == "saddlebag":
+            if not os.path.exists(os.path.join(fig_dir, "chi2_grid_saddlebag")):
+                os.mkdir(os.path.join(fig_dir, "chi2_grid_saddlebag"))
+
+            if not os.path.exists(os.path.join(fig_dir, "average_spectra_saddlebag")):
+                os.mkdir(os.path.join(fig_dir, "average_spectra_saddlebag"))
+        else:
+            if not os.path.exists(os.path.join(fig_dir, "chi2_grid")):
+                os.mkdir(os.path.join(fig_dir, "chi2_grid"))
+
+            if not os.path.exists(os.path.join(fig_dir, "average_spectra")):
+                os.mkdir(os.path.join(fig_dir, "average_spectra"))
+        
+        N_feed = len(self.included_feeds)
+        N_splits = len(self.split_map_combinations)
+        N_k = self.params.psx_number_of_k_bins
+
+        for map1, map2 in self.field_combinations:
+            # Generate name of outpute data directory
+            mapname1 = map1.split("/")[-1]
+            mapname2 = map2.split("/")[-1]
+            
+            if self.params.psx_null_cross_field:
+                indir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+            else:
+                indir = f"{mapname1[:-3]}"
+            
+            mapname = f"{indir}"
+
+            outdir = os.path.join(average_spectrum_dir, indir)
+            if self.params.psx_generate_white_noise_sim:
+                #outdir_data = f"{outdir}"
+                outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+                        
+            if self.params.psx_generate_white_noise_sim:
+                #indir_data = f"{indir}"
+                indir = f"{indir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+
+            if not os.path.exists(outdir):
+                os.mkdir(outdir)
+
+            xs_mean = np.zeros((N_splits, N_k, N_k))
+            xs_error = np.zeros((N_splits, N_k, N_k))
+            xs_covariance = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            xs_full_operator = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            
+            xs_wn_covariance = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            xs_wn_mean = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k, N_k))
+            chi2_wn = np.zeros((N_splits, self.params.psx_noise_sim_number))
+            chi2_wn_cov = np.zeros((N_splits, self.params.psx_noise_sim_number))
+
+            xs_mean_1d = np.zeros((N_splits, N_k))
+            xs_error_1d = np.zeros((N_splits, N_k))
+            xs_wn_mean_1d = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k))
+            xs_wn_covariance_1d = np.zeros((N_splits, N_k, N_k))
+            chi2_wn_1d = np.zeros((N_splits, self.params.psx_noise_sim_number))
+            chi2_wn_cov_1d = np.zeros((N_splits, self.params.psx_noise_sim_number))
+
+
+
+            chi2_grids = np.zeros((N_splits, N_feed, N_feed))
+            
+            if self.params.psx_null_diffmap:
+                loaded_chi2_grids = np.zeros((N_splits, N_feed, N_feed))
+            
+            cross_variable_names = [] 
+
+            if self.params.psx_null_diffmap:
+                if len(self.params.psx_chi2_import_path) <= 0 or not os.path.exists(self.params.psx_chi2_import_path):
+                    raise ValueError("No chi2 import file provided to perform null test chi2 cuts!")
+
+                with h5py.File(self.params.psx_chi2_import_path, "r") as infile:
+                    loaded_names = infile["cross_variable_names"][()].astype(str)
+                    loaded_chi2_grid = infile["chi2_grid"][()]
+
+            for i, splits in enumerate(self.split_map_combinations):
+                if not self.params.psx_null_diffmap:
+                    cross_variable = splits[0].split("/")[1]
+                    cross_variable_names.append(cross_variable)
+                else:
+                    cross_variable = splits[0][0].split("/")[-1]
+                    cross_variable = cross_variable[-5:-1]
+
+                if self.params.psx_use_full_wn_covariance:
+                    xs_sum = np.zeros(N_k ** 2)
+                    xs_inv_cov = np.zeros((N_k ** 2, N_k ** 2))
+                else:
+                    wn_xs_sum = np.zeros((self.params.psx_noise_sim_number, N_k, N_k))
+                    xs_sum = np.zeros((N_k, N_k))
+                    xs_inv_var = np.zeros((N_k, N_k))
+                
+                chi2 = np.zeros((N_feed, N_feed))
+                accepted_chi2 = np.zeros((N_feed, N_feed))
+
+                # xs_mean_wn_sim, xs_wn_sim_error = self.average_wn_ensemble(splits, indir)
+                # print(xs_mean_wn_sim.shape, xs_wn_sim_error.shape)
+                # np.save(f"mean_wn_sim_cov_v2_{cross_variable}", xs_wn_sim_error)
+
+                #sys.exit()
+
+                for feed1 in range(N_feed):
+                    for feed2 in range(N_feed):
+                        cross_spectrum = xs_class.CrossSpectrum_nmaps(
+                            self.params, 
+                            splits, 
+                            self.included_feeds[feed1], 
+                            self.included_feeds[feed2],
+                        )                        
+                        try:
+                            cross_spectrum.read_spectrum(indir)
+                        except (FileNotFoundError, KeyError):
+                            print(f"\033[95m WARNING: Split {splits[0]} or {splits[1]} not found in map file. Skipping split in averaging.\033[00m")
+                            continue            
+                        
+                        
+                        cross_spectrum.read_and_append_attribute(["white_noise_simulation_1d","white_noise_simulation_1d", "k_bin_edges_perp", "k_bin_edges_par", "k_bin_edges_1d"], indir)
+                        #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
+
+                        
+                        xs_wn = cross_spectrum.white_noise_simulation_2d
+                        xs_2d = cross_spectrum.xs_2d
+                        xs_sigma_2d = cross_spectrum.noise_sim_std_2d
+                        
+                        xs_wn_1d = cross_spectrum.white_noise_simulation_1d
+                        xs_1d = cross_spectrum.xs_1d
+                        xs_sigma_1d = cross_spectrum.noise_sim_std_1d
+
+                        k_bin_centers_perp  = cross_spectrum.k_2d[0]
+                        k_bin_centers_par  = cross_spectrum.k_2d[1]
+                        
+                        k_bin_edges_par = cross_spectrum.k_bin_edges_par
+                        
+                        k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
+                        k_bin_edges_1d = cross_spectrum.k_bin_edges_1d
+                        
+                        transfer_function, _ = tools.bin_transfer_function_to_2d_and_1d(
+                                    self.mapshape,
+                                    (k_bin_edges_perp, k_bin_edges_par, k_bin_edges_1d),
+                                    self.params,
+                                    self.map_dx,
+                                    self.map_dy,
+                                    self.map_dz,
+                        )
+
+                        print(transfer_function.shape)
+
+
+                        tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
+
+                        transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
+
+                        _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
+                        # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
+                        _transfer_function_mask[:4, :] = False
+                        
+                        transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
+
+                        chi3 = np.nansum(
+                        (xs_2d[transfer_function_mask] / xs_sigma_2d[transfer_function_mask]) ** 3
+                        )
+                            
+                        number_of_samples = np.sum(transfer_function_mask)
+
+                        if np.all(xs_2d / xs_sigma_2d == 0) or np.all(~np.isfinite(xs_2d / xs_sigma_2d)):
+                            chi2[feed1, feed2] = np.nan
+                            continue
+                        else:
+                            chi2[feed1, feed2] = np.sign(chi3) * abs(
+                                (np.nansum((xs_2d[transfer_function_mask]  / xs_sigma_2d[transfer_function_mask] ) ** 2) - number_of_samples)
+                                / np.sqrt(2 * number_of_samples)
+                            )
+                        
+                        
+                        if self.params.psx_null_diffmap:
+                            # If null test is run the same chi2 as in data run must be used!
+                            current_cross_variable, = np.where(loaded_names == cross_variable)
+                            accept_chi2 = np.abs(loaded_chi2_grid[current_cross_variable, feed1, feed2]) < self.params.psx_chi2_cut_limit
+                            # accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
+                        else:
+                            accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
+                        
+                        accepted_chi2[feed1, feed2] = accept_chi2
+
+                        if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
+                            if accept_chi2:
+                                xs_sum += xs_2d / xs_sigma_2d ** 2
+                                wn_xs_sum += xs_wn / xs_sigma_2d[None, ...] ** 2
+                                xs_inv_var += 1 / xs_sigma_2d ** 2
+                print("EXIT")
+                sys.exit()
+                                  
+                if self.params.psx_null_diffmap:
+                    _chi2 = loaded_chi2_grid[current_cross_variable, ...].copy()
+                    for ii in range(_chi2.shape[0]):
+                        _chi2[ii, ii] = np.inf
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit))
+                    # print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(chi2) < self.params.psx_chi2_cut_limit))
+                else:
+                    _chi2 = chi2.copy()
+                    for ii in range(_chi2.shape[0]):
+                        _chi2[ii, ii] = np.inf
+                    print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit))
+
+                if self.params.psx_use_full_wn_covariance:
+                    xs_covariance[i, ...] = np.linalg.inv(xs_inv_cov)
+                    xs_mean[i, ...] = (xs_covariance[i, ...] @ xs_sum).reshape(N_k, N_k)
+                    xs_error[i, ...] = np.sqrt(xs_covariance[i, ...].diagonal().reshape(N_k, N_k))
+                    xs_full_operator[i, ...] = xs_covariance[i, ...]
+                else:
+                    xs_mean[i, ...] = xs_sum / xs_inv_var
+                    xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
+
+                    xs_wn_mean[i, ...] = wn_xs_sum / xs_inv_var[None, ...]
+
+                    xs_wn_covariance[i, ...] = np.cov(xs_wn_mean[i, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k).T, ddof = 1)
+
+                    # _error = np.sqrt(xs_wn_covariance[i, ...].diagonal())[None, transfer_function_mask.flatten()]
+
+                    chi2_wn_data = xs_wn_mean[i, :, transfer_function_mask].T
+                    chi2_wn[i, :] = np.nansum((chi2_wn_data  / xs_error[i, None, transfer_function_mask].T) ** 2, axis = 1)
+                    # chi2_wn[i, :] = np.nansum((chi2_wn_data  / _error) ** 2, axis = 1)
+                    
+                    flattened_mask = transfer_function_mask.flatten()
+                    flattened_chi2_wn_data = xs_wn_mean[i, :, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k)
+                    
+                    # flattened_chi2_wn_data[:, ~flattened_mask] = 0
+                    flattened_chi2_wn_data = flattened_chi2_wn_data[:, flattened_mask]
+                    
+                    cov_2d = xs_wn_covariance[i, flattened_mask, :]
+                    cov_2d = cov_2d[:, flattened_mask]
+                    
+                    # inv_xs_wn_covariance = np.linalg.inv(xs_wn_covariance[i, ...])
+                    inv_xs_wn_covariance = np.linalg.inv(cov_2d)
+
+
+                    # inv_xs_wn_covariance[:, ~flattened_mask] = 0
+                    # inv_xs_wn_covariance[~flattened_mask, :] = 0
+
+                    for k in range(self.params.psx_noise_sim_number):
+                        chi2_wn_cov[i, k] = flattened_chi2_wn_data[k, :].T @ inv_xs_wn_covariance @ flattened_chi2_wn_data[k, :]
+                        # chi2_wn_cov[i, k] = flattened_chi2_wn_data[k, :].T @ _cov_inv @ flattened_chi2_wn_data[k, :]
+                
+                if np.all(~np.isfinite(chi2)):
+                    continue
+
+                weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
+
+                xs_1d = xs_mean[i, ...].copy()
+                xs_wn_1d = xs_wn_mean[i, ...].copy()
+
+                # transfer_function_mask = np.logical_and(transfer_function_mask, xs_error[i, ...] < xs_error[i, ...].max() * 0.5)
+
+                weights[~transfer_function_mask] = 0.0
+            
+                xs_1d /= transfer_function
+                xs_1d *= weights
+
+                xs_wn_1d /= transfer_function[None, ...]
+                xs_wn_1d *= weights[None, ...]
+
+                k_bin_edges = np.logspace(-2.0, np.log10(1.5), len(k_bin_centers_perp) + 1)
+
+                kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(k_bin_centers_perp, k_bin_centers_par, indexing="ij")))
+
+
+                Ck_nmodes_1d = np.histogram(
+                    kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_1d[kgrid > 0]
+                )[0]
+                inv_var_nmodes_1d = np.histogram(
+                    kgrid[kgrid > 0], bins=k_bin_edges, weights=weights[kgrid > 0]
+                )[0]
+                nmodes_1d = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
+
+                # Binning up the 2D noise spectra
+                Ck_wn_nmodes_1d = np.zeros((self.params.psx_noise_sim_number, k_bin_edges.size - 1))
+                for n in range(self.params.psx_noise_sim_number):
+                    Ck_wn_nmodes_1d[n, :] = np.histogram(
+                    kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_wn_1d[n, kgrid > 0]
+                )[0]
+
+                # Ck = Ck_nmodes / nmodes
+                k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
+                
+                Ck_1d = np.zeros_like(k_1d)
+                Ck_wn_1d = np.zeros((self.params.psx_noise_sim_number, k_1d.size))
+                rms_1d = np.zeros_like(k_1d)
+                
+                Ck_1d[np.where(nmodes_1d > 0)] = (
+                    Ck_nmodes_1d[np.where(nmodes_1d > 0)]
+                    / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
+                )
+                rms_1d[np.where(nmodes_1d > 0)] = np.sqrt(
+                    1 / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
+                )
+
+                Ck_wn_1d[:, np.where(nmodes_1d > 0)] = (
+                    Ck_wn_nmodes_1d[:, np.where(nmodes_1d > 0)]
+                    / inv_var_nmodes_1d[None, np.where(nmodes_1d > 0)]
+                )
+
+                xs_error_1d[i, ...] = rms_1d
+
+                xs_mean_1d[i, ...] = Ck_1d
+                xs_wn_mean_1d[i, ...] = Ck_wn_1d
+                xs_wn_covariance_1d[i, ...] = np.cov(Ck_wn_1d.T)
+
+                mask = np.where(np.isfinite(Ck_1d / rms_1d))[0]
+                cov_1d = xs_wn_covariance_1d[i, mask, :]
+                cov_1d = cov_1d[:, mask]
+                
+                chi2_wn_data_1d = xs_wn_mean_1d[i, :, mask].T
+                
+                _error_1d = np.sqrt(cov_1d.diagonal())
+                self._error_1d = _error_1d.copy()
+
+                chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / _error_1d) ** 2, axis = 1)
+                # chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / rms_1d[None, mask]) ** 2, axis = 1)
+
+                inv_xs_wn_covariance_1d = np.linalg.inv(cov_1d)
+
+                for k in range(self.params.psx_noise_sim_number):
+                    chi2_wn_cov_1d[i, k] = chi2_wn_data_1d[k, :].T @ inv_xs_wn_covariance_1d @ chi2_wn_data_1d[k, :]
+
+                # sys.exit()
+                if not self.params.psx_generate_white_noise_sim:
+                    if self.params.psx_mode == "saddlebag":
+                        chi2_name = os.path.join(fig_dir, "chi2_grid_saddlebag")
+                    else:
+                        chi2_name = os.path.join(fig_dir, "chi2_grid")
+
+                    chi2_name = os.path.join(chi2_name, indir)
+                    chi2_name = chi2_name + f"_{self.params.psx_plot_name_suffix}"
+
+                    if not os.path.exists(chi2_name):
+                        os.mkdir(chi2_name)
+                    
+                    if self.params.psx_null_diffmap:
+                        chi2_name = os.path.join(chi2_name, "null_diffmap")
+                        if not os.path.exists(chi2_name):
+                            os.mkdir(chi2_name)
+                        
+                        chi2_name = os.path.join(chi2_name, f"{cross_spectrum.null_variable}")
+                        if not os.path.exists(chi2_name):
+                            os.mkdir(chi2_name)
+                    
+                    chi2_grids[i, ...] = chi2
+                    if self.params.psx_null_diffmap:
+                        loaded_chi2_grids[i, ...] = loaded_chi2_grid[current_cross_variable, ...]
+
+                    self.plot_chi2_grid(chi2, accepted_chi2, splits, chi2_name)
+
+                    if self.params.psx_mode == "saddlebag":
+                        average_name = os.path.join(fig_dir, "average_spectra_saddlebag")
+                    else:
+                        average_name = os.path.join(fig_dir, "average_spectra")
+                    
+                    average_name = os.path.join(average_name, indir)
+                    
+
+                    average_name = average_name + f"_{self.params.psx_plot_name_suffix}"
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+
+                    if self.params.psx_null_diffmap:
+                        average_name = os.path.join(average_name, "null_diffmap")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+
+                        average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                    
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                else:
+                    if self.params.psx_mode == "saddlebag":
+                        average_name = os.path.join(fig_dir, "average_spectra")
+                    else:
+                        average_name = os.path.join(fig_dir, "average_spectra")
+
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                    average_name = os.path.join(average_name, indir)
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+
+                    if self.params.psx_null_diffmap:
+                        average_name = os.path.join(average_name, "null_diffmap")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+
+                        average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+
+
+                #if not self.params.psx_generate_white_noise_sim:
+                self.plot_2D_mean(
+                    k_bin_edges_par,
+                    k_bin_edges_perp,
+                    k_bin_centers_par,
+                    k_bin_centers_perp,
+                    xs_mean[i, ...],
+                    xs_error[i, ...],
+                    xs_wn_covariance[i, ...],
+                    transfer_function_mask,
+                    (chi2_wn[i, ...], chi2_wn_cov[i, ...]),
+                    splits,
+                    (mapname1, mapname2),
+                    average_name,
+                )
+
+                if self.params.psx_null_diffmap:
+                    plot_chi2 = loaded_chi2_grid[current_cross_variable, ...]                
+                    # plot_chi2 = chi2                
+                else:
+                    plot_chi2 = chi2                
+                
+                self.plot_1D_mean(
+                    k_1d,
+                    xs_mean_1d[i, ...],
+                    xs_error_1d[i, ...],
+                    xs_wn_covariance_1d[i, ...],
+                    plot_chi2,
+                    (chi2_wn_1d[i, ...], chi2_wn_cov_1d[i, ...]),
+                    splits,
+                    (mapname1, mapname2),
+                    average_name,
+                )
+            
+            if not self.params.psx_null_diffmap:
+                cross_variable_names = np.array(cross_variable_names, dtype = "S")
+            else:
+                cross_variable_names = np.array([*self.cross_variables], dtype = "S")
+
+            with h5py.File(os.path.join(outdir, mapname + "_average_fpxs.h5"), "w") as outfile:
+                outfile.create_dataset("k_1d", data = k_1d)             
+                outfile.create_dataset("k_centers_par", data = k_bin_centers_par)
+                outfile.create_dataset("k_centers_perp", data = k_bin_centers_perp)
+                outfile.create_dataset("k_edges_par", data = k_bin_edges_par)      
+                outfile.create_dataset("k_edges_perp", data = k_bin_edges_perp)     
+                outfile.create_dataset("xs_mean_1d", data = xs_mean_1d)       
+                outfile.create_dataset("xs_mean_2d", data = xs_mean)
+                outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
+                outfile.create_dataset("xs_sigma_2d", data = xs_error)
+                outfile.create_dataset("cross_variable_names", data = cross_variable_names)
+                outfile.create_dataset("white_noise_covariance", data = xs_covariance)
+                outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+                outfile.create_dataset("chi2_grid", data = chi2_grids)
+
+                if not self.params.psx_null_diffmap:                
+                    outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(chi2_grids) < self.params.psx_chi2_cut_limit, axis = (1, 2)))
+                else:
+                    outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(loaded_chi2_grids) < self.params.psx_chi2_cut_limit, axis = (1, 2)))
+                    outfile.create_dataset("loaded_chi2_grid", data = loaded_chi2_grids)
+                
+
+                outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
+                outfile.create_dataset("dx", data = self.map_dx)
+                outfile.create_dataset("dy", data = self.map_dx)
+                outfile.create_dataset("dz", data = self.map_dx)
+
+                outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
+                outfile["dx"].attrs["unit"] = "Mpc"
+                outfile["dy"].attrs["unit"] = "Mpc"
+                outfile["dz"].attrs["unit"] = "Mpc"
+
+                if self.params.psx_white_noise_sim_seed is not None:
+                    outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
+
 
     def compute_averages(self):
         if self.params.psx_mode == "saddlebag":

@@ -458,8 +458,6 @@ def bin_transfer_function_to_2d_and_1d(
     ####################################
     # Binning up the 1D power spectrum #
     ####################################
-
-
     binned_tf_1d = np.histogram(
         kgrid[kgrid > 0], 
         bins = k_bin_edges_1d, 
