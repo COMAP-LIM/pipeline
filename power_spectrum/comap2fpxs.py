@@ -269,7 +269,6 @@ class COMAP2FPXS():
                     cross_spectrum.calculate_xs_1d_and_2d(
                         n_k=self.params.psx_number_of_k_bins + 1,
                     )
-                    print("hallo1")
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -280,7 +279,7 @@ class COMAP2FPXS():
 
                         # self.params.psx_white_noise_transfer_function = transfer_function_wn
 
-                        cross_spectrum.run_noise_sims_2d(
+                        cross_spectrum.run_noise_sims_2d_and_1d(
                             self.params.psx_noise_sim_number,
                             no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                             seed = seed,
@@ -292,6 +291,8 @@ class COMAP2FPXS():
                     
                     # Save resulting FPXS from current combination to file
                     # cross_spectrum.make_h5_2d(outdir)
+                    print("hallo1")
+                    
                     cross_spectrum.make_h5_2d_and_1d(outdir)
                     sys.exit()
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.

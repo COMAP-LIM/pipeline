@@ -564,15 +564,13 @@ class CrossSpectrum_nmaps:
         return np.array(self.noise_sim_mean_2D), np.array(self.noise_sim_std_2D), self.white_noise_covariance
 
 
-    def run_noise_sims_2d(self, n_sims, seed=None, no_of_k_bins=15):
+    def run_noise_sims_2d_and_1d(self, n_sims, seed=None, no_of_k_bins=15):
         n_k = no_of_k_bins
-
+        
+        self.k_bin_edges_1d = np.logspace(-2.0, np.log10(1.5), n_k)
         self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), n_k)
         self.k_bin_edges_perp = np.logspace(-2.0 + np.log10(2), np.log10(1.5), n_k)
 
-        self.noise_sim_mean_2D = []
-        self.noise_sim_std_2D = []
-        self.all_noise_simulations = []
         for i in range(0, len(self.maps) - 1, 2):
             j = i + 1
 
@@ -597,9 +595,13 @@ class CrossSpectrum_nmaps:
                 else:
                     feeds = np.array([1, 1])
 
-            rms_xs = np.zeros(
+            noise_sim_2d = np.zeros(
                 (len(self.k_bin_edges_perp) - 1, len(self.k_bin_edges_par) - 1, n_sims)
             )
+            noise_sim_1d = np.zeros(
+                (len(self.k_bin_edges_1d) - 1, n_sims)
+            )
+
 
             for g in range(n_sims):
 
@@ -613,31 +615,47 @@ class CrossSpectrum_nmaps:
                     randmap[l] = (
                         np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
                     )
-
-                rms_xs[:, :, g] = tools.compute_cross_spec_perp_vs_par(
-                    (randmap[0] * full_weight, randmap[1] * full_weight),
+                
+                my_xs, _, _ = tools.compute_cross_spec_2d_and_1d(
+                    (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
                     (self.k_bin_edges_perp, self.k_bin_edges_par),
+                    self.params,
+                    is_wn = False,
                     dx=self.maps[i].dx,
                     dy=self.maps[i].dy,
                     dz=self.maps[i].dz,
-                )[0]
+                )
 
-            # rms_xs *= self.params.psx_white_noise_transfer_function[..., None]
+                my_xs_2d, my_xs_1d = my_xs
+
+                noise_sim_2d[..., g] = my_xs_2d
+                noise_sim_1d[..., g] = my_xs_1d
+                
+            # noise_sim *= self.params.psx_white_noise_transfer_function[..., None]
             
             self.reverse_normalization(
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
 
-            self.white_noise_covariance = np.cov(rms_xs.reshape((n_k - 1) ** 2, n_sims), ddof=1)
+            self.white_noise_covariance_2d = np.cov(noise_sim_2d.reshape((n_k - 1) ** 2, n_sims), ddof=1)
+            self.white_noise_covariance_1d = np.cov(noise_sim_1d, ddof=1)
 
-            self.noise_sim_mean_2D.append(np.mean(rms_xs, axis=2))
-            self.noise_sim_std_2D.append(np.std(rms_xs, axis=2, ddof=1))
-            self.all_noise_simulations.append(rms_xs)
+            self.noise_sim_mean_2d = np.mean(noise_sim_2d, axis=2)
+            self.noise_sim_std_2d = np.std(noise_sim_2d, axis=2, ddof=1)
+            self.all_noise_simulations_2d = noise_sim_2d
+            
+            self.noise_sim_mean_1d = np.mean(noise_sim_1d, axis=1)
+            self.noise_sim_std_1d = np.std(noise_sim_1d, axis=1, ddof=1)
+            self.all_noise_simulations_1d = noise_sim_1d
 
-            self.all_noise_simulations = np.array(self.all_noise_simulations)[0, ...].transpose(2, 0, 1)
+            self.all_noise_simulations_2d = np.array(self.all_noise_simulations_2d).transpose(2, 0, 1)
+            self.all_noise_simulations_1d = np.array(self.all_noise_simulations_1d).transpose(1, 0)
 
-        return np.array(self.noise_sim_mean_2D), np.array(self.noise_sim_std_2D), self.white_noise_covariance
-
+        return (
+            (self.noise_sim_mean_2d, self.noise_sim_mean_2d), 
+            (self.noise_sim_std_2d, self.noise_sim_std_1d), 
+            (self.white_noise_covariance_2d, self.white_noise_covariance_1d)
+        )
 
 
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
@@ -705,13 +723,11 @@ class CrossSpectrum_nmaps:
     
             outname = os.path.join(path, self.outname)
 
-        print(self.__dict__.keys())
-        sys.exit()
         with h5py.File(outname, "w") as outfile:
             outfile.create_dataset("mappath1", data=self.name_of_map[0])
             outfile.create_dataset("mappath2", data=self.name_of_map[1])
             outfile.create_dataset("xs_2d", data=self.xs_2d[0])
-            outfile.create_dataset("xs_1d", data=self.xs_1d[0])
+            outfile.create_dataset("xs_1d", data=self.xs_1d[0]) 
             outfile.create_dataset("k_2d", data=self.k_2d[0])
             outfile.create_dataset("k_1d", data=self.k_1d[0])
             outfile.create_dataset("k_bin_edges_perp", data=self.k_bin_edges_perp)
@@ -731,21 +747,16 @@ class CrossSpectrum_nmaps:
             
 
             if self.params.psx_white_noise_sim_seed is not None:
-                outfile.create_dataset("noise_sim_mean_2d", data=self.noise_sim_mean_2D)
-                outfile.create_dataset("noise_sim_mean_1d", data=self.noise_sim_mean_2D)
-                outfile.create_dataset("noise_sim_std_2d", data=self.noise_sim_std_2D)
-                outfile.create_dataset("noise_sim_std_1d", data=self.noise_sim_std_1D)
-                outfile.create_dataset("white_noise_covariance_2d", data=self.white_noise_covariance_2d)
-                outfile.create_dataset("white_noise_covariance_1d", data=self.white_noise_covariance_1d)
-                outfile.create_dataset("white_noise_simulation_1d", data = self.all_noise_simulations_1d)
-                outfile.create_dataset("white_noise_simulation_", data = self.all_noise_simulations)
                 outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
-            else:
-                outfile.create_dataset("noise_sim_mean_2D", data=self.noise_sim_mean_2D[0])
-                outfile.create_dataset("noise_sim_std_2D", data=self.noise_sim_std_2D[0])
-                outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
-                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
-    
+
+            outfile.create_dataset("noise_sim_mean_2d", data=self.noise_sim_mean_2d)
+            outfile.create_dataset("noise_sim_mean_1d", data=self.noise_sim_mean_2d)
+            outfile.create_dataset("noise_sim_std_2d", data=self.noise_sim_std_2d)
+            outfile.create_dataset("noise_sim_std_1d", data=self.noise_sim_std_1d)
+            outfile.create_dataset("white_noise_covariance_2d", data=self.white_noise_covariance_2d)
+            outfile.create_dataset("white_noise_covariance_1d", data=self.white_noise_covariance_1d)
+            outfile.create_dataset("white_noise_simulation_1d", data = self.all_noise_simulations_1d)
+            outfile.create_dataset("white_noise_simulation_2d", data = self.all_noise_simulations_2d)
     
     def read_spectrum(self, indir, inname = None):
         if inname is None:
