@@ -1561,7 +1561,7 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
     cutoff_list = np.zeros((n_split-1, 20, 4), dtype='f')
     
     n_scans, n_det, n_sb, _ = scan_data.shape
-    jk_list = np.zeros((n_scans, n_det, n_sb), dtype=np.int32)
+    jk_list = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
 
     if not np.any(accept_list.flatten()):
         jk_list[:] = 0 
@@ -1577,7 +1577,26 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
 
 
 def implement_split(scan_data, jk_list, cutoff_list, string, n):
+    
+    # Generating all possible random split keys
+    import itertools
+    rndstrings = ["rnd","RND","Rnd","RNd","rNd","RnD","rnD","rND",]
 
+    capital_letter_range = list(range(65, 91))
+    letter_range = list(range(97, 123))
+    total_range = capital_letter_range + letter_range 
+    combos = list(itertools.product(rndstrings, total_range))
+    subseeds = []
+    allstrings = []
+    for combo in combos:
+        combostring, i = combo
+        combostring = combostring + chr(i)
+        allstrings.append(combostring)
+        subseed = np.sum([ord(c) for c in combostring])
+        while subseed in subseeds:
+            subseed += 1
+        subseeds.append(subseed)
+        
     # even/odd
     if string == 'odde':
         obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
@@ -1585,35 +1604,16 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
 
         jk_list[:] += odd[:, None, None] * int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-
-    elif string == 'rndA':
+    elif "rnd" in string.casefold():
         # random scan split
-        np.random.seed(83762)
+        seed = 83762
+        seed += subseeds[allstrings.index(string)]
+        np.random.seed(seed)
         bits = np.random.randint(0, 2, int(1e8))
         bits = bits[scan_list.astype(int)]
         jk_list += bits[:, None, None] * int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'rndB':
-        # random scan split
-        np.random.seed(38826)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'rndC':
-        # random scan split
-        np.random.seed(23985)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'rndD':
-        # random scan split
-        np.random.seed(439927)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
+    
     elif string == 'dayn':
         # day/night split
         closetonight = extract_data_from_array(scan_data, 'night')
