@@ -572,65 +572,72 @@ class CrossSpectrum_nmaps:
         self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), n_k)
         self.k_bin_edges_perp = np.logspace(-2.0 + np.log10(2), np.log10(1.5), n_k)
 
-        for i in range(0, len(self.maps) - 1, 2):
-            j = i + 1
+        i = 0
+        j = 1
 
-            self.normalize_weights(i, j)
-            wi = self.maps[i].w.copy()
-            wj = self.maps[j].w.copy()
-            
-            wh_i = np.where(np.log10(wi) < -0.5)
-            wh_j = np.where(np.log10(wj) < -0.5)
-            
-            wi[wh_i] = 0.0
-            wj[wh_j] = 0.0
-            
-            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
+        self.normalize_weights(i, j)
+        wi = self.maps[i].w.copy()
+        wj = self.maps[j].w.copy()
+        
+        wh_i = np.where(np.log10(wi) < -0.5)
+        wh_j = np.where(np.log10(wj) < -0.5)
+        
+        wi[wh_i] = 0.0
+        wj[wh_j] = 0.0
+        
+        full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
 
-            full_weight[wi * wj == 0] = 0.0
-            full_weight[np.isnan(full_weight)] = 0.0
+        full_weight[wi * wj == 0] = 0.0
+        full_weight[np.isnan(full_weight)] = 0.0
 
-            if seed is not None:
-                if self.maps[i].feed is not None:
-                    feeds = np.array([self.maps[i].feed, self.maps[j].feed])
-                else:
-                    feeds = np.array([1, 1])
+        if seed is not None:
+            if self.maps[i].feed is not None:
+                feeds = np.array([self.maps[i].feed, self.maps[j].feed])
+            else:
+                feeds = np.array([1, 1])
 
-            noise_sim_2d = np.zeros(
-                (len(self.k_bin_edges_perp) - 1, len(self.k_bin_edges_par) - 1, n_sims)
-            )
-            noise_sim_1d = np.zeros(
-                (len(self.k_bin_edges_1d) - 1, n_sims)
-            )
+        noise_sim_2d = np.zeros(
+            (len(self.k_bin_edges_perp) - 1, len(self.k_bin_edges_par) - 1, n_sims)
+        )
+        noise_sim_1d = np.zeros(
+            (len(self.k_bin_edges_1d) - 1, n_sims)
+        )
 
-
-            for g in range(n_sims):
-
-                randmap = [
-                    np.zeros(self.maps[i].rms.shape),
-                    np.zeros(self.maps[i].rms.shape),
-                ]
-                for l in range(2):
-                    if seed is not None:
-                        np.random.seed(seed * (g + 1) * (l + 1) + feeds[l])
-                    randmap[l] = (
-                        np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
-                    )
-                
-                my_xs, _, _ = tools.compute_cross_spec_2d_and_1d(
-                    (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
-                    (self.k_bin_edges_perp, self.k_bin_edges_par, self.k_bin_edges_1d),
-                    self.params,
-                    is_wn = True,
-                    dx=self.maps[i].dx,
-                    dy=self.maps[i].dy,
-                    dz=self.maps[i].dz,
+        seeds = []
+        for g in range(n_sims):
+            randmap = [
+                np.zeros(self.maps[i].rms.shape),
+                np.zeros(self.maps[i].rms.shape),
+            ]
+            for l in range(2):
+                if seed is not None:
+                    newseed = seed * (g + 1) * (l + 1) + feeds[l]
+                    # Make sure not to use same seed for any feed combo
+                    while newseed in seeds:
+                        newseed += 1
+                    seeds.append(newseed)
+                    np.random.seed(newseed)
+                # if seed is not None:
+                #     print(seed * (g + 1) * (l + 1) + feeds[l])
+                #     np.random.seed(seed * (g + 1) * (l + 1) + feeds[l])
+                randmap[l] = (
+                    np.random.randn(*self.maps[l].rms.shape) * self.maps[l].rms
                 )
 
-                my_xs_2d, my_xs_1d = my_xs
+            my_xs, _, _ = tools.compute_cross_spec_2d_and_1d(
+                (randmap[i] * full_weight, randmap[j] * full_weight),
+                (self.k_bin_edges_perp, self.k_bin_edges_par, self.k_bin_edges_1d),
+                self.params,
+                is_wn = True,
+                dx=self.maps[i].dx,
+                dy=self.maps[i].dy,
+                dz=self.maps[i].dz,
+            )
 
-                noise_sim_2d[..., g] = my_xs_2d
-                noise_sim_1d[..., g] = my_xs_1d
+            my_xs_2d, my_xs_1d = my_xs
+            
+            noise_sim_2d[..., g] = my_xs_2d
+            noise_sim_1d[..., g] = my_xs_1d
                 
             # noise_sim *= self.params.psx_white_noise_transfer_function[..., None]
             
@@ -638,19 +645,19 @@ class CrossSpectrum_nmaps:
                 i, j
             )  # go back to the previous state to normalize again with a different map-pair
 
-            self.white_noise_covariance_2d = np.cov(noise_sim_2d.reshape((n_k - 1) ** 2, n_sims), ddof=1)
-            self.white_noise_covariance_1d = np.cov(noise_sim_1d, ddof=1)
+        self.white_noise_covariance_2d = np.cov(noise_sim_2d.reshape((n_k - 1) ** 2, n_sims), ddof=1)
+        self.white_noise_covariance_1d = np.cov(noise_sim_1d, ddof=1)
 
-            self.noise_sim_mean_2d = np.mean(noise_sim_2d, axis=2)
-            self.noise_sim_std_2d = np.std(noise_sim_2d, axis=2, ddof=1)
-            self.all_noise_simulations_2d = noise_sim_2d
-            
-            self.noise_sim_mean_1d = np.mean(noise_sim_1d, axis=1)
-            self.noise_sim_std_1d = np.std(noise_sim_1d, axis=1, ddof=1)
-            self.all_noise_simulations_1d = noise_sim_1d
+        self.noise_sim_mean_2d = np.mean(noise_sim_2d, axis=2)
+        self.noise_sim_std_2d = np.std(noise_sim_2d, axis=2, ddof=1)
+        self.all_noise_simulations_2d = noise_sim_2d
+        
+        self.noise_sim_mean_1d = np.mean(noise_sim_1d, axis=1)
+        self.noise_sim_std_1d = np.std(noise_sim_1d, axis=1, ddof=1)
+        self.all_noise_simulations_1d = noise_sim_1d
 
-            self.all_noise_simulations_2d = np.array(self.all_noise_simulations_2d).transpose(2, 0, 1)
-            self.all_noise_simulations_1d = np.array(self.all_noise_simulations_1d).transpose(1, 0)
+        self.all_noise_simulations_2d = np.array(self.all_noise_simulations_2d).transpose(2, 0, 1)
+        self.all_noise_simulations_1d = np.array(self.all_noise_simulations_1d).transpose(1, 0)
 
         return (
             (self.noise_sim_mean_2d, self.noise_sim_mean_2d), 

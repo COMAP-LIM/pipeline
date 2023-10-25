@@ -278,6 +278,7 @@ class COMAP2FPXS():
                     cross_spectrum.calculate_xs_1d_and_2d(
                         n_k=self.params.psx_number_of_k_bins + 1,
                     )
+                    
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -293,7 +294,6 @@ class COMAP2FPXS():
                             no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                             seed = seed,
                         )
-
                     else:
                         cross_spectrum.xs *= transfer_function_wn
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance", "white_noise_simulation"], outdir_data)
@@ -376,15 +376,15 @@ class COMAP2FPXS():
             if not os.path.exists(outdir):
                 os.mkdir(outdir)
 
-            xs_mean = np.zeros((N_splits, N_k, N_k))
-            xs_error = np.zeros((N_splits, N_k, N_k))
-            xs_covariance = np.zeros((N_splits, N_k ** 2, N_k ** 2))
-            xs_full_operator = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            xs_mean_2d = np.zeros((N_splits, N_k, N_k))
+            xs_error_2d = np.zeros((N_splits, N_k, N_k))
+            xs_covariance_2d = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            xs_full_operator_2d = np.zeros((N_splits, N_k ** 2, N_k ** 2))
             
-            xs_wn_covariance = np.zeros((N_splits, N_k ** 2, N_k ** 2))
-            xs_wn_mean = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k, N_k))
-            chi2_wn = np.zeros((N_splits, self.params.psx_noise_sim_number))
-            chi2_wn_cov = np.zeros((N_splits, self.params.psx_noise_sim_number))
+            xs_wn_covariance_2d = np.zeros((N_splits, N_k ** 2, N_k ** 2))
+            xs_wn_mean_2d = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k, N_k))
+            chi2_wn_2d = np.zeros((N_splits, self.params.psx_noise_sim_number))
+            chi2_wn_cov_2d = np.zeros((N_splits, self.params.psx_noise_sim_number))
 
             xs_mean_1d = np.zeros((N_splits, N_k))
             xs_error_1d = np.zeros((N_splits, N_k))
@@ -422,9 +422,13 @@ class COMAP2FPXS():
                     xs_sum = np.zeros(N_k ** 2)
                     xs_inv_cov = np.zeros((N_k ** 2, N_k ** 2))
                 else:
-                    wn_xs_sum = np.zeros((self.params.psx_noise_sim_number, N_k, N_k))
-                    xs_sum = np.zeros((N_k, N_k))
-                    xs_inv_var = np.zeros((N_k, N_k))
+                    wn_xs_sum_2d = np.zeros((self.params.psx_noise_sim_number, N_k, N_k))
+                    xs_sum_2d = np.zeros((N_k, N_k))
+                    xs_inv_var_2d = np.zeros((N_k, N_k))
+                    
+                    wn_xs_sum_1d = np.zeros((self.params.psx_noise_sim_number, N_k))
+                    xs_sum_1d = np.zeros(N_k)
+                    xs_inv_var_1d = np.zeros(N_k)
                 
                 chi2 = np.zeros((N_feed, N_feed))
                 accepted_chi2 = np.zeros((N_feed, N_feed))
@@ -454,9 +458,12 @@ class COMAP2FPXS():
                         #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
                         
-                        xs_wn = cross_spectrum.white_noise_simulation_2d
+                        xs_wn_2d = cross_spectrum.white_noise_simulation_2d
                         xs_2d = cross_spectrum.xs_2d
                         xs_sigma_2d = cross_spectrum.noise_sim_std_2d
+                        
+                        # print(xs_2d)
+                        # print(xs_sigma_2d)
                         
                         xs_wn_1d = cross_spectrum.white_noise_simulation_1d
                         xs_1d = cross_spectrum.xs_1d
@@ -470,7 +477,7 @@ class COMAP2FPXS():
                         k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
                         k_bin_edges_1d = cross_spectrum.k_bin_edges_1d
                         
-                        transfer_function, _ = tools.bin_transfer_function_to_2d_and_1d(
+                        transfer_function_2d, transfer_function_1d = tools.bin_transfer_function_to_2d_and_1d(
                                     self.mapshape,
                                     (k_bin_edges_perp, k_bin_edges_par, k_bin_edges_1d),
                                     self.params,
@@ -479,31 +486,35 @@ class COMAP2FPXS():
                                     self.map_dz,
                         )
 
-                        print(transfer_function.shape)
-
-
-                        tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
-
-                        transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
-
-                        _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
-                        # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
-                        _transfer_function_mask[:4, :] = False
+                        print(transfer_function_2d.shape)
                         
-                        transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
+                        tf_cutoff_2d = self.params.psx_tf_cutoff * np.nanmax(transfer_function_2d)
+                        tf_cutoff_1d = self.params.psx_tf_cutoff * np.nanmax(transfer_function_1d)
+
+                        transfer_function_mask_2d = np.logical_and(transfer_function_2d > tf_cutoff_2d, np.sign(transfer_function_2d) >= 0) 
+                        transfer_function_mask_1d = np.logical_and(transfer_function_1d > tf_cutoff_1d, np.sign(transfer_function_1d) >= 0) 
+
+                        _transfer_function_mask_2d = np.ones_like(transfer_function_2d, dtype = bool)
+                        _transfer_function_mask_1d = np.ones_like(transfer_function_1d, dtype = bool)
+                        # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
+                        _transfer_function_mask_2d[:4, :] = False
+                        # _transfer_function_mask_1d[:4] = False
+                        
+                        transfer_function_mask_2d = np.logical_and(transfer_function_mask_2d, _transfer_function_mask_2d)
+                        transfer_function_mask_1d = np.logical_and(transfer_function_mask_1d, _transfer_function_mask_1d)
 
                         chi3 = np.nansum(
-                        (xs_2d[transfer_function_mask] / xs_sigma_2d[transfer_function_mask]) ** 3
+                        (xs_2d[transfer_function_mask_2d] / xs_sigma_2d[transfer_function_mask_2d]) ** 3
                         )
-                            
-                        number_of_samples = np.sum(transfer_function_mask)
+                                                
+                        number_of_samples = np.sum(transfer_function_mask_2d)
 
                         if np.all(xs_2d / xs_sigma_2d == 0) or np.all(~np.isfinite(xs_2d / xs_sigma_2d)):
                             chi2[feed1, feed2] = np.nan
                             continue
                         else:
                             chi2[feed1, feed2] = np.sign(chi3) * abs(
-                                (np.nansum((xs_2d[transfer_function_mask]  / xs_sigma_2d[transfer_function_mask] ) ** 2) - number_of_samples)
+                                (np.nansum((xs_2d[transfer_function_mask_2d]  / xs_sigma_2d[transfer_function_mask_2d] ) ** 2) - number_of_samples)
                                 / np.sqrt(2 * number_of_samples)
                             )
                         
@@ -520,11 +531,13 @@ class COMAP2FPXS():
 
                         if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
                             if accept_chi2:
-                                xs_sum += xs_2d / xs_sigma_2d ** 2
-                                wn_xs_sum += xs_wn / xs_sigma_2d[None, ...] ** 2
-                                xs_inv_var += 1 / xs_sigma_2d ** 2
-                print("EXIT")
-                sys.exit()
+                                xs_sum_2d += xs_2d / xs_sigma_2d ** 2
+                                wn_xs_sum_2d += xs_wn_2d / xs_sigma_2d[None, ...] ** 2
+                                xs_inv_var_2d += 1 / xs_sigma_2d ** 2
+
+                                xs_sum_1d += xs_1d / xs_sigma_1d ** 2
+                                wn_xs_sum_1d += xs_wn_1d / xs_sigma_1d[None, ...] ** 2
+                                xs_inv_var_1d += 1 / xs_sigma_1d ** 2
                                   
                 if self.params.psx_null_diffmap:
                     _chi2 = loaded_chi2_grid[current_cross_variable, ...].copy()
@@ -538,126 +551,71 @@ class COMAP2FPXS():
                         _chi2[ii, ii] = np.inf
                     print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit))
 
-                if self.params.psx_use_full_wn_covariance:
-                    xs_covariance[i, ...] = np.linalg.inv(xs_inv_cov)
-                    xs_mean[i, ...] = (xs_covariance[i, ...] @ xs_sum).reshape(N_k, N_k)
-                    xs_error[i, ...] = np.sqrt(xs_covariance[i, ...].diagonal().reshape(N_k, N_k))
-                    xs_full_operator[i, ...] = xs_covariance[i, ...]
-                else:
-                    xs_mean[i, ...] = xs_sum / xs_inv_var
-                    xs_error[i, ...] = 1.0 / np.sqrt(xs_inv_var)
+                ##################################################
 
-                    xs_wn_mean[i, ...] = wn_xs_sum / xs_inv_var[None, ...]
+                xs_mean_2d[i, ...] = xs_sum_2d / xs_inv_var_2d
+                xs_error_2d[i, ...] = 1.0 / np.sqrt(xs_inv_var_2d)
 
-                    xs_wn_covariance[i, ...] = np.cov(xs_wn_mean[i, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k).T, ddof = 1)
+                xs_wn_mean_2d[i, ...] = wn_xs_sum_2d / xs_inv_var_2d[None, ...]
 
-                    # _error = np.sqrt(xs_wn_covariance[i, ...].diagonal())[None, transfer_function_mask.flatten()]
+                xs_wn_covariance_2d[i, ...] = np.cov(xs_wn_mean_2d[i, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k).T, ddof = 1)
 
-                    chi2_wn_data = xs_wn_mean[i, :, transfer_function_mask].T
-                    chi2_wn[i, :] = np.nansum((chi2_wn_data  / xs_error[i, None, transfer_function_mask].T) ** 2, axis = 1)
-                    # chi2_wn[i, :] = np.nansum((chi2_wn_data  / _error) ** 2, axis = 1)
-                    
-                    flattened_mask = transfer_function_mask.flatten()
-                    flattened_chi2_wn_data = xs_wn_mean[i, :, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k)
-                    
-                    # flattened_chi2_wn_data[:, ~flattened_mask] = 0
-                    flattened_chi2_wn_data = flattened_chi2_wn_data[:, flattened_mask]
-                    
-                    cov_2d = xs_wn_covariance[i, flattened_mask, :]
-                    cov_2d = cov_2d[:, flattened_mask]
-                    
-                    # inv_xs_wn_covariance = np.linalg.inv(xs_wn_covariance[i, ...])
-                    inv_xs_wn_covariance = np.linalg.inv(cov_2d)
+                # _error = np.sqrt(xs_wn_covariance_2d[i, ...].diagonal())[None, transfer_function_mask.flatten()]
 
-
-                    # inv_xs_wn_covariance[:, ~flattened_mask] = 0
-                    # inv_xs_wn_covariance[~flattened_mask, :] = 0
-
-                    for k in range(self.params.psx_noise_sim_number):
-                        chi2_wn_cov[i, k] = flattened_chi2_wn_data[k, :].T @ inv_xs_wn_covariance @ flattened_chi2_wn_data[k, :]
-                        # chi2_wn_cov[i, k] = flattened_chi2_wn_data[k, :].T @ _cov_inv @ flattened_chi2_wn_data[k, :]
+                chi2_wn_data_2d = xs_wn_mean_2d[i, :, transfer_function_mask_2d].T
+                chi2_wn_2d[i, :] = np.nansum((chi2_wn_data_2d  / xs_error_2d[i, None, transfer_function_mask_2d].T) ** 2, axis = 1)
                 
-                if np.all(~np.isfinite(chi2)):
-                    continue
-
-                weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
-
-                xs_1d = xs_mean[i, ...].copy()
-                xs_wn_1d = xs_wn_mean[i, ...].copy()
-
-                # transfer_function_mask = np.logical_and(transfer_function_mask, xs_error[i, ...] < xs_error[i, ...].max() * 0.5)
-
-                weights[~transfer_function_mask] = 0.0
-            
-                xs_1d /= transfer_function
-                xs_1d *= weights
-
-                xs_wn_1d /= transfer_function[None, ...]
-                xs_wn_1d *= weights[None, ...]
-
-                k_bin_edges = np.logspace(-2.0, np.log10(1.5), len(k_bin_centers_perp) + 1)
-
-                kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(k_bin_centers_perp, k_bin_centers_par, indexing="ij")))
-
-
-                Ck_nmodes_1d = np.histogram(
-                    kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_1d[kgrid > 0]
-                )[0]
-                inv_var_nmodes_1d = np.histogram(
-                    kgrid[kgrid > 0], bins=k_bin_edges, weights=weights[kgrid > 0]
-                )[0]
-                nmodes_1d = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
-
-                # Binning up the 2D noise spectra
-                Ck_wn_nmodes_1d = np.zeros((self.params.psx_noise_sim_number, k_bin_edges.size - 1))
-                for n in range(self.params.psx_noise_sim_number):
-                    Ck_wn_nmodes_1d[n, :] = np.histogram(
-                    kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_wn_1d[n, kgrid > 0]
-                )[0]
-
-                # Ck = Ck_nmodes / nmodes
-                k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
+                flattened_mask = transfer_function_mask_2d.flatten()
+                flattened_chi2_wn_data_2d = xs_wn_mean_2d[i, :, ...].reshape(self.params.psx_noise_sim_number, N_k * N_k)
                 
-                Ck_1d = np.zeros_like(k_1d)
-                Ck_wn_1d = np.zeros((self.params.psx_noise_sim_number, k_1d.size))
-                rms_1d = np.zeros_like(k_1d)
+                flattened_chi2_wn_data_2d = flattened_chi2_wn_data_2d[:, flattened_mask]
                 
-                Ck_1d[np.where(nmodes_1d > 0)] = (
-                    Ck_nmodes_1d[np.where(nmodes_1d > 0)]
-                    / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
-                )
-                rms_1d[np.where(nmodes_1d > 0)] = np.sqrt(
-                    1 / inv_var_nmodes_1d[np.where(nmodes_1d > 0)]
-                )
-
-                Ck_wn_1d[:, np.where(nmodes_1d > 0)] = (
-                    Ck_wn_nmodes_1d[:, np.where(nmodes_1d > 0)]
-                    / inv_var_nmodes_1d[None, np.where(nmodes_1d > 0)]
-                )
-
-                xs_error_1d[i, ...] = rms_1d
-
-                xs_mean_1d[i, ...] = Ck_1d
-                xs_wn_mean_1d[i, ...] = Ck_wn_1d
-                xs_wn_covariance_1d[i, ...] = np.cov(Ck_wn_1d.T)
-
-                mask = np.where(np.isfinite(Ck_1d / rms_1d))[0]
-                cov_1d = xs_wn_covariance_1d[i, mask, :]
-                cov_1d = cov_1d[:, mask]
+                cov_2d = xs_wn_covariance_2d[i, flattened_mask, :]
+                cov_2d = cov_2d[:, flattened_mask]
                 
-                chi2_wn_data_1d = xs_wn_mean_1d[i, :, mask].T
+                inv_xs_wn_covariance_2d = np.linalg.inv(cov_2d)
+
+                for k in range(self.params.psx_noise_sim_number):
+                    chi2_wn_cov_2d[i, k] = flattened_chi2_wn_data_2d[k, :].T @ inv_xs_wn_covariance_2d @ flattened_chi2_wn_data_2d[k, :]
                 
-                _error_1d = np.sqrt(cov_1d.diagonal())
-                self._error_1d = _error_1d.copy()
+                
+                ##################################################
+                
+                xs_mean_1d[i, ...] = xs_sum_1d / xs_inv_var_1d
+                xs_error_1d[i, ...] = 1.0 / np.sqrt(xs_inv_var_1d)
 
-                chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / _error_1d) ** 2, axis = 1)
-                # chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / rms_1d[None, mask]) ** 2, axis = 1)
+                print(wn_xs_sum_1d.shape, xs_inv_var_1d.shape, np.cov(xs_wn_mean_1d[i, ...].T, ddof = 1).shape)
+                
+                xs_wn_mean_1d[i, ...] = wn_xs_sum_1d / xs_inv_var_1d[None, ...]
 
+                xs_wn_covariance_1d[i, ...] = np.cov(xs_wn_mean_1d[i, ...].T, ddof = 1)
+
+                # _error = np.sqrt(xs_wn_covariance_1d[i, ...].diagonal())[None, transfer_function_mask.flatten()]
+
+                chi2_wn_data_1d = xs_wn_mean_1d[i, :, transfer_function_mask_1d].T
+                chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / xs_error_1d[i, None, transfer_function_mask_1d].T) ** 2, axis = 1)
+                print("hei")
+                flattened_mask = transfer_function_mask_1d.flatten()
+                flattened_chi2_wn_data_1d = xs_wn_mean_1d[i, :, ...]
+                
+                flattened_chi2_wn_data_1d = flattened_chi2_wn_data_1d[:, flattened_mask]
+                
+                cov_1d = xs_wn_covariance_1d[i, flattened_mask, :]
+                cov_1d = cov_1d[:, flattened_mask]
+                
                 inv_xs_wn_covariance_1d = np.linalg.inv(cov_1d)
 
                 for k in range(self.params.psx_noise_sim_number):
-                    chi2_wn_cov_1d[i, k] = chi2_wn_data_1d[k, :].T @ inv_xs_wn_covariance_1d @ chi2_wn_data_1d[k, :]
+                    chi2_wn_cov_1d[i, k] = flattened_chi2_wn_data_1d[k, :].T @ inv_xs_wn_covariance_1d @ flattened_chi2_wn_data_1d[k, :]
+                
+                
+                print(chi2)
+                if np.all(~np.isfinite(chi2)):
+                    continue
 
+                print("EXIT")
+                sys.exit()
+                
                 # sys.exit()
                 if not self.params.psx_generate_white_noise_sim:
                     if self.params.psx_mode == "saddlebag":
