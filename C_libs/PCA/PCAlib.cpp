@@ -52,7 +52,7 @@ void PCA(float *X, bool *mask, double *r, double *lambda, double *err, int n, in
         for(int i=0; i<p; i++){
             s[i] = 0.0;
         }
-        #pragma omp parallel for reduction(+:s[:p])
+        //#pragma omp parallel for reduction(+:s[:p])
         for(int row=0; row<n; row++){
             if(mask[row]){
                 double xr_dot = dot_product_float_double(&X[row*p], r, p);

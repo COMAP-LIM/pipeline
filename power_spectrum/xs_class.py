@@ -206,7 +206,7 @@ class CrossSpectrum_nmaps:
 
             wi = self.maps[i].w.copy()
             wj = self.maps[j].w.copy()
-            
+
             wh_i = np.where((np.log10(wi) < -0.5))
             wh_j = np.where((np.log10(wj) < -0.5))
             wi[wh_i] = 0.0
@@ -530,7 +530,6 @@ class CrossSpectrum_nmaps:
 
             seeds = []
             for g in range(n_sims):
-
                 randmap = [
                     np.zeros(self.maps[i].rms.shape),
                     np.zeros(self.maps[i].rms.shape),
@@ -613,6 +612,8 @@ class CrossSpectrum_nmaps:
             outfile["dy"].attrs["unit"] = "Mpc"
             outfile["dz"].attrs["unit"] = "Mpc"
             
+            outfile.create_dataset("IoU", data = self.IoU)
+            outfile.create_dataset("weighted_overlap", data = self.weighted_overlap)
 
             if self.params.psx_white_noise_sim_seed is not None:
                 outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)

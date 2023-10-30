@@ -252,8 +252,6 @@ class COMAP2FPXS():
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
 
-                    k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k[0]
-                    
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
                         
@@ -262,23 +260,42 @@ class COMAP2FPXS():
                             t = time.time()
                             seed = int(np.round((t - np.floor(t)) * 1e4))
 
-                        # self.params.psx_white_noise_transfer_function = transfer_function_wn
 
+                        # Computing overlap quantities
+                        inv_rms0 = 1.0 / cross_spectrum.maps[0].rms.copy()
+                        inv_rms1 = 1.0 / cross_spectrum.maps[1].rms.copy()
+                        
+                        IoU = np.sum(np.logical_and(np.isfinite(inv_rms0), np.isfinite(inv_rms1)), axis = (0, 1)).astype(float)
+                        IoU /= np.sum(np.logical_or(np.isfinite(inv_rms0), np.isfinite(inv_rms1)), axis = (0, 1)).astype(float)
+                        cross_spectrum.IoU = np.nanmean(IoU)
+                        
+                        inv_rms0[~np.isfinite(inv_rms0)] = np.nan
+                        inv_rms1[~np.isfinite(inv_rms1)] = np.nan
+                        
+                        cross_spectrum.weighted_overlap = (
+                            (inv_rms0 * inv_rms1) 
+                            / np.sqrt(np.nansum(inv_rms0 ** 2, axis = (0, 1)) * np.nansum(inv_rms1 ** 2, axis = (0, 1)))[None, None, :]
+                        )
+                        
+                        cross_spectrum.weighted_overlap = np.nansum(cross_spectrum.weighted_overlap, axis = (0, 1))
+                        
+                        cross_spectrum.weighted_overlap = np.nanmean(cross_spectrum.weighted_overlap[cross_spectrum.weighted_overlap != 0])
+                        
                         cross_spectrum.run_noise_sims_2d(
                             self.params.psx_noise_sim_number,
                             no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                             seed = seed + (i + 1),
                         )
+
                     else:
                         cross_spectrum.xs *= transfer_function_wn
                         cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D", "white_noise_covariance", "white_noise_simulation"], outdir_data)
-                    
+                                        
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
-                
+
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
-        
         if self.rank == 0:
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
@@ -395,6 +412,9 @@ class COMAP2FPXS():
                 chi2 = np.zeros((N_feed, N_feed))
                 accepted_chi2 = np.zeros((N_feed, N_feed))
 
+                mean_IoUs = np.zeros((N_feed, N_feed)) * np.nan
+                mean_weighted_overlaps = np.zeros((N_feed, N_feed)) * np.nan
+                
                 for feed1 in range(N_feed):
                     for feed2 in range(N_feed):
                         cross_spectrum = xs_class.CrossSpectrum_nmaps(
@@ -410,7 +430,7 @@ class COMAP2FPXS():
                             continue            
                         
                         
-                        cross_spectrum.read_and_append_attribute(["white_noise_simulation"], indir)
+                        cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap"], indir)
                         #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
                         xs_wn = cross_spectrum.white_noise_simulation
@@ -466,7 +486,9 @@ class COMAP2FPXS():
                             accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
                         
                         accepted_chi2[feed1, feed2] = accept_chi2
-
+                        mean_weighted_overlaps[feed1, feed2] = cross_spectrum.weighted_overlap
+                        mean_IoUs[feed1, feed2] = cross_spectrum.IoU
+                
                         if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
                             if accept_chi2:
                                 if self.params.psx_use_full_wn_covariance:
@@ -489,7 +511,7 @@ class COMAP2FPXS():
                                     xs_sum += xs / xs_sigma ** 2
                                     wn_xs_sum += xs_wn / xs_sigma[None, ...] ** 2
                                     xs_inv_var += 1 / xs_sigma ** 2
-                                   
+                                    
                 if self.params.psx_null_diffmap:
                     _chi2 = loaded_chi2_grid[current_cross_variable, ...].copy()
                     for ii in range(_chi2.shape[0]):
@@ -628,8 +650,6 @@ class COMAP2FPXS():
                 chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / _error_1d) ** 2, axis = 1)
                 # chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / rms_1d[None, mask]) ** 2, axis = 1)
                 
-                
-                
                 inv_xs_wn_covariance_1d = np.linalg.inv(cov_1d)
 
                 for k in range(self.params.psx_noise_sim_number):
@@ -664,7 +684,8 @@ class COMAP2FPXS():
                         loaded_chi2_grids[i, ...] = loaded_chi2_grid[current_cross_variable, ...]
 
                     self.plot_chi2_grid(chi2, accepted_chi2, splits, chi2_name)
-
+                    self.plot_overlap_stats(mean_IoUs, mean_weighted_overlaps, accepted_chi2, splits, chi2_name)
+                    
                     if self.params.psx_mode == "saddlebag":
                         average_name = os.path.join(fig_dir, "average_spectra_saddlebag")
                     else:
@@ -1303,7 +1324,7 @@ class COMAP2FPXS():
                 fmt = " ",
                 color = "g",
             )
-            print(all_pt_coadded)
+
             ax[0].scatter(
                 0.24 + 0.24 * 0.05,
                 0.24 * all_pt_coadded,
@@ -1472,6 +1493,176 @@ class COMAP2FPXS():
         
         fig.savefig(outname_corr, bbox_inches = "tight")
 
+    def plot_overlap_stats(self, IoU: npt.NDArray, weighted_overlap: npt.NDArray, chi2_mask: npt.NDArray, splits: tuple, outname: str):
+        """Method that plots feed-split grid of FPXS chi-squared values
+
+        Args:
+            IoU (npt.NDArray): Array of map intersection-over-union values for all feed and split combinations
+            weighted_overlap (npt.NDArray): Array of noise weighted map overlap quantities for all feed and split combinations
+            chi2_mask (npt.NDArray): Array of chi2 mask values for all feed and split combinations
+            splits (tuple): Split names that were crossed
+            outname (str): Plot file output path
+        """
+
+        # Define default ticks label sizes
+        matplotlib.rcParams["xtick.labelsize"] = 10
+        matplotlib.rcParams["ytick.labelsize"] = 10
+        matplotlib.rcParams["hatch.color"] = "lightgray"
+        matplotlib.rcParams["hatch.linewidth"] = 0.3
+
+        # Define the two split names that were cross-correlated
+        if self.params.psx_null_diffmap:
+            split1 = splits[0][0].split("map_")[-1][5:]
+            split2 = splits[1][0].split("map_")[-1][5:]
+        else:
+            split1 = splits[0].split("map_")[-1]
+            split2 = splits[1].split("map_")[-1]
+
+        # Add output name to output path
+        outname = os.path.join(
+            outname, 
+            f"overlap_grid_{split1}_X_{split2}.png"
+            )
+        
+        # Number of detectors used in cross-correlation combinations
+        N_feed = len(self.included_feeds)
+
+        # Define symetric collormap
+        cmap = matplotlib.cm.CMRmap
+
+        # Bad values, i.e. NaN and Inf, are set to black
+        #cmap.set_bad("k", 1)
+
+        # Plot chi2 value grid
+        fig, ax = plt.subplots(2, 2, figsize = (13, 10))
+
+        img = ax[0, 0].imshow(
+            IoU,
+            interpolation = "none",
+            extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap = cmap,
+            vmin = 0,
+            vmax = 1,
+            rasterized = True,
+            zorder = 1,
+        )
+
+        ax[0, 0].fill_between(
+            [0.5, N_feed + 0.5], 
+            0.5, 
+            N_feed + 0.5, 
+            hatch='xxxx', 
+            alpha = 0, 
+            zorder = 2
+        )
+        
+        for i in range(chi2_mask.shape[0]):
+            chi2_mask[i, i] = False
+        
+        # chi2_masked = np.ma.masked_where(~(np.abs(chi2) < self.params.psx_chi2_cut_limit), chi2)
+
+        IoU_masked = np.ma.masked_where(~chi2_mask.astype(bool), IoU)
+
+        ax[0, 0].imshow(
+            IoU_masked,
+            interpolation="none",
+            extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap=cmap,
+            vmin = 0,
+            vmax = 1,
+            rasterized=True,
+            zorder = 3,
+        )
+
+        new_tick_locations = np.array(range(N_feed)) + 1
+        ax[0, 0].set_xticks(new_tick_locations)
+        ax[0, 0].set_yticks(new_tick_locations)
+        
+        ax[0, 0].set_xlabel(f"Feed of {split1}")
+        ax[0, 0].set_ylabel(f"Feed of {split2}")
+        
+        cbar = plt.colorbar(img, ax = ax[0, 0])
+        
+        cbar.set_label(r"IoU")
+
+        ####################################################
+
+        img2 = ax[0, 1].imshow(
+            weighted_overlap,
+            interpolation = "none",
+            extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap = cmap,
+            vmin = 0,
+            vmax = 1,
+            rasterized = True,
+            zorder = 1,
+        )
+
+        ax[0, 1].fill_between(
+            [0.5, N_feed + 0.5], 
+            0.5, 
+            N_feed + 0.5, 
+            hatch='xxxx', 
+            alpha = 0, 
+            zorder = 2
+        )
+        
+        weighted_overlap_masked = np.ma.masked_where(~chi2_mask.astype(bool), weighted_overlap)
+        
+        ax[0, 1].imshow(
+            weighted_overlap_masked,
+            interpolation="none",
+            extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
+            cmap=cmap,
+            vmin = 0,
+            vmax = 1,
+            rasterized=True,
+            zorder = 3,
+        )
+
+
+        new_tick_locations = np.array(range(N_feed)) + 1
+        ax[0, 1].set_xticks(new_tick_locations)
+        ax[0, 1].set_yticks(new_tick_locations)
+        
+        ax[0, 1].set_xlabel(f"Feed of {split1}")
+        ax[0, 1].set_ylabel(f"Feed of {split2}")
+        
+        cbar = plt.colorbar(img2, ax = ax[0, 1])
+        
+        cbar.set_label(r"Noise Weighed Overlap")
+        
+        ####################################################
+        
+        ax[1, 0].axis("off")
+        ax[1, 1].axis("off")
+
+        ax1 = fig.add_subplot(212)
+        
+        ax1.hist(
+            weighted_overlap.flatten(), 
+            histtype = "step",
+            bins = 15,
+            lw = 3,
+            color = "b",
+            label = "Noise Weigted Overlap",
+        )
+        
+        ax1.hist(
+            IoU.flatten(), 
+            histtype = "step",
+            bins = 15,
+            lw = 3,
+            color = "r",
+            label = "IoU",
+        )
+        ax1.legend()
+        ax1.set_ylabel("Number Count")
+        ax1.set_xlabel("Overlap Statistic")
+        ax1.set_xlim(0, 1)
+        
+        fig.savefig(outname, bbox_inches="tight")
+
     def plot_chi2_grid(self, chi2: npt.NDArray, chi2_mask: npt.NDArray, splits: tuple, outname: str):
         """Method that plots feed-split grid of FPXS chi-squared values
 
@@ -1516,9 +1707,9 @@ class COMAP2FPXS():
         norm_chi2_cut = matplotlib.colors.Normalize(vmin=-self.params.psx_chi2_cut_limit, vmax=self.params.psx_chi2_cut_limit)
 
         # Plot chi2 value grid
-        fig, ax = plt.subplots(1, 2, figsize = (13, 5))
+        fig, ax = plt.subplots(2, 2, figsize = (13, 10))
 
-        img = ax[0].imshow(
+        img = ax[0, 0].imshow(
             chi2,
             interpolation = "none",
             norm=norm,
@@ -1528,7 +1719,7 @@ class COMAP2FPXS():
             zorder = 1,
         )
 
-        ax[0].fill_between(
+        ax[0, 0].fill_between(
             [0.5, N_feed + 0.5], 
             0.5, 
             N_feed + 0.5, 
@@ -1544,7 +1735,7 @@ class COMAP2FPXS():
 
         chi2_masked = np.ma.masked_where(~chi2_mask.astype(bool), chi2)
 
-        ax[0].imshow(
+        ax[0, 0].imshow(
             chi2_masked,
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
@@ -1556,20 +1747,20 @@ class COMAP2FPXS():
 
 
         new_tick_locations = np.array(range(N_feed)) + 1
-        ax[0].set_xticks(new_tick_locations)
-        ax[0].set_yticks(new_tick_locations)
+        ax[0, 0].set_xticks(new_tick_locations)
+        ax[0, 0].set_yticks(new_tick_locations)
         
-        ax[0].set_xlabel(f"Feed of {split1}")
-        ax[0].set_ylabel(f"Feed of {split2}")
+        ax[0, 0].set_xlabel(f"Feed of {split1}")
+        ax[0, 0].set_ylabel(f"Feed of {split2}")
         
-        cbar = plt.colorbar(img, ax = ax[0])
+        cbar = plt.colorbar(img, ax = ax[0, 0])
         
         cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
 
         ####################################################
 
-        ax[1].set_title(r"Colorbar zoomed in on $\chi^2$ cut limit")
-        img2 = ax[1].imshow(
+        ax[0, 1].set_title(r"Colorbar zoomed in on $\chi^2$ cut limit")
+        img2 = ax[0, 1].imshow(
             chi2,
             interpolation = "none",
             norm=norm_chi2_cut,
@@ -1579,7 +1770,7 @@ class COMAP2FPXS():
             zorder = 1,
         )
 
-        ax[1].fill_between(
+        ax[0, 1].fill_between(
             [0.5, N_feed + 0.5], 
             0.5, 
             N_feed + 0.5, 
@@ -1592,7 +1783,7 @@ class COMAP2FPXS():
 
         chi2_masked = np.ma.masked_where(~chi2_mask.astype(bool), chi2)
         
-        ax[1].imshow(
+        ax[0, 1].imshow(
             chi2_masked,
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
@@ -1604,18 +1795,38 @@ class COMAP2FPXS():
 
 
         new_tick_locations = np.array(range(N_feed)) + 1
-        ax[1].set_xticks(new_tick_locations)
-        ax[1].set_yticks(new_tick_locations)
+        ax[0, 1].set_xticks(new_tick_locations)
+        ax[0, 1].set_yticks(new_tick_locations)
         
-        ax[1].set_xlabel(f"Feed of {split1}")
-        ax[1].set_ylabel(f"Feed of {split2}")
+        ax[0, 1].set_xlabel(f"Feed of {split1}")
+        ax[0, 1].set_ylabel(f"Feed of {split2}")
         
-        cbar = plt.colorbar(img2, ax = ax[1])
+        cbar = plt.colorbar(img2, ax = ax[0, 1])
         
         cbar.set_label(r"$|\chi^2| \times$ sign($\chi^3$)")
         
-        fig.savefig(outname, bbox_inches="tight")
+        
+        ####################################################
+        
+        
+        ax[1, 0].axis("off")
+        ax[1, 1].axis("off")
 
+        ax1 = fig.add_subplot(212)
+        ax1.hist(
+            chi2_masked.flatten(), 
+            histtype = "step",
+            bins = 25,
+            lw = 3,
+            color = "b",
+        )
+        
+        ax1.set_ylabel("Number Count")
+        ax1.set_xlabel(r"Normalized $\chi^2$")
+        
+        
+        fig.savefig(outname, bbox_inches="tight")
+    
     def read_params(self):
         """Method reading and parsing the parameters from file or command line.
 
