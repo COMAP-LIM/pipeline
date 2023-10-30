@@ -67,8 +67,8 @@ class Subtract_Start_Exponential(Filter):
         else:
             self.start_exp_amp = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             self.start_exp_offset = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
-            time = np.linspace(0, 4999/50, 5000)
-            time_long = np.linspace(0, 9999/50, 10000)
+            time = np.linspace(0, 4999/l2.samprate, 5000)
+            time_long = np.linspace(0, 9999/l2.samprate, 10000)
             for ifeed in range(l2.Nfeeds):
                 for isb in range(l2.Nsb):
                     for ifreq in range(l2.Nfreqs):
@@ -91,9 +91,9 @@ class Normalize_Gain_Gaussian(Filter):
     def __init__(self, params, use_ctypes=False, omp_num_threads=2):
         self.params = params
         self.deci_factor = 20
-        self.gauss_width_lowres = (self.params.gain_norm_gauss_sigma_seconds*50)//self.deci_factor
     
     def run(self, l2):
+        self.gauss_width_lowres = (self.params.gain_norm_gauss_sigma_seconds*l2.samprate)//self.deci_factor
         N_lowres = math.ceil(l2.Ntod/self.deci_factor)
         weight_on_final_point = (l2.Ntod%self.deci_factor)/self.deci_factor
 
@@ -176,7 +176,7 @@ class Normalize_Gain(Filter):
         if not self.use_ctypes:
             for ifeed in range(l2.Nfeeds):
                 for isb in range(l2.Nsb):
-                    tod_lowpass = self.lowpass_filter(l2.tod[ifeed, isb], l2.mask_temporal[ifeed], num_threads=self.omp_num_threads, fknee=self.fknee, alpha=self.alpha)
+                    tod_lowpass = self.lowpass_filter(l2.tod[ifeed, isb], l2.mask_temporal[ifeed], num_threads=self.omp_num_threads, fknee=self.fknee, alpha=self.alpha, samprate=l2.samprate)
                     l2.tod[ifeed,isb] = l2.tod[ifeed,isb]/tod_lowpass - 1
             del(tod_lowpass)
 
@@ -195,8 +195,8 @@ class Normalize_Gain_Old(Filter):
             Uses mirrored padding of signal to deal with edge effects.
             Assumes signal is of shape [freq, time].
         """
-        N = signal.shape[-1]
-        signal_padded = np.zeros((1024, 2*N))
+        Nfreq, N = signal.shape
+        signal_padded = np.zeros((Nfreq, 2*N))
         signal_padded[:,:N] = signal
         signal_padded[:,N:] = signal[:,::-1]
 
@@ -206,9 +206,9 @@ class Normalize_Gain_Old(Filter):
 
 
     def lowpass_filter(self, signal, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
-        Ntod = signal.shape[-1]
+        Nfreq, Ntod = signal.shape
         fastlen = next_fast_len(2*Ntod)
-        signal_padded = np.zeros((1024, fastlen))
+        signal_padded = np.zeros((Nfreq, fastlen))
 
         # signal_padded[:,:Ntod] = signal[:]
         # signal_padded[:,-Ntod:] = signal[:,::-1]
@@ -227,8 +227,8 @@ class Normalize_Gain_Old(Filter):
 
 
     def lowpass_filter_new(self, signal, fastlen, fknee=0.01, alpha=4.0, samprate=50, num_threads=-1):
-        Ntod = signal.shape[-1]
-        signal_padded = np.zeros((1024, fastlen))
+        Nfreq, Ntod = signal.shape
+        signal_padded = np.zeros((Nfreq, fastlen))
         x = np.linspace(0, 1, Ntod)
         c0 = np.nanmean(signal[:,:1000], axis=-1)
         c1 = np.nanmean(signal[:,-1000:], axis=-1) - c0
@@ -267,7 +267,7 @@ class Normalize_Gain_Old(Filter):
             Nfull = next_fast_len(2*l2.Ntod)
             for feed in range(l2.Nfeeds):
                 for sb in range(l2.Nsb):
-                    l2_padded = np.zeros((1024, Nfull), dtype=np.float32)
+                    l2_padded = np.zeros((l2.Nfreqs, Nfull), dtype=np.float32)
                     l2_padded[:,:l2.Ntod] = l2.tod[feed,sb,:,:]
                     l2_padded[:,l2.Ntod:l2.Ntod*2] = l2.tod[feed,sb,:,::-1]
                     l2_padded[:,l2.Ntod*2:] = np.nanmean(l2.tod[feed,sb,:,:400], axis=-1)[:,None]
@@ -498,7 +498,7 @@ class Polynomial_filter(Filter):
         c0 = np.zeros((l2.Nfeeds, l2.Nsb, l2.Ntod)) + np.nan
         c1 = np.zeros((l2.Nfeeds, l2.Nsb, l2.Ntod)) + np.nan
         if not self.use_ctypes:
-            sb_freqs = np.linspace(-1, 1, 1024)
+            sb_freqs = np.linspace(-1, 1, l2.Nfreqs)
             for ifeed in range(l2.Nfeeds):
                 for sb in range(4):
                     for idx in range(l2.Ntod):
@@ -520,7 +520,7 @@ class Polynomial_filter(Filter):
             float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
             polylib.polyfit.argtypes = [float32_array1, float32_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
 
-            sb_freqs = np.linspace(-1, 1, 1024, dtype=np.float32)
+            sb_freqs = np.linspace(-1, 1, l2.Nfreqs, dtype=np.float32)
             for ifeed in range(l2.Nfeeds):
                 for sb in range(4):
                     tod_local = l2.tod[ifeed, sb].copy()
@@ -655,10 +655,10 @@ class Frequency_filter(Filter):
         return PS
 
     
-    def binned_PS(self, data, Nbins=100):
+    def binned_PS(self, data, samprate, Nbins=100):
         # data - 4D TOD vector with time along the last axis.
         # Returns the log-binned frequencies and power spectrum of the data along the last axis.
-        freqs = rfftfreq(data.shape[-1], 1.0/50.0)[1:]
+        freqs = rfftfreq(data.shape[-1], 1.0/samprate)[1:]
         log_freqs = np.log10(freqs)
         PS = rfft(data).real[:,:,:,1:]**2
         freq_bins = np.linspace(np.log10(freqs[0])-1e-6, np.log10(freqs[-1])+1e-6, Nbins)
@@ -676,10 +676,10 @@ class Frequency_filter(Filter):
         return PS_binned_freqs, PS_binned
 
 
-    def gain_temp_sep(self, y, P, F, sigma0_g=None, fknee_g=None, alpha_g=None):
+    def gain_temp_sep(self, y, P, F, samprate, sigma0_g=None, fknee_g=None, alpha_g=None):
         Nfreqs, Ntod = y.shape
         if sigma0_g and fknee_g and alpha_g:  # Set any of the prior parameters to None or False to skip prior.
-            freqs = np.fft.rfftfreq(Ntod, 1/50.0)
+            freqs = np.fft.rfftfreq(Ntod, 1/samprate)
             freqs[0] = freqs[1]/2
             Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
             sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
@@ -748,9 +748,9 @@ class Frequency_filter(Filter):
 
                 if np.sum(P != 0) > 0 and np.sum(F != 0) > 0:
                     if self.use_prior:
-                        a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                        a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, l2.samprate, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
                     else:
-                        a, m = self.gain_temp_sep(y, P_reduced, F_reduced)
+                        a, m = self.gain_temp_sep(y, P_reduced, F_reduced, l2.samprate)
                 else:
                     a = np.zeros((1, l2.Ntod))
                     m = np.zeros((2, l2.Ntod))
@@ -937,8 +937,8 @@ class Frequency_filter(Filter):
                     l2.tofile_dict["freqfilter_m"][feed, sb] = m
                     l2.tofile_dict["freqfilter_a"][feed, sb] = a
                     l2.tofile_dict["freqfilter_a_m_corr"][feed, sb] = np.sum((a - np.mean(a, axis=-1)[:,None])*(m - np.mean(m, axis=-1)[:,None]), axis=-1)/(m.shape[-1]*np.std(a, axis=-1)*np.std(m, axis=-1))
-            PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"])
-            PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"])
+            PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"], l2.samprate)
+            PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"], l2.samprate)
             l2.tofile_dict["freqfilter_PS_freqs"] = PS_freqs
             l2.tofile_dict["freqfilter_PS_m"] = PS_m
             l2.tofile_dict["freqfilter_PS_a"] = PS_a
@@ -1617,7 +1617,7 @@ class Masking(Filter):
 
             ### Radiometer cut ###
             std_max = 1.15
-            samprate = 50.0  # Hz. TODO: !! FIX !!
+            samprate = l2.samprate  # Hz. TODO: !! FIX !!
             dnu = np.abs(l2.freqs[0,1] - l2.freqs[0,0])*1e9  # GHz -> Hz
             radiometer = 1.0/np.sqrt(dnu * (1.0/samprate))
             var = np.nanvar(l2_local.tod, axis=-1)

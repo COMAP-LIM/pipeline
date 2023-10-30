@@ -89,7 +89,7 @@ class level2_file:
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
             for i in range(len(self.feeds)):
                 feed = self.feeds[i]
-                if feed == 4 or feed == 10:
+                if feed == 4 or feed == 10:   # Where do these come from...?
                     self.freqmask[i,2,952:] = False
                     self.freqmask[i,3,:72] = False
                 elif feed == 16:
