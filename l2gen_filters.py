@@ -1769,6 +1769,9 @@ class Tsys_calc(Filter):
             l2.freqmask_reason[:] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
             l2.freqmask_reason_string.append("Can't read or find Tsys calib file.")
 
+        if l2.Nfreqs == 512:
+            Phot = np.mean(Phot.reshape((Phot.shape[0], 4, 512, 2, 2)), axis=-2)
+
         n_cal = np.zeros(l2.Nfeeds, dtype=int)
         any_calib_failed = False
         for ifeed in range(l2.Nfeeds):

@@ -84,13 +84,15 @@ class level2_file:
             if self.Nfreqs == 1024:
                 self.freqmask[:,:,:2] = False
                 self.freqmask[:,:,512] = False
+                self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
+                self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
             elif self.Nfreqs == 512:
                 self.freqmask[:,:,:1] = False
                 self.freqmask[:,:,256] = False
+                self.freqmask_reason[:,:,:1] += 2**self.freqmask_counter
+                self.freqmask_reason[:,:,256] += 2**self.freqmask_counter
             else:
                 raise ValueError("Unsupported number of freq channels.")
-            self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
-            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
             if self.params.sbA_num_masked_channels != 0:
                 self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
