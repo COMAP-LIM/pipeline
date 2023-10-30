@@ -1378,6 +1378,9 @@ class Masking(Filter):
                 for isb in l2.flipped_sidebands:
                     AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
                     leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
+                if l2.Nfreqs == 512:
+                    AB_mask = AB_mask[:,:,::2]
+                    leak_mask = leak_mask[:,:,::2]
                 l2.freqmask[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
                 l2.freqmask[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
                 l2.freqmask_reason[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
