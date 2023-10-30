@@ -62,17 +62,6 @@ class Mapmaker:
         )
         self.mapbinner = ctypes.cdll.LoadLibrary(mapbinner_path)
 
-        # Computing allowed limits of noise in l2 TODs
-        self.sample_time = 0.02  # seconds
-        self.frequency_resolution = (
-            1e9 * (34 - 26) / (4 * self.params.decimation_freqs)
-        )  # Hz
-
-        self.Tsys_limits = np.array([20, 100])  # [Min, Max] in K
-
-        self.radiometer_limits = self.Tsys_limits / np.sqrt(
-            self.sample_time * self.frequency_resolution
-        )
 
         # Save git hash used
         dir_path = os.path.dirname(
@@ -622,6 +611,12 @@ class Mapmaker:
         else:
             tod[pixels, ...] = l2data["tod"]
 
+        
+        ###########################################
+        # l2data["sigma0"] = np.nanstd(l2data["tod"], axis = 3)
+        ###########################################
+        
+        
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
@@ -629,7 +624,19 @@ class Mapmaker:
             temporal_mask[:, pixels] = l2data["mask_temporal"].T
         except:
             pass
+        
+        # Computing allowed limits of noise in l2 TODs
+        self.sample_time = (l2data["time"][1] - l2data["time"][0]) 24 * 3600 # seconds
+        self.frequency_resolution = (
+            1e9 * (34 - 26) / (4 * self.params.decimation_freqs)
+        )  # Hz
 
+        self.Tsys_limits = np.array([20, 100])  # [Min, Max] in K
+
+        self.radiometer_limits = self.Tsys_limits / np.sqrt(
+            self.sample_time * self.frequency_resolution
+        )
+        
         # Check if noise level is above allowed limit
         if np.any(sigma0[sigma0 > 0] < self.radiometer_limits[0]):
             print(
