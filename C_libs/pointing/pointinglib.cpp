@@ -1,5 +1,5 @@
-// g++ -std=c++11 -lm -lgsl -fopenmp -o pointing pointinglib.cpp
-// g++ -shared -std=c++11 -O2 -lm -lgsl -fopenmp -fPIC -o pointinglib.so.1 pointinglib.cpp
+// g++ -std=c++11 -lm -lgsl -lgslcblas -fopenmp -o pointing pointinglib.cpp
+// g++ -shared -std=c++11 -O2 -lm -lgsl -lgslcblas -fopenmp -fPIC -o pointinglib.so.1 pointinglib.cpp
 #include <stdio.h>
 #include <stdlib.h>
 #include <gsl/gsl_fit.h>
