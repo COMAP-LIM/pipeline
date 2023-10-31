@@ -1760,6 +1760,9 @@ class Tsys_calc(Filter):
                 Thot = f[f"Thot"][()]
                 calib_times = f[f"calib_times"][()]
                 successful = f[f"successful"][()]
+            if l2.Nfreqs == 512:
+                Phot = np.mean(Phot.reshape((Phot.shape[0], 4, 512, 2, 2)), axis=-2)
+
         except Exception as e:
             Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan
             Thot = np.zeros((l2.Nfeeds, 2)) + np.nan
