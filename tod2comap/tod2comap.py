@@ -626,7 +626,7 @@ class Mapmaker:
             pass
         
         # Computing allowed limits of noise in l2 TODs
-        self.sample_time = (l2data["time"][1] - l2data["time"][0]) 24 * 3600 # seconds
+        self.sample_time = (l2data["time"][1] - l2data["time"][0]) * 24 * 3600 # seconds
         self.frequency_resolution = (
             1e9 * (34 - 26) / (4 * self.params.decimation_freqs)
         )  # Hz
