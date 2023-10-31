@@ -1131,7 +1131,8 @@ class PCA_feed_filter(Filter):
     def __init__(self, params, omp_num_threads=2, use_ctypes=False):
         self.omp_num_threads = omp_num_threads
         self.max_pca_comp = params.max_pca_comp
-        self.deci_factor = 16
+        self.N_deci_freqs = 64
+        # self.deci_factor = 16
         self.params = params
         self.use_ctypes = use_ctypes
     
@@ -1166,8 +1167,8 @@ class PCA_feed_filter(Filter):
 
             return
 
-
-        self.N_deci_freqs = l2.Nfreqs//self.deci_factor
+        self.deci_factor = self.N_deci_freqs//l2.Nfreqs
+        # self.N_deci_freqs = l2.Nfreqs//self.deci_factor
 
         l2.tofile_dict["pca_feed_ampl"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
         l2.tofile_dict["pca_feed_comp"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Ntod))
