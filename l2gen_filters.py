@@ -1167,7 +1167,7 @@ class PCA_feed_filter(Filter):
 
             return
 
-        self.deci_factor = self.N_deci_freqs//l2.Nfreqs
+        self.deci_factor = l2.Nfreqs//self.N_deci_freqs
         # self.N_deci_freqs = l2.Nfreqs//self.deci_factor
 
         l2.tofile_dict["pca_feed_ampl"] = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
@@ -1222,7 +1222,7 @@ class PCA_feed_filter(Filter):
                 l2.tofile_dict["n_pca_feed_comp"][ifeed] = self.n_pca_comp
                 l2.tofile_dict["pca_feed_eigvals"][ifeed, :] = singular_values[:]**2
             if self.params.verbose:
-                print(f"fPCA scan {l2.scanid} num of modes: {l2.tofile_dict['n_pca_comp']}")
+                print(f"fPCA scan {l2.scanid} num of modes: {l2.tofile_dict['n_pca_feed_comp']}")
         else:
             raise ValueError("Depricated.")
 
@@ -1516,12 +1516,17 @@ class Masking(Filter):
                             max_corr[ifeed, ihalf*2+isb, ifreq] = np.nanmax(np.abs(C[isb*l2.Nfreqs+ifreq]), axis=-1)
 
 
-                    chi2_matrix = np.zeros((2, 3, 2048, 2048))
+                    # chi2_matrix = np.zeros((2, 3, 2048, 2048))
                     for ibox in range(len(self.box_sizes)):
-                        box_size = self.box_sizes[ibox]
+                        if l2.Nfreqs == 1024:
+                            box_size = self.box_sizes[ibox]
+                        else:
+                            box_size = self.box_sizes[ibox]//2
                         Nsigma_chi2_box = self.Nsigma_chi2_boxes[ibox]
                         Nsigma_prod_box = self.Nsigma_prod_boxes[ibox]
                         Nsigma_mean_box = self.Nsigma_mean_boxes[ibox]
+                        jump = l2.Nfreqs//64 # 16
+
 
                         for i in range((2*Nfreqs)//box_size):
                             for j in range((2*Nfreqs)//box_size):
@@ -1533,7 +1538,7 @@ class Masking(Filter):
                                     # CHI2 MASKING
                                     corr = np.sum(box**2)*Ntod
                                     chi2 = (corr - dof)/np.sqrt(2*dof)
-                                    chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = chi2
+                                    # chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = chi2
                                     if chi2 > Nsigma_chi2_box:
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1545,7 +1550,6 @@ class Masking(Filter):
                                                 freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 0)
 
                                     # PROD MASKING
-                                    jump = 16
                                     prod = np.sum(box[:-jump:2]*box[jump::2])*Ntod
                                     nprod = np.sum((box[:-jump:2]*box[jump::2]) != 0)
                                     if nprod == 0:
@@ -1571,11 +1575,15 @@ class Masking(Filter):
                                         for x in range(j*box_size, (j+1)*box_size):
                                             if freqmask_reason[x] & 2**(l2.freqmask_counter + ibox*3 + 2) == 0:
                                                 freqmask_reason[x] += 2**(l2.freqmask_counter + ibox*3 + 2)
-                                else:
-                                    chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
+                                # else:
+                                    # chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
 
                     for istripe in range(len(self.stripe_sizes)):
-                        stripe_size = self.stripe_sizes[istripe]
+                        if l2.Nfreqs == 1024:
+                            stripe_size = self.stripe_sizes[istripe]
+                        else:
+                            stripe_size = self.stripe_sizes[istripe]//2
+
                         Nsigma_chi2_stripe = self.Nsigma_chi2_stripes[istripe]
                         Nsigma_prod_stripe = self.Nsigma_prod_stripes[istripe]
 
@@ -1589,7 +1597,7 @@ class Masking(Filter):
                             # CHI2 MASKING
                             corr = np.sum(stripe**2)*Ntod
                             chi2 = (corr - dof)/np.sqrt(2*dof)
-                            chi2_matrix[1, istripe, :, i*stripe_size:(i+1)*stripe_size] = chi2
+                            # chi2_matrix[1, istripe, :, i*stripe_size:(i+1)*stripe_size] = chi2
                             if chi2 > Nsigma_chi2_stripe:
                                 freqmask[i*stripe_size:(i+1)*stripe_size] = False
                                 for x in range(i*stripe_size, (i+1)*stripe_size):
