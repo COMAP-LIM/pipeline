@@ -22,7 +22,7 @@ class HaloCatalog():
     designer class for holding a catalogue of simulated halos
     """
 
-    def __init__(self, params, inputfile=None, load_all=False):
+    def __init__(self, params=None, inputfile=None, load_all=False):
         if inputfile:
             self.load(inputfile, params)
             self.cull(params)
