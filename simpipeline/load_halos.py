@@ -22,7 +22,7 @@ class HaloCatalog():
     designer class for holding a catalogue of simulated halos
     """
 
-    def __init__(self, params=None, inputfile=None, load_all=False):
+    def __init__(self, params, inputfile=None, load_all=False):
         if inputfile:
             self.load(inputfile, params)
             self.cull(params)
@@ -145,7 +145,7 @@ class HaloCatalog():
 
 
     #### FUNCTIONS TO SLICE THE HALO CATALOGUE IN SOME WAY
-    def indexcut(self, idx, in_place=False):
+    def indexcut(self, idx, params, in_place=False):
         """
         crops the halo catalogue to only include halos included in the passed index
         array.
@@ -154,7 +154,7 @@ class HaloCatalog():
 
         if not in_place:
             # new halos object to hold the cut catalogue
-            subset = HaloCatalog()
+            subset = HaloCatalog(params)
 
             # copy all the arrays over, indexing as you go
             for i in dir(self):
@@ -180,7 +180,7 @@ class HaloCatalog():
             return subset
 
 
-    def attrcut_subset(self, attr, minval, maxval, in_place=False):
+    def attrcut_subset(self, attr, minval, maxval, params, in_place=False):
         """
         crops the halo catalogue to only include desired halos, based on some arbitrary
         attribute attr. will include haloes with attr from minval to maxval.
@@ -191,7 +191,7 @@ class HaloCatalog():
 
         if not in_place:
             # new halos object to hold the cut catalogue
-            subset = HaloCatalog()
+            subset = HaloCatalog(params)
 
             # copy all the arrays over, indexing as you go
             for i in dir(self):
