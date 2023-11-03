@@ -107,14 +107,14 @@ class HaloCatalog():
 
         goodidx = np.where(goodidx)[0]
 
-        self.indexcut(goodidx, in_place=True)
+        self.indexcut(goodidx, params, in_place=True)
 
         if params.verbose: print('\n\t%d halos remain after mass/map cut' % self.nhalo)
 
         # sort halos by mass, so fluctuations in luminosity
         # are the same with any given mass cut
         sortidx = np.argsort(self.M)[::-1]
-        self.indexcut(sortidx, in_place=True)
+        self.indexcut(sortidx, params, in_place=True)
 
     def get_velocities(self, params):
         """
@@ -221,23 +221,23 @@ class HaloCatalog():
             return subset
 
 
-    def masscut_subset(self, min_mass, max_mass, in_place=False):
+    def masscut_subset(self, min_mass, max_mass, params, in_place=False):
         """
         cut on mass specifically (for convenience)
         """
         if in_place:
-            self.attrcut_subset('M', min_mass, max_mass, in_place=True)
+            self.attrcut_subset('M', min_mass, max_mass, params, in_place=True)
         else:
-            return self.attrcut_subset('M', min_mass, max_mass)
+            return self.attrcut_subset('M', min_mass, max_mass, params)
 
-    def vmaxcut_subset(self, min_vmax, max_vmax, in_place=False):
+    def vmaxcut_subset(self, min_vmax, max_vmax, params, in_place=False):
         """
         cut on vmax specifically (for convenience)
         """
         if in_place:
-            self.attrcut_subset('vmax', min_vmax, max_vmax, in_place=True)
+            self.attrcut_subset('vmax', min_vmax, max_vmax, params, in_place=True)
         else:
-            return self.attrcut_subset('vmax', min_vmax, max_vmax)
+            return self.attrcut_subset('vmax', min_vmax, max_vmax, params)
 
 
     def write_cat(self, params, trim=None, writeall=False):
