@@ -312,6 +312,7 @@ class COMAP2FPXS():
         if not os.path.exists(average_spectrum_dir):
             os.mkdir(average_spectrum_dir)
     
+        fig_dir = os.path.join(fig_dir, self.params.psx_subdir)
         if not os.path.exists(fig_dir):
             os.mkdir(fig_dir)
 
@@ -447,7 +448,8 @@ class COMAP2FPXS():
 
                         # Applying white noise transfer function
                         transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
-                        xs_sigma *= transfer_function_wn
+                        
+                        xs_sigma *= transfer_function_wn 
                         xs_wn *= transfer_function_wn[None, ...]
                         
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
@@ -490,27 +492,28 @@ class COMAP2FPXS():
                         mean_IoUs[feed1, feed2] = cross_spectrum.IoU
                 
                         if (np.isfinite(chi2[feed1, feed2]) and chi2[feed1, feed2] != 0) and feed1 != feed2:
-                            if accept_chi2:
-                                if self.params.psx_use_full_wn_covariance:
-                                    xs = xs.flatten()
+                            if cross_spectrum.weighted_overlap > self.params.psx_overlap_limit:
+                                if accept_chi2:
+                                    if self.params.psx_use_full_wn_covariance:
+                                        xs = xs.flatten()
 
-                                    cov = cross_spectrum.white_noise_covariance
+                                        cov = cross_spectrum.white_noise_covariance
 
 
-                                    new_cov = np.zeros_like(cov)
-                                    for d in range(0, 14 * 14, 14):
-                                        new_cov += np.diag(cov.diagonal(d), d)
-                                        new_cov += np.diag(cov.diagonal(-d), -d)
-                                    cov = new_cov
-                                                                        
-                                    cov_inv = np.linalg.inv(cov)
-                                    xs_sum += cov_inv @ xs 
-                                    xs_inv_cov += cov_inv
+                                        new_cov = np.zeros_like(cov)
+                                        for d in range(0, 14 * 14, 14):
+                                            new_cov += np.diag(cov.diagonal(d), d)
+                                            new_cov += np.diag(cov.diagonal(-d), -d)
+                                        cov = new_cov
+                                                                            
+                                        cov_inv = np.linalg.inv(cov)
+                                        xs_sum += cov_inv @ xs 
+                                        xs_inv_cov += cov_inv
 
-                                else:
-                                    xs_sum += xs / xs_sigma ** 2
-                                    wn_xs_sum += xs_wn / xs_sigma[None, ...] ** 2
-                                    xs_inv_var += 1 / xs_sigma ** 2
+                                    else:
+                                        xs_sum += xs / xs_sigma ** 2
+                                        wn_xs_sum += xs_wn / xs_sigma[None, ...] ** 2
+                                        xs_inv_var += 1 / xs_sigma ** 2
                                     
                 if self.params.psx_null_diffmap:
                     _chi2 = loaded_chi2_grid[current_cross_variable, ...].copy()
@@ -775,7 +778,7 @@ class COMAP2FPXS():
             else:
                 cross_variable_names = np.array([*self.cross_variables], dtype = "S")
 
-            with h5py.File(os.path.join(outdir, mapname + "_average_fpxs.h5"), "w") as outfile:
+            with h5py.File(os.path.join(os.path.join(outdir, self.params.psx_subdir), mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
                 outfile.create_dataset("k_centers_par", data = k_bin_centers_par)
                 outfile.create_dataset("k_centers_perp", data = k_bin_centers_perp)

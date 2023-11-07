@@ -444,6 +444,14 @@ parser.add_argument(
     type=str,
     default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt",
 )
+
+parser.add_argument(
+    "--jk_rnd_split_seed",
+    type=int,
+    default = None,
+    help="(comap2fpxs) Seed to use when splitting scans randomly into maps (rnd split maps).",
+)
+
 parser.add_argument("--show_accept_plot", type=str2bool, default=True)
 
 ### Defaults ###
@@ -602,6 +610,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_subdir",
+    type=str,
+    default="",
+    help="Subdir added to path of average spectra and plots thereof.",
+)
+parser.add_argument(
     "--psx_chi2_import_path",
     type=str,
     default="",
@@ -727,6 +741,13 @@ parser.add_argument(
     "--psx_chi2_cut_limit",
     type=float,
     default=5,
+    help="(comap2fpxs) Which chi2 to use when cutting bad cross-spectra.",
+)
+
+parser.add_argument(
+    "--psx_overlap_limit",
+    type=float,
+    default=0.6,
     help="(comap2fpxs) Which chi2 to use when cutting bad cross-spectra.",
 )
 
