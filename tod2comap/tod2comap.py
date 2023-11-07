@@ -119,6 +119,10 @@ class Mapmaker:
         if len(self.jk_data_string) >= 1:
             self.jk_data_string = f"_{self.jk_data_string}"
 
+        if self.params.jk_rnd_split_seed is not None:
+            self.params.jk_data_string = self.params.jk_data_string + f"_rnd{self.params.jk_rnd_split_seed}"
+            self.params.map_name = self.params.map_name + f"_rnd{self.params.jk_rnd_split_seed}"
+        
         scan_data_path = f"scan_data_{self.accept_data_id_string}_{self.fieldname}.h5"
         split_data_path = f"jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5"
 
@@ -182,7 +186,7 @@ class Mapmaker:
                         # else:
                             # N_secondary_splits += 1
                         secondary_splits.append(split_name)
-
+                                        
             N_primary_splits = len(primary_splits)
             N_secondary_splits = len(secondary_splits)
             N_temporal_splits = len(temporal_splits)

@@ -34,6 +34,8 @@ def main():
         inpath = args.mpca_inname
     else:
         if not args.map_name is None:
+            if args.jk_rnd_split_seed is not None:
+                args.map_name = args.map_name + f"_rnd{args.jk_rnd_split_seed}"
             inpath = os.path.join(args.map_dir, field + "_" + args.map_name + ".h5")
         else:
             raise NameError("Missing input map name.")
