@@ -94,8 +94,12 @@ class level2_file:
             else:
                 raise ValueError("Unsupported number of freq channels.")
             if self.params.sbA_num_masked_channels != 0:
-                self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
-                self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
+                if self.Nfreqs == 1024:
+                    self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
+                    self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
+                else:
+                    self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels//2:] = False
+                    self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels//2:] += 2**self.freqmask_counter
             for i in range(len(self.feeds)):
                 feed = self.feeds[i]
                 if feed == 4 or feed == 10:   # Where do these come from...?
