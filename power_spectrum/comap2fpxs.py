@@ -333,6 +333,11 @@ class COMAP2FPXS():
         N_splits = len(self.split_map_combinations)
         N_k = self.params.psx_number_of_k_bins
 
+        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src", "r") as rndfile:
+            all_rnd_spectra = rndfile["all_spectra"][()]
+            all_rnd_std = rndfile["all_std"][()] 
+        self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
+                
         for map1, map2 in self.field_combinations:
             # Generate name of outpute data directory
             mapname1 = map1.split("/")[-1]
@@ -416,6 +421,7 @@ class COMAP2FPXS():
                 mean_IoUs = np.zeros((N_feed, N_feed)) * np.nan
                 mean_weighted_overlaps = np.zeros((N_feed, N_feed)) * np.nan
                 
+                
                 for feed1 in range(N_feed):
                     for feed2 in range(N_feed):
                         cross_spectrum = xs_class.CrossSpectrum_nmaps(
@@ -432,11 +438,12 @@ class COMAP2FPXS():
                         
                         
                         cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap"], indir)
-                        #cross_spectrum.read_and_append_attribute(["rms_xs_mean_2D", "rms_xs_std_2D"], indir_data)
 
-                        xs_wn = cross_spectrum.white_noise_simulation
+                        # xs_wn = cross_spectrum.white_noise_simulation
+                        xs_wn = all_rnd_spectra[:, feed1, feed2, ...]
                         xs = cross_spectrum.xs_2D
-                        xs_sigma = cross_spectrum.rms_xs_std_2D
+                        # xs_sigma = cross_spectrum.rms_xs_std_2D
+                        xs_sigma = all_rnd_std[feed1, feed2, ...]
 
                         k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
