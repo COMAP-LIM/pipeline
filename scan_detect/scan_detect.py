@@ -413,7 +413,7 @@ require_tsys = True  # params['REQUIRE_TSYS']
 verb = False  # params['VERBOSE_PRINT']
 remove_eng = True  # params['REMOVE_ENGINEERING_RUNS']
 
-aux_data_path = "/mn/stornext/d22/cmbco/comap/protodir/aux_data/obj/"  # params['AUX_SAVED_DATA']
+aux_data_path = "/mn/stornext/16/cmbco/comap/data/aux_data/obj/"  # params['AUX_SAVED_DATA']
 memory_file = 'mem'
 bad_file = 'bad'
 
