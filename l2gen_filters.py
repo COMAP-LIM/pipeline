@@ -1373,7 +1373,7 @@ class Masking(Filter):
         else:
             ### Aliasing masking ###
             if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
-                with h5py.File("/mn/stornext/d22/cmbco/comap/protodir/auxiliary/aliasing_suppression.h5", "r") as f:
+                with h5py.File("/mn/stornext/d16/cmbco/comap/data/aux_data/aliasing_suppression.h5", "r") as f:
                     AB_mask = f["/AB_mask"][()]
                     leak_mask = f["/leak_mask"][()]
                 for isb in l2.flipped_sidebands:

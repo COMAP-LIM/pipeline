@@ -95,6 +95,18 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--l1_downsample_time_factor",
+    type=int,
+    default=1,
+    help="Downsampling time for level1 files immediately after read.",
+)
+parser.add_argument(
+    "--l1_downsample_freq_factor",
+    type=int,
+    default=1,
+    help="Downsampling frequency for level1 files immediately after read.",
+)
+parser.add_argument(
     "--time_start_cut",
     type=int,
     default=0,
@@ -123,13 +135,13 @@ parser.add_argument(
 parser.add_argument(
     "--level1_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/level1/",
+    default="/mn/stornext/d16/cmbco/comap/data/level1/",
     help="Path to level1 files.",
 )
 parser.add_argument(
     "--level2_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/level2/Ka/",
+    default="/mn/stornext/d16/cmbco/comap/data/level2/Ka/",
     help="Location of level2 files (made by l2gen).",
 )
 parser.add_argument(
@@ -141,7 +153,7 @@ parser.add_argument(
 parser.add_argument(
     "--map_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/maps/",
+    default="/mn/stornext/d16/cmbco/comap/data/maps/",
     help="Location of map files (made by tod2comap).",
 )
 
@@ -155,7 +167,7 @@ parser.add_argument(
 parser.add_argument(
     "--cal_database_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/aux_data/level1_database_files/",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/level1_database_files/",
     help="Location of level1 database files, which include the Tsys calibration data.",
 )
 
@@ -256,7 +268,7 @@ parser.add_argument(
 parser.add_argument(
     "--freqfilter_prior_file",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/Cf_prior.h5",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/Cf_prior.h5",
     help="(freq) Location of hdf5 file which contains sigma0, fknee and alpha for the freqfilter PS prior.",
 )
 
@@ -442,7 +454,7 @@ parser.add_argument("--scan_stats_from_file", type=str2bool, default=False)
 parser.add_argument(
     "--jk_def_file",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/jk_lists/jk_list_only_elev.txt",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/jk_lists/jk_list_only_elev.txt",
 )
 parser.add_argument("--show_accept_plot", type=str2bool, default=True)
 
@@ -452,17 +464,17 @@ parser.add_argument("--accept_mod_params", type=str, default="accept_params.py")
 parser.add_argument(
     "--patch_definition_file",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/patches_celestial.txt",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/patches_celestial.txt",
 )
 parser.add_argument(
     "--weather_filepath",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/weather_list.txt",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/weather_list.txt",
 )
 parser.add_argument(
     "--accept_data_folder",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/scan_data/",
 )
 parser.add_argument(
     "--make_accept_mod_plots",
@@ -617,7 +629,7 @@ parser.add_argument(
 parser.add_argument(
     "--power_spectrum_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/fpxs/",
+    default="/mn/stornext/d16/cmbco/comap/data/power_spectrum/fpxs/",
     help="(comap2fpxs) Path to directory where cross spectrum data is saved.",
 )
 
@@ -840,7 +852,7 @@ parser.add_argument(
 parser.add_argument(
     "--sim_halo_catalogue_file",
     type=str,
-    default='/mn/stornext/d22/cmbco/comap/delaney/limlam_mocker/catalogues/COMAP_z2.39-3.44_1140Mpc_seed_13579.npz',
+    default='/mn/stornext/d16/cmbco/comap/delaney/limlam_mocker/catalogues/COMAP_z2.39-3.44_1140Mpc_seed_13579.npz',
     help="(SimGenerator) Path to peak-patch simulation catalogue. Default seed 13579."
 )
 
