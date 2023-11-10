@@ -1568,7 +1568,7 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
         return jk_list, cutoff_list, strings
     
     for j, string in enumerate(strings):
-        implement_split(scan_data, jk_list, cutoff_list, string, j+1)
+        implement_split(params, scan_data, jk_list, cutoff_list, string, j+1)
 
     # insert 0 on rejected sidebands, add 1 on accepted 
     jk_list[np.invert(accept_list)] = 0
@@ -1576,7 +1576,7 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
     return jk_list, cutoff_list, strings
 
 
-def implement_split(scan_data, jk_list, cutoff_list, string, n):
+def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     
     # Generating all possible random split keys
     import itertools
@@ -1606,7 +1606,7 @@ def implement_split(scan_data, jk_list, cutoff_list, string, n):
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
     elif "rnd" in string.casefold():
         # random scan split
-        seed = 83762
+        seed = params.jk_rnd_split_seed
         seed += subseeds[allstrings.index(string)]
         np.random.seed(seed)
         bits = np.random.randint(0, 2, int(1e8))
@@ -1911,6 +1911,10 @@ if __name__ == "__main__":
             print('Made accept list')
             jk_list, cutoff_list, split_list = make_jk_list(params, accept_list, scan_list, scan_data, jk_param_list_file)
             print('Made jk_list')
+            
+            if params.jk_rnd_split_seed is not None:
+                params.jk_data_string = params.jk_data_string + f"_rnd{params.jk_rnd_split_seed}"
+                
             jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
             jk_data_name_list.append(jk_data_name)
 

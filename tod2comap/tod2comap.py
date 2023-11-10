@@ -16,6 +16,10 @@ from L2file import L2file
 import warnings
 import tqdm 
 
+class NoAcceptedScansError(Exception):
+    """Raised when no accepted scans are found in mapmaker inputs"""
+    pass
+
 # Ignore RuntimeWarning
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
@@ -119,6 +123,10 @@ class Mapmaker:
         if len(self.jk_data_string) >= 1:
             self.jk_data_string = f"_{self.jk_data_string}"
 
+        if self.params.jk_rnd_split_seed is not None:
+            self.params.jk_data_string = self.params.jk_data_string + f"_rnd{self.params.jk_rnd_split_seed}"
+            self.params.map_name = self.params.map_name + f"_rnd{self.params.jk_rnd_split_seed}"
+        
         scan_data_path = f"scan_data_{self.accept_data_id_string}_{self.fieldname}.h5"
         split_data_path = f"jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5"
 
@@ -182,7 +190,7 @@ class Mapmaker:
                         # else:
                             # N_secondary_splits += 1
                         secondary_splits.append(split_name)
-
+                                        
             N_primary_splits = len(primary_splits)
             N_secondary_splits = len(secondary_splits)
             N_temporal_splits = len(temporal_splits)
@@ -437,11 +445,6 @@ class Mapmaker:
 
                 time_array[5] += time.perf_counter() - ti
 
-        if self.rank == 0:
-            # Get frequency bin centers and edges from last level2 file.
-            full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
-            full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
-
         self.comm.Reduce(
             [time_array, MPI.DOUBLE], [time_buffer, MPI.DOUBLE], op=MPI.SUM, root=0
         )
@@ -472,6 +475,14 @@ class Mapmaker:
             print("Total time for scan:", 1e3 * time_buffer[5], "ms")
 
             print("-" * 80)
+
+        if self.rank == 0:
+            if rejection_number_buffer[0] == len(self.runlist):
+                raise NoAcceptedScansError("There were no accepted scans found in this run!")
+            # Get frequency bin centers and edges from last level2 file.
+            full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
+            full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
+
 
 
         # Perform MPI reduce on map datasets
