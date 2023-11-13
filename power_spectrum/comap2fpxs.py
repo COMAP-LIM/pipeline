@@ -333,7 +333,7 @@ class COMAP2FPXS():
         N_splits = len(self.split_map_combinations)
         N_k = self.params.psx_number_of_k_bins
 
-        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src", "r") as rndfile:
+        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src/all_rnd_spectra.h5", "r") as rndfile:
             all_rnd_spectra = rndfile["all_spectra"][()]
             all_rnd_std = rndfile["all_std"][()] 
         self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
@@ -785,6 +785,9 @@ class COMAP2FPXS():
             else:
                 cross_variable_names = np.array([*self.cross_variables], dtype = "S")
 
+            if not os.path.exists(os.path.join(outdir, self.params.psx_subdir)):
+                os.mkdir(os.path.join(outdir, self.params.psx_subdir))
+                
             with h5py.File(os.path.join(os.path.join(outdir, self.params.psx_subdir), mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)             
                 outfile.create_dataset("k_centers_par", data = k_bin_centers_par)
