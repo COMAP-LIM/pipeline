@@ -1616,7 +1616,8 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     
     elif string == 'dayn':
         # day/night split
-        closetonight = extract_data_from_array(scan_data, 'night')
+        closetonight = extract_data_from_array(scan_data, 'night').copy()
+        closetonight += np.random.normal(0, 1e-10, closetonight.shape[0])
         cutoff = np.percentile(closetonight[accept_list], 50.0)
         jk_list[np.where(closetonight > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
@@ -1691,7 +1692,8 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
 
     elif string == 'rain':
         # rain split 
-        rain = extract_data_from_array(scan_data, 'rain')
+        rain = extract_data_from_array(scan_data, 'rain').copy()
+        rain += np.random.normal(0, 1e-10, rain.shape[0])
         cutoff = np.percentile(rain[accept_list], 50.0)
         jk_list[np.where(rain > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
