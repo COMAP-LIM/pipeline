@@ -95,18 +95,6 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--l1_downsample_time_factor",
-    type=int,
-    default=1,
-    help="Downsampling time for level1 files immediately after read.",
-)
-parser.add_argument(
-    "--l1_downsample_freq_factor",
-    type=int,
-    default=1,
-    help="Downsampling frequency for level1 files immediately after read.",
-)
-parser.add_argument(
     "--time_start_cut",
     type=int,
     default=0,

@@ -1379,9 +1379,6 @@ class Masking(Filter):
                 for isb in l2.flipped_sidebands:
                     AB_mask[:,isb,:] = AB_mask[:,isb,::-1]
                     leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
-                if l2.Nfreqs == 512:
-                    AB_mask = AB_mask[:,:,::2]
-                    leak_mask = leak_mask[:,:,::2]
                 l2.freqmask[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
                 l2.freqmask[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
                 l2.freqmask_reason[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
@@ -1518,10 +1515,7 @@ class Masking(Filter):
 
                     # chi2_matrix = np.zeros((2, 3, 2048, 2048))
                     for ibox in range(len(self.box_sizes)):
-                        if l2.Nfreqs == 1024:
-                            box_size = self.box_sizes[ibox]
-                        else:
-                            box_size = self.box_sizes[ibox]//2
+                        box_size = self.box_sizes[ibox]
                         Nsigma_chi2_box = self.Nsigma_chi2_boxes[ibox]
                         Nsigma_prod_box = self.Nsigma_prod_boxes[ibox]
                         Nsigma_mean_box = self.Nsigma_mean_boxes[ibox]
@@ -1579,10 +1573,7 @@ class Masking(Filter):
                                     # chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
 
                     for istripe in range(len(self.stripe_sizes)):
-                        if l2.Nfreqs == 1024:
-                            stripe_size = self.stripe_sizes[istripe]
-                        else:
-                            stripe_size = self.stripe_sizes[istripe]//2
+                        stripe_size = self.stripe_sizes[istripe]
 
                         Nsigma_chi2_stripe = self.Nsigma_chi2_stripes[istripe]
                         Nsigma_prod_stripe = self.Nsigma_prod_stripes[istripe]
@@ -1769,8 +1760,6 @@ class Tsys_calc(Filter):
                 Thot = f[f"Thot"][()]
                 calib_times = f[f"calib_times"][()]
                 successful = f[f"successful"][()]
-            if l2.Nfreqs == 512:
-                Phot = np.mean(Phot.reshape((Phot.shape[0], 4, 512, 2, 2)), axis=-2)
 
         except Exception as e:
             Phot = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2)) + np.nan

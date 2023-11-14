@@ -81,44 +81,22 @@ class level2_file:
             self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_counter
             self.freqmask_counter += 1
             self.freqmask_reason_string.append("NaN or inf in TOD")
-            if self.Nfreqs == 1024:
-                self.freqmask[:,:,:2] = False
-                self.freqmask[:,:,512] = False
-                self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
-                self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
-            elif self.Nfreqs == 512:
-                self.freqmask[:,:,:1] = False
-                self.freqmask[:,:,256] = False
-                self.freqmask_reason[:,:,:1] += 2**self.freqmask_counter
-                self.freqmask_reason[:,:,256] += 2**self.freqmask_counter
-            else:
-                raise ValueError("Unsupported number of freq channels.")
+            self.freqmask[:,:,:2] = False
+            self.freqmask[:,:,512] = False
+            self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
+            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
             if self.params.sbA_num_masked_channels != 0:
-                if self.Nfreqs == 1024:
-                    self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
-                    self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
-                else:
-                    self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels//2:] = False
-                    self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels//2:] += 2**self.freqmask_counter
+                self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
+                self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
             for i in range(len(self.feeds)):
                 feed = self.feeds[i]
                 if feed == 4 or feed == 10:   # Where do these come from...?
-                    if self.Nfreqs == 1024:
-                        self.freqmask[i,2,952:] = False
-                        self.freqmask[i,3,:72] = False
-                    else:
-                        self.freqmask[i,2,476:] = False
-                        self.freqmask[i,3,:36] = False
+                    self.freqmask[i,2,952:] = False
+                    self.freqmask[i,3,:72] = False
                 elif feed == 16:
-                    if self.Nfreqs == 1024:
-                        self.freqmask[i,0,550:900] = False
-                    else:
-                        self.freqmask[i,0,275:450] = False
+                    self.freqmask[i,0,550:900] = False
                 elif feed == 17:
-                    if self.Nfreqs == 1024:
-                        self.freqmask[i,1,276:526] = False
-                    else:
-                        self.freqmask[i,1,138:263] = False
+                    self.freqmask[i,1,276:526] = False
             self.freqmask_counter += 1
             self.freqmask_reason_string.append("Marked channels")
             
