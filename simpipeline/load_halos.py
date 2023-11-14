@@ -154,7 +154,7 @@ class HaloCatalog():
 
         if not in_place:
             # new halos object to hold the cut catalogue
-            subset = HaloCatalog(params)
+            subset = self.copy()
 
             # copy all the arrays over, indexing as you go
             for i in dir(self):
