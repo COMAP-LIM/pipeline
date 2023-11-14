@@ -623,6 +623,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_rnd_run",
+    type=str2bool,
+    default=False,
+    help="(comap2fpxs) Whether this is a random split run that should not be used for average spectra.",
+)
+
+
+parser.add_argument(
     "--from_file",
     action="store_true",
     help="(comap2fpxs) If flag is provided already computed spectra are read from file.",

@@ -235,9 +235,12 @@ class COMAP2FPXS():
                 if self.params.psx_null_diffmap:
                     outdir = os.path.join(outdir, f"null_diffmap/{cross_spectrum.null_variable}")
                 
+                spectrum_subdir = "spectra_2D"
+                if self.params.psx_mode == "saddlebag":
+                    spectrum_subdir += "_saddlebag"
                     
                 # Skip loop iteration if cross-spectrum of current combination already exists
-                if os.path.exists(os.path.join(self.params.power_spectrum_dir, "spectra_2D", outdir, cross_spectrum.outname)):
+                if os.path.exists(os.path.join(self.params.power_spectrum_dir, spectrum_subdir, outdir, cross_spectrum.outname)):
                     continue
                 else:
                     # Read maps from generated map paths, and provide cosmology to translate from
@@ -281,11 +284,11 @@ class COMAP2FPXS():
                         
                         cross_spectrum.weighted_overlap = np.nanmean(cross_spectrum.weighted_overlap[cross_spectrum.weighted_overlap != 0])
                         
-                        cross_spectrum.run_noise_sims_2d(
-                            self.params.psx_noise_sim_number,
-                            no_of_k_bins=self.params.psx_number_of_k_bins + 1,
-                            seed = seed + (i + 1),
-                        )
+                        # cross_spectrum.run_noise_sims_2d(
+                        #     self.params.psx_noise_sim_number,
+                        #     no_of_k_bins=self.params.psx_number_of_k_bins + 1,
+                        #     seed = seed + (i + 1),
+                        # )
 
                     else:
                         cross_spectrum.xs *= transfer_function_wn
@@ -296,7 +299,7 @@ class COMAP2FPXS():
 
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
-        if self.rank == 0:
+        if self.rank == 0 and not self.params.psx_rnd_run:
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
             self.compute_averages()
@@ -434,6 +437,7 @@ class COMAP2FPXS():
                             cross_spectrum.read_spectrum(indir)
                         except (FileNotFoundError, KeyError):
                             print(f"\033[95m WARNING: Split {splits[0]} or {splits[1]} not found in map file. Skipping split in averaging.\033[00m")
+                            chi2[feed1, feed2] = np.inf
                             continue            
                         
                         
@@ -456,8 +460,8 @@ class COMAP2FPXS():
                         # Applying white noise transfer function
                         transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
                         
-                        xs_sigma *= transfer_function_wn 
-                        xs_wn *= transfer_function_wn[None, ...]
+                        # xs_sigma *= transfer_function_wn 
+                        # xs_wn *= transfer_function_wn[None, ...]
                         
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 
@@ -533,6 +537,9 @@ class COMAP2FPXS():
                     for ii in range(_chi2.shape[0]):
                         _chi2[ii, ii] = np.inf
                     print(f"{indir} {splits} \n# |chi^2| < {self.params.psx_chi2_cut_limit}:", np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit))
+
+                if np.sum(np.abs(_chi2) < self.params.psx_chi2_cut_limit) == 0:
+                    continue
 
                 if self.params.psx_use_full_wn_covariance:
                     xs_covariance[i, ...] = np.linalg.inv(xs_inv_cov)
@@ -1092,7 +1099,7 @@ class COMAP2FPXS():
         ax1.hist(
             chi2_wn_list[0], 
             histtype = "step", 
-            bins = int(np.round(chi2_wn_list[0].size * 0.05)), 
+            bins = int(np.round(chi2_wn_list[0].size * 0.2)), 
             density = True, 
             lw = 3,
             label = r"$\sum_i (d_i/\sigma_i)^2$",
@@ -1101,7 +1108,7 @@ class COMAP2FPXS():
         ax1.hist(
             chi2_wn_list[1],
             histtype = "step",
-            bins = int(np.round(chi2_wn_list[1].size * 0.05)),
+            bins = int(np.round(chi2_wn_list[1].size * 0.2)),
             density = True,
             lw = 3,
             label = r"$\mathbf{d}^T\mathbf{N}^{-1}\mathbf{d}$",
@@ -1423,7 +1430,7 @@ class COMAP2FPXS():
         ax[2].hist(
             chi2_wn_list[0], 
             histtype = "step", 
-            bins = int(np.round(chi2_wn_list[0].size * 0.05)), 
+            bins = int(np.round(chi2_wn_list[0].size * 0.2)), 
             density = True, 
             lw = 3,
             label = r"$\sum_i (d_i/\sigma_i)^2$",
@@ -1432,7 +1439,7 @@ class COMAP2FPXS():
         ax[2].hist(
             chi2_wn_list[1],
             histtype = "step",
-            bins = int(np.round(chi2_wn_list[1].size * 0.05)),
+            bins = int(np.round(chi2_wn_list[1].size * 0.2)),
             density = True,
             lw = 3,
             label = r"$\mathbf{d}^T\mathbf{N}^{-1}\mathbf{d}$",
@@ -2278,69 +2285,74 @@ if __name__ == "__main__":
         comap2fpxs.params.psx_generate_white_noise_sim = False
     
     comap2fpxs.params.psx_white_noise_sim_seed = None
+    comap2fpxs.params.psx_mode = "feed"
     comap2fpxs.run()
 
-    if run_wn_sim:
-        comap2fpxs.params.psx_generate_white_noise_sim = True
+    comap2fpxs.params.psx_mode = "saddlebag"
+    comap2fpxs.run()
+
+    
+    # if run_wn_sim:
+    #     comap2fpxs.params.psx_generate_white_noise_sim = True
 
 
-        # basepath = "/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/test/average_spectra/co2_python_poly_debug_null_w_bug/"
-        # import glob
-        # filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
-        # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
-        seed_list = []
-        seed_list_path = os.path.join(comap2fpxs.params.power_spectrum_dir, comap2fpxs.params.psx_seed_list)
-        if comap2fpxs.params.psx_use_seed_list:
-            seeds_to_run = np.loadtxt(seed_list_path)
-        else:
-            seeds_to_run = range(comap2fpxs.params.psx_monte_carlo_sim_number)
+    #     # basepath = "/mn/stornext/d22/cmbco/comap/protodir/power_spectrum/test/average_spectra/co2_python_poly_debug_null_w_bug/"
+    #     # import glob
+    #     # filelist = glob.glob(f"*white_noise_seed*/**/*.h5", root_dir = basepath, recursive = True)
+    #     # seedlist = [int(file.split("seed")[-1].split("/")[0]) for file in filelist]
+    #     seed_list = []
+    #     seed_list_path = os.path.join(comap2fpxs.params.power_spectrum_dir, comap2fpxs.params.psx_seed_list)
+    #     if comap2fpxs.params.psx_use_seed_list:
+    #         seeds_to_run = np.loadtxt(seed_list_path)
+    #     else:
+    #         seeds_to_run = range(comap2fpxs.params.psx_monte_carlo_sim_number)
 
-        global_verbose = comap2fpxs.verbose
+    #     global_verbose = comap2fpxs.verbose
 
-        if comap2fpxs.params.psx_use_seed_list:
-            print("#" * 80)
-            print(f"Running with provided seed list: {seed_list_path}")
-            print(f"Seed list contains {len(seeds_to_run)} Monte Carlo simulations")
-            print("#" * 80)
-        elif global_verbose and comap2fpxs.rank == 0:
-            print("#" * 80)
-            print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
-            print("#" * 80)
+    #     if comap2fpxs.params.psx_use_seed_list:
+    #         print("#" * 80)
+    #         print(f"Running with provided seed list: {seed_list_path}")
+    #         print(f"Seed list contains {len(seeds_to_run)} Monte Carlo simulations")
+    #         print("#" * 80)
+    #     elif global_verbose and comap2fpxs.rank == 0:
+    #         print("#" * 80)
+    #         print(f"Running {comap2fpxs.params.psx_monte_carlo_sim_number} white noise Monte Carlo simulations:")
+    #         print("#" * 80)
 
 
-        for i, seed in enumerate(seeds_to_run):
-            # try:
-            # Turning this to None will make new seed from time.time() each iteration
+    #     for i, seed in enumerate(seeds_to_run):
+    #         # try:
+    #         # Turning this to None will make new seed from time.time() each iteration
             
-            if comap2fpxs.params.psx_use_seed_list:
-                comap2fpxs.params.psx_white_noise_sim_seed = seed
-            else:
-                comap2fpxs.generate_new_monte_carlo_seed()
+    #         if comap2fpxs.params.psx_use_seed_list:
+    #             comap2fpxs.params.psx_white_noise_sim_seed = seed
+    #         else:
+    #             comap2fpxs.generate_new_monte_carlo_seed()
                 
-                seed_list.append(comap2fpxs.params.psx_white_noise_sim_seed)
+    #             seed_list.append(comap2fpxs.params.psx_white_noise_sim_seed)
 
             
-            comap2fpxs.verbose = False 
+    #         comap2fpxs.verbose = False 
 
-            if global_verbose and comap2fpxs.rank == 0:
-                print("-"*40)
-                print(f"\033[91m Simulation # {i + 1} / {comap2fpxs.params.psx_monte_carlo_sim_number}: \033[00m \033[93m Seed = {comap2fpxs.params.psx_white_noise_sim_seed} \033[00m")
+    #         if global_verbose and comap2fpxs.rank == 0:
+    #             print("-"*40)
+    #             print(f"\033[91m Simulation # {i + 1} / {comap2fpxs.params.psx_monte_carlo_sim_number}: \033[00m \033[93m Seed = {comap2fpxs.params.psx_white_noise_sim_seed} \033[00m")
 
-            t0 = time.perf_counter()
-            comap2fpxs.run()
+    #         t0 = time.perf_counter()
+    #         comap2fpxs.run()
         
-            if global_verbose and comap2fpxs.rank == 0:
-                print(f"\033[92m Run time: {time.perf_counter() - t0} sec \033[00m")
-                print("-"*40)
-            # except:
-            #     print("SKIP")
-            #     continue
+    #         if global_verbose and comap2fpxs.rank == 0:
+    #             print(f"\033[92m Run time: {time.perf_counter() - t0} sec \033[00m")
+    #             print("-"*40)
+    #         # except:
+    #         #     print("SKIP")
+    #         #     continue
         
-        comap2fpxs.comm.Barrier()
-        if not comap2fpxs.params.psx_use_seed_list and comap2fpxs.rank == 0:
-            seed_list = np.array(seed_list)
+    #     comap2fpxs.comm.Barrier()
+    #     if not comap2fpxs.params.psx_use_seed_list and comap2fpxs.rank == 0:
+    #         seed_list = np.array(seed_list)
 
-            if comap2fpxs.verbose:
-                print(f"Saving Monte Carlo seed list to: {seed_list_path}")
+    #         if comap2fpxs.verbose:
+    #             print(f"Saving Monte Carlo seed list to: {seed_list_path}")
 
-            np.savetxt(seed_list_path, seed_list.astype(int))
+    #         np.savetxt(seed_list_path, seed_list.astype(int))

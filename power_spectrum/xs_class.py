@@ -573,7 +573,10 @@ class CrossSpectrum_nmaps:
     # MAKE SEPARATE H5 FILE FOR EACH 2D XS
     def make_h5_2d(self, outdir, outname=None):
         if outname is None:
-            path = os.path.join("spectra_2D/", outdir)
+            spectra_subdir = "spectra_2D"
+            if self.params.psx_mode == "saddlebag":
+                spectra_subdir += "_saddlebag"
+            path = os.path.join(spectra_subdir, outdir)
             path = os.path.join(self.params.power_spectrum_dir, path)
 
             tools.ensure_dir_exists(path)
@@ -615,17 +618,17 @@ class CrossSpectrum_nmaps:
             outfile.create_dataset("IoU", data = self.IoU)
             outfile.create_dataset("weighted_overlap", data = self.weighted_overlap)
 
-            if self.params.psx_white_noise_sim_seed is not None:
-                outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
-                outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
-                outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
-                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
-                outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
-            else:
-                outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
-                outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
-                outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
-                outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
+            # if self.params.psx_white_noise_sim_seed is not None:
+            #     outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
+            #     outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
+            #     outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+            #     outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
+            #     outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
+            # else:
+            #     outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
+            #     outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
+            #     outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+            #     outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
     
     def read_spectrum(self, indir, inname = None):
         if inname is None:
