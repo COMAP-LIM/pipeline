@@ -344,7 +344,7 @@ def get_sfr_table(bad_extrapolation=False):
     """
 
     tablepath = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    tablepath+= '/tables/sfr_behroozi_release.dat'
+    tablepath+= '/simpipeline/tables/sfr_behroozi_release.dat'
     dat_zp1, dat_logm, dat_logsfr, _ = np.loadtxt(tablepath, unpack=True)
 
     dat_logzp1 = np.log10(dat_zp1)
@@ -395,7 +395,8 @@ def Mhalo_to_Lcatalog(halos, params):
 
     model = params.catalog_model
 
-    dict = {'default':          Mhalo_to_Lcatalog_test1,
+    dict = {'lya_chung':            Mhalo_to_LLya_Chung,
+            'default':          Mhalo_to_Lcatalog_test1,
             'test2':          Mhalo_to_Lcatalog_test2
             }
 
@@ -404,6 +405,47 @@ def Mhalo_to_Lcatalog(halos, params):
 
     else:
         sys.exit('\n\n\tYour model, '+model+', does not seem to exist\n\t\tPlease check src/halos_to_luminosity.py to add it\n\n')
+
+def Mhalo_to_LLya_Chung(halos, params):
+    """
+    model to get Lya luminosities from halo SFR and redshift
+    based on Chung et al. 2019 (arXiv:1809.04550)
+    """
+
+    try:
+        coeffs = params.coeffs
+    except AttributeError:
+        coeffs = None 
+
+    # SFR scatter based on Tony Li 2016 model
+    sigma_sfr = 0.3
+
+    # this model doesn't have named coefficients yet, so will always use defaults
+    # ** edit to change that in future
+
+    # Get Star formation rate
+    if not hasattr(halos,'sfr'):
+        halos.sfr = Mhalo_to_sfr_Behroozi(halos, sigma_sfr);
+    
+    z = halos.redshift
+    sfr = halos.sfr
+
+    # escape fraction
+    fesc = (1+np.exp(-1.6*z + 5))**(-0.5) * (0.18 + 0.82 / (1 + 0.8*sfr**0.875))**2
+
+    # Llya in erg/s
+    Llya = 1.6e42 * sfr * fesc
+
+    # convert to Lsun
+    Llya = Llya / 3.826e33
+
+    # zero out NaNs
+    Llya[np.where(np.isnan(Llya))] = 0.0
+
+    params.catdex = 0. #**** this is just a placeholder
+
+    return Llya, params
+
 
 
 def Mhalo_to_Lcatalog_test1(halos, params):
