@@ -52,7 +52,7 @@ owl20:16
 ## 2.3 Generating a simulation cube
 ```
 import l2_simulations as sims
-import l2gen_argparser as parser
+from l2gen_argparser import parser
 
 # read in default parameters
 params = parser.parse_args()
