@@ -432,6 +432,12 @@ parser.add_argument(
     default=5.0,
     help="(cal) How many Kelvin above the running median Tsys value to mask.",
 )
+parser.add_argument(
+    "--mask_tsys_at_beginning",
+    type=str2bool,
+    default=False,
+    help="(cal) Whether to mask tsys spikes at the very beginning of the pipeline, instead of at the end.",
+)
 
 
 ###### ACCEPT MOD ######

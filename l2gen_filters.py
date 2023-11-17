@@ -286,6 +286,8 @@ class Decimation(Filter):
         self.params = params
 
     def run(self, l2):
+        if self.params.mask_tsys_at_beginning:
+            l2.tod *= l2.Tsys[:,:,:,None]
         # Set up the lowres frequency bins.
         self.freq_bin_centers_lowres = np.zeros((l2.Nsb, self.Nfreqs_lowres))
         self.freq_bin_edges_lowres = np.zeros((l2.Nsb, self.Nfreqs_lowres+1))
@@ -1825,7 +1827,8 @@ class Calibration(Filter):
         self.params = params
 
     def run(self, l2):
-        l2.tod *= l2.Tsys[:,:,:,None]
+        if not self.params.mask_tsys_at_beginning:
+            l2.tod *= l2.Tsys[:,:,:,None]
         l2.freqmask[~np.isfinite(l2.Tsys)] = False
         l2.freqmask_reason[~np.isfinite(l2.Tsys)] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys NaN or inf")
