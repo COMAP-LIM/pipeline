@@ -853,7 +853,7 @@ parser.add_argument(
 parser.add_argument(
     "--exp_params",
     type=str,
-    default="experimental_parameters_sim2tod.py",
+    default="experimental_parameters_sim2tod_highres.py",
     help="File name (without path) to experimental parameters to use to make simulation cube.",
 )
 
