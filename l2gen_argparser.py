@@ -123,7 +123,7 @@ parser.add_argument(
 parser.add_argument(
     "--level1_dir",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/level1/",
+    default="/mn/stornext/d16/cmbco/comap/data/level1/",
     help="Path to level1 files.",
 )
 parser.add_argument(
