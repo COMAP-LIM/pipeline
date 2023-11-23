@@ -128,6 +128,8 @@ class SimCube:
                 self._data["simulation"] = infile["map_cube"][min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx, ...]
                 self._data["simulation"] = self._data["simulation"].transpose(2, 0, 1)
                 nfreq, ndec, nra = self._data["simulation"].shape
+                # Flipping frequency axis of box to match that of signal injection mechanism
+                self._data["simulation"] = self._data["simulation"][::-1, ...] 
                 self._data["simulation"] = self._data["simulation"].reshape(4, nfreq // 4, ndec, nra)
                 self._data["simulation"] = np.ascontiguousarray(self._data["simulation"])
         else:
