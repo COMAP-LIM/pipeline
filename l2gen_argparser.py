@@ -483,7 +483,12 @@ parser.add_argument(
     type=str2bool,
     default=True,
 )
-
+parser.add_argument(
+    "--accept_mod_debug_maps_dir",
+    type=str,
+    default="",
+    help="Directory in which to save acceptmod debug plots, for creating TFs. If empty, will not be saved. (OBS: no trailing /)"
+)
 
 
 ###### MAPMAKER ######
