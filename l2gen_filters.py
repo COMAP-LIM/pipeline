@@ -974,7 +974,7 @@ class PCA_filter(Filter):
                 n_pca_comp = f["n_pca_comp"][()]
                 pca_eigvals = f["pca_eigvals"][()]
 
-            pca_ampl = np.zeros((n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             for ifeed in range(l2.Nfeeds):
                 ak = np.nansum(l2.tod[ifeed,:,:,:,None]*np.transpose(comps, (1,0)), axis=2)
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*np.transpose(comps, (1,0))[None,None,:,:], axis=-1)
@@ -1161,7 +1161,7 @@ class PCA_feed_filter(Filter):
                 ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comp.T, axis=2)
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comp.T[None,None,:,:], axis=-1)
 
-                l2.tofile_dict["pca_feed_ampl"][:n_pca_comp[ifeed],ifeed] = np.transpose(ak, (2,0,1))
+                # l2.tofile_dict["pca_feed_ampl"][:n_pca_comp[ifeed],ifeed] = np.transpose(ak, (2,0,1))
 
             l2.tofile_dict["pca_feed_comp"] = comps
             l2.tofile_dict["n_pca_feed_comp"] = n_pca_comp
