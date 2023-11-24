@@ -14,6 +14,7 @@ from astropy.coordinates import SkyCoord
 from astropy.coordinates import solar_system_ephemeris, EarthLocation                                                                                                    
 from astropy.coordinates import get_body_barycentric, get_body, get_moon
 from astropy.coordinates import AltAz
+from scipy.interpolate import CubicSpline
 import glob
 import os
 import pwd
@@ -157,7 +158,21 @@ def compute_power_spec1d_2d(x, k_bin_edges, dx=1, dy=1, dz=1):
     return Pk_1D, Pk, k, nmodes
 
 
-def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10):
+def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10, is_slow=False):
+    if is_slow:
+        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_slow_scans.h5", "r") as f:
+            tf = f["/spherically_averaged/transfer_function"][2:]
+            k_tf = f["/spherically_averaged/k_bin_centers"][2:]
+    else:
+        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_fast_scans.h5", "r") as f:
+            tf = f["/spherically_averaged/transfer_function"][2:]
+            k_tf = f["/spherically_averaged/k_bin_centers"][2:]
+
+    tf_interp_log = CubicSpline(np.log10(k_tf), np.log10(tf))
+    def tf_interp(k_tf):
+        return 10**tf_interp_log(np.log10(k_tf))
+
+
     map, nhit = make_map(ra, dec, ra_bins, dec_bins, tod, mask)
     h = 0.7
     deg2Mpc = 76.22 / h
@@ -182,7 +197,8 @@ def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10):
         map_n = np.random.randn(*rms.shape) * rms
         ps_arr[l] = compute_power_spec3d(w * map_n, k_bin_edges, d_th, d_th, dz)[0]
     
-    transfer = 1.0 / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
+    # transfer = 1.0 / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
+    transfer = tf_interp(k)
     
     ps_mean = np.mean(ps_arr, axis=0)
     ps_std = np.std(ps_arr, axis=0) / transfer
@@ -191,7 +207,7 @@ def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10):
     n_chi2 = len(k)
     chi = np.sum(((Pk - ps_mean)/ ps_std) ** 3)
     chi2 = np.sign(chi) * np.abs((np.sum(((Pk - ps_mean)/ ps_std) ** 2) - n_chi2) / np.sqrt(2 * n_chi2))
-    return chi2, Pk, ps_mean, ps_std, transfer
+    return chi2, Pk, ps_mean, ps_std, transfer, map, rms
 
 # From Tony Li
 def ensure_dir_exists(path):
@@ -772,10 +788,17 @@ def get_scan_stats(filepath, map_grid=None):
                 where = np.where(nhit > 0)
                 rms = np.zeros_like(nhit)
                 rms[where] = (sigma0[i, j][None, None, :]/ np.sqrt(nhit))[where]
+                # if i == 0 and j == 0:
+                    # print(f"{scanid:9d}, {ra[i].min():2f}, {ra[i].max():.2f}, {dec[i].min():.2f}, {dec[i].max():.2f}, {ra_bins.shape[0]:3d}, {dec_bins.shape[0]:3d}, {ra_bins[0]:.2f}, {ra_bins[-1]:.2f}, {dec_bins[0]:.2f}, {dec_bins[-1]:.2f}, {np.nanmin(rms[rms!=0]):.5f}, {np.nanmax(nhit):.0f}")
                 #print(np.nanstd((tod[i, j, :, :] / sigma0[i, j, :, None]).flatten()))
                 #print(np.std(map[where] / rms[where]))
                 map_list[i][j] = [map, rms]
-                ps_chi2[i, j], Pk, ps_mean, ps_std, transfer = get_sb_ps(ra[0], dec[0], ra_bins2, dec_bins2, tod[i, j], mask[i, j], sigma0[i, j], d_dec)
+                ps_chi2[i, j], Pk, ps_mean, ps_std, transfer, map, rms = get_sb_ps(ra[0], dec[0], ra_bins2, dec_bins2, tod[i, j], mask[i, j], sigma0[i, j], d_dec)
+                # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_chi2.npy", ps_chi2)
+                # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_map.npy", map)
+                # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_map_rms.npy", rms)
+                # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_misc.npy", np.array([n_k, d_th, dz]))
+
     #np.save('ps_chi2_scan', ps_chi2)
     insert_data_in_array(data, ps_chi2, 'ps_chi2')
     
@@ -1191,7 +1214,7 @@ def get_obsid_data(obsid_info):
         maps.append(map)
         i_scan += 1
     
-    ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2, ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2 = get_power_spectra(maps, map_grid, n_freqs)
+    ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2, ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2 = get_power_spectra(maps, map_grid, n_freqs, obsid_info)
 
     insert_data_in_array(scan_data, ps_s_sb_chi2, 'ps_s_sb_chi2', obsid=True)
     insert_data_in_array(scan_data, ps_s_feed_chi2, 'ps_s_feed_chi2', obsid=True)
@@ -1210,7 +1233,11 @@ def get_obsid_data(obsid_info):
     return scan_data
 
 
-def get_power_spectra(maps, map_grid, n_freqs):
+def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
+    if int(obsid_info.scans[0][:-2]) > 28500:
+        is_slow=True
+    else:
+        is_slow=False
     n_feeds = 20
     n_sb = 4
     n_k = 10
@@ -1273,8 +1300,21 @@ def get_power_spectra(maps, map_grid, n_freqs):
                     
                     # print(map[:,:,10])
                     # print(rms[:,:,10])
-                    ps_s_sb_chi2[l, i, j] = get_ps_chi2(map, rms, n_k, d_th, dz)  # , Pk, ps_mean, ps_std, transfer 
+                    ps_s_sb_chi2[l, i, j] = get_ps_chi2(map, rms, n_k, d_th, dz, is_slow=is_slow, name="s_sb")  # , Pk, ps_mean, ps_std, transfer
+                    if len(params.accept_mod_debug_maps_dir) > 0:
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_chi2.npy", ps_s_sb_chi2)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_map.npy", map)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_map_rms.npy", rms)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_misc.npy", np.array([n_k, d_th, dz]))
+
                     ps_z_s_sb_chi2[l, i, j], ps_xy_s_sb_chi2[l, i, j] = get_ps_1d2d_chi2(map, rms, n_k, d_th, dz)
+                    if len(params.accept_mod_debug_maps_dir) > 0:
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_s_sb_chi2.npy", ps_z_s_sb_chi2)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_xy_s_sb_chi2.npy", ps_xy_s_sb_chi2)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_map.npy", map)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_map_rms.npy", rms)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_misc.npy", np.array([n_k, d_th, dz]))
+
                     chi2 = ps_s_sb_chi2[l, i, j]
                     # if np.isnan(chi2):
                     #     print("Nan in chi2")
@@ -1299,7 +1339,12 @@ def get_power_spectra(maps, map_grid, n_freqs):
                 ps_s_feed_chi2[l, i, :] = get_ps_chi2(
                     map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
                     rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
-                    n_k, d_th, dz, is_feed=True)
+                    n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="s_feed")
+                if len(params.accept_mod_debug_maps_dir) > 0:
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_chi2.npy", ps_s_feed_chi2)
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_map.npy", map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_map_rms.npy", rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_misc.npy", np.array([n_k, d_th, dz]))
                 where = np.where(rms_feed > 0.0)
                 sum_scan[indices[i, 0, 0] - 1:indices[i, 0, 1], indices[i, 1, 0] - 1:indices[i, 1, 1], :, :][where] += map_feed[where] / rms_feed[where] ** 2 
                 div_scan[indices[i, 0, 0] - 1:indices[i, 0, 1], indices[i, 1, 0] - 1:indices[i, 1, 1], :, :][where] += 1.0 / rms_feed[where] ** 2 
@@ -1322,8 +1367,12 @@ def get_power_spectra(maps, map_grid, n_freqs):
             ps_s_chi2[l, :, :] = get_ps_chi2(
                     map_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
                     rms_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                    n_k, d_th, dz, is_feed=True)
-
+                    n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="s")
+            if len(params.accept_mod_debug_maps_dir) > 0:
+                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_chi2.npy", ps_s_chi2)
+                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_map.npy", map_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
+                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_map_rms.npy", rms_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
+                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_misc.npy", np.array([n_k, d_th, dz]))
             sum_obsid[where] += sum_scan[where]
             div_obsid[where] += div_scan[where]
     if np.sum(accepted[:, :, :].flatten()) == 0:
@@ -1347,7 +1396,13 @@ def get_power_spectra(maps, map_grid, n_freqs):
         ps_o_chi2[:, :, :] = get_ps_chi2(
                     map_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
                     rms_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                    n_k, d_th, dz, is_feed=True)
+                    n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="o")
+        if len(params.accept_mod_debug_maps_dir) > 0:
+            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_chi2.npy", ps_o_chi2)
+            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_map.npy", map_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
+            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_map_rms.npy", rms_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
+            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_misc.npy", np.array([n_k, d_th, dz]))
+
         # sum_sb_obsid = np.zeros((n_feeds, len(ra), len(dec), n_sb, 64)) 
         for i in range(n_feeds):
             min_ind = np.min(ind_feed[:, i, :, 0], axis=0)
@@ -1365,7 +1420,13 @@ def get_power_spectra(maps, map_grid, n_freqs):
                     ps_o_sb_chi2[:, i, j] = get_ps_chi2(
                         map_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
                         rms_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                        n_k, d_th, dz)
+                        n_k, d_th, dz, is_slow=is_slow, name="o_sb")
+                    if len(params.accept_mod_debug_maps_dir) > 0:
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_chi2.npy", ps_o_sb_chi2)
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_map.npy", map_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_map_rms.npy", rms_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
+                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_misc.npy", np.array([n_k, d_th, dz]))
+
             if np.sum(accepted[:, i, :].flatten()) == 0:
                 ps_o_feed_chi2[:, i, :] = np.nan
             else:   
@@ -1380,14 +1441,38 @@ def get_power_spectra(maps, map_grid, n_freqs):
                 ps_o_feed_chi2[:, i, :] = get_ps_chi2(
                         map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
                         rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
-                        n_k, d_th, dz, is_feed=True)
+                        n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="o_feed")
+                if len(params.accept_mod_debug_maps_dir) > 0:
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_chi2.npy", ps_o_feed_chi2)
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_map.npy", map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_map_rms.npy", rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
+                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_misc.npy", np.array([n_k, d_th, dz]))
+
 
     return (ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2,
             ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2)
                 # return (ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_s_stackp_chi2, ps_s_stackfp_chi2, ps_o_sb_chi2,
     #         ps_o_feed_chi2, ps_o_chi2, ps_o_stackp_chi2, ps_o_stackfp_chi2)
 
-def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False):
+def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False, is_slow=False, name=""):
+    # if is_slow:
+    #     with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_slow_scans.h5", "r") as f:
+    #         tf = f["/spherically_averaged/transfer_function"][2:]
+    #         k_tf = f["/spherically_averaged/k_bin_centers"][2:]
+    # else:
+    #     with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_fast_scans.h5", "r") as f:
+    #         tf = f["/spherically_averaged/transfer_function"][2:]
+    #         k_tf = f["/spherically_averaged/k_bin_centers"][2:]
+
+    # tf_interp_log = CubicSpline(np.log10(k_tf), np.log10(tf))
+    # def tf_interp(k_tf):
+    #     return 10**tf_interp_log(np.log10(k_tf))
+
+    if is_slow:
+        speed="slow"
+    else:
+        speed="fast"
+    transfer = np.load(f"{current}/TFs/{name}_tf_median_{speed}.npy")
 
     where = np.where(rms > 0)
     k_bin_edges = np.logspace(-1.8, np.log10(0.5), n_k)
@@ -1395,8 +1480,8 @@ def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False):
     w[where] = 1 / rms[where] ** 2
 
     Pk, k, nmodes = compute_power_spec3d(w * map, k_bin_edges, d_th, d_th, dz)
-
-    where = np.where(Pk > 0)
+    # print(n_k, Pk.shape, transfer.shape)
+    where = np.where((Pk > 0)*np.isfinite(transfer))
 
     n_sim = 100 #20
     ps_arr = np.zeros((n_sim, n_k - 1))
@@ -1404,13 +1489,13 @@ def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False):
         map_n = np.random.randn(*rms.shape) * rms
         ps_arr[l] = compute_power_spec3d(w * map_n, k_bin_edges, d_th, d_th, dz)[0]
 
-    transfer = 1.0 / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
+    # transfer = 1.0 / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
     
     ps_mean = np.mean(ps_arr, axis=0)
 
-    if is_feed:
+    # if is_feed:
         # transfer4 = 1.0 / np.exp((0.050/k) ** 5.5)  + 1e-6 
-        transfer = np.array([7.08265320e-07, 1.30980902e-06, 1.87137602e-01, 4.91884922e-01, 6.48433271e-01, 8.27296733e-01, 8.85360854e-01, 8.14043197e-01, 8.03513664e-01]) #1.0 / np.exp((0.050/k) ** 5.5) + 1e-6
+        # transfer = np.array([7.08265320e-07, 1.30980902e-06, 1.87137602e-01, 4.91884922e-01, 6.48433271e-01, 8.27296733e-01, 8.85360854e-01, 8.14043197e-01, 8.03513664e-01]) #1.0 / np.exp((0.050/k) ** 5.5) + 1e-6
         # with open("feed_ps.txt", "ab") as myfile:
         #     np.savetxt(myfile, np.array([Pk, ps_mean]).T)
 
