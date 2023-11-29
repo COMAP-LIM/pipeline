@@ -1904,8 +1904,9 @@ if __name__ == "__main__":
             scan_list, scan_data = get_scan_data(params, fields, fieldname)
         
         if rank == 0:
-            scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
-            scan_data_data_name_list.append(scan_data_data_name)
+            if not data_from_file:
+                scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
+                scan_data_data_name_list.append(scan_data_data_name)
             print('Saved scan data')
             accept_list, reject_reason, acc = make_accept_list(params, accept_params, scan_data)
             print('Made accept list')
@@ -1957,8 +1958,8 @@ if __name__ == "__main__":
             #shutil.copyfile(stats_list_name, stats_list_name_copy)
         
 
-                
-            if params.make_accept_mod_plots:
+            
+            if params.make_accept_mod_plots and not data_from_file:
                 ### Making scan data plots ###
                 print("Making scan data plots")
                 plot_folder = os.path.join(data_folder, "plots", fieldname)
