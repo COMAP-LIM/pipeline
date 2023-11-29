@@ -342,6 +342,15 @@ class COMAP2FPXS():
             all_rnd_spectra = rndfile["all_spectra"][()]
             all_rnd_std = rndfile["all_std"][()] 
             
+        # with h5py.File(f"/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src/{self.params.fields[0]}_all_rnd_spectra_{83762}_{self.params.psx_mode}.h5", "r") as rndfile:
+        #     all_rnd_spectra = rndfile["all_spectra"][()]
+        #     # all_rnd_std = rndfile["all_std"][()] 
+                
+        # with h5py.File(f"/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src/{self.params.fields[0]}_all_rnd_spectra_{773655}_{self.params.psx_mode}.h5", "r") as rndfile:
+        #     # all_rnd_spectra = rndfile["all_spectra"][()]
+        #     all_rnd_std = rndfile["all_std"][()] 
+                
+        
         self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
                 
         for map1, map2 in self.field_combinations:
@@ -469,6 +478,9 @@ class COMAP2FPXS():
                         
                         k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
 
+                        kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(k_bin_centers_perp, k_bin_centers_par, indexing="ij")))
+
+                        
                         transfer_function = self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
 
                         # Applying white noise transfer function
@@ -479,11 +491,12 @@ class COMAP2FPXS():
                         
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 
-                        transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
-
+                        # transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
+                        transfer_function_mask = np.logical_and(kgrid > 0.2, np.sign(transfer_function) >= 0) 
+                        
                         _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
                         # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
-                        _transfer_function_mask[:4, :] = False
+                        _transfer_function_mask[:5, :] = False
                         
                         transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
 
@@ -852,8 +865,8 @@ class COMAP2FPXS():
                     k_bin_edges_perp,
                     k_bin_centers_par,
                     k_bin_centers_perp,
-                    xs_mean[i, ...],
-                    xs_error[i, ...],
+                    xs_mean[i, ...] / transfer_function,
+                    xs_error[i, ...] / transfer_function,
                     xs_wn_covariance[i, ...],
                     transfer_function_mask,
                     (chi2_wn[i, ...], chi2_wn_cov[i, ...]),
@@ -902,6 +915,8 @@ class COMAP2FPXS():
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+                outfile.create_dataset("xs_covariance_2d", data = xs_wn_covariance)
+                outfile.create_dataset("xs_covariance_1d", data = xs_wn_covariance_1d)
                 
                 # Normalized chi2 value for feed-feed split cross-spectra
                 outfile.create_dataset("chi2_grid", data = chi2_grids)
@@ -1034,12 +1049,13 @@ class COMAP2FPXS():
             lim_error = np.nanmax(xs_sigma[limit_idx:-limit_idx, limit_idx:-limit_idx])
             lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)[limit_idx:-limit_idx, limit_idx:-limit_idx]))
         else:
-            lim = np.nanmax(np.abs(xs_mean))
+            lim = np.percentile(np.abs(xs_mean), 80)
+            # lim = np.nanmax(np.abs(xs_mean))
             lim_error = np.nanmax(xs_sigma)
             lim_significance = np.nanmax(np.abs((xs_mean / xs_sigma)))
 
-        # norm = matplotlib.colors.Normalize(vmin=-1.1 * lim, vmax=1.1 * lim)
-        norm = matplotlib.colors.Normalize(vmin=-3e4, vmax=3e4)
+        norm = matplotlib.colors.Normalize(vmin=-lim, vmax=lim)
+        # norm = matplotlib.colors.Normalize(vmin=-3e4, vmax=3e4)
         lim_error = matplotlib.colors.Normalize(vmin=0, vmax=lim_error)
         lim_significance = matplotlib.colors.Normalize(vmin=-3, vmax=3)
         # lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
@@ -1281,7 +1297,7 @@ class COMAP2FPXS():
                 color = "k",
             )
 
-        ax1.legend(fontsize = 16, ncol = 4)
+        ax1.legend(fontsize = 16, ncol = 4, loc = "upper center")
 
         ax1.set_xlabel(r"$\chi^2$", fontsize = 16)
         ax1.set_ylabel(r"$P(\chi^2)$", fontsize = 16)
@@ -1292,9 +1308,12 @@ class COMAP2FPXS():
         fig.savefig(outname, bbox_inches = "tight")
         
 
-        fig, ax = plt.subplots(figsize = (10, 8))
+        fig, ax = plt.subplots(1, 1, figsize = (12, 8))
+        plotdata = cov_wn / np.sqrt(np.outer(cov_wn.diagonal(), cov_wn.diagonal(),))
+        plotdata[~transfer_function_mask.flatten(), :] = np.nan
+        plotdata[:, ~transfer_function_mask.flatten()] = np.nan
         img = ax.imshow(
-            cov_wn / np.sqrt(np.outer(cov_wn.diagonal(), cov_wn.diagonal(),)),
+            plotdata,
             interpolation = "none",
             vmin = -1,
             vmax = 1,
@@ -1308,6 +1327,14 @@ class COMAP2FPXS():
         
         ax.set_xlabel("bin number", fontsize = 16)
         ax.set_ylabel("bin number", fontsize = 16)
+    
+        cbar = fig.colorbar(img, ax=ax, fraction=0.046, pad=0.018)
+        cbar.set_label(
+            r"$\sigma_\mathrm{propagation} / \sqrt{diag(N)}$",
+            size=16,
+        )
+        cbar.ax.tick_params(rotation=45)
+        
         
         fig.savefig(outname_corr, bbox_inches = "tight")
 
@@ -1457,8 +1484,9 @@ class COMAP2FPXS():
         
         if not self.params.psx_null_diffmap:
             # Upper limit from S1:
-            ax[0].axhline(5.4e3, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3)
-            ax[0].text(k_1d[-1] - 0.1 * k_1d[-1]  , 6e3, r"95% $\mathrm{UL_{S1}}$", fontsize = 14, alpha = 0.8)
+            _k_1d = np.linspace(0.05, 1, 100)
+            ax[0].plot(_k_1d, 5.4e3 / 0.24 * _k_1d, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3, label = r"95% $\mathrm{UL_{S1}}$")
+            # ax[0].axhline(5.4e3, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3, label = r"95% $\mathrm{UL_{S1}}$")
             
             all_pt_coadded = np.sum((xs_mean) / (xs_sigma) ** 2)
             all_pt_coadded /= np.sum(1 / xs_sigma ** 2)
@@ -1481,6 +1509,26 @@ class COMAP2FPXS():
                 marker = "x",
                 label = "coadded points"
             )
+            
+            ax[1].errorbar(
+                0.24 + 0.24 * 0.05,
+                all_pt_coadded / all_pt_error,
+                1,
+                lw = 3,
+                fmt = " ",
+                color = "g",
+            )
+            
+            
+            ax[1].scatter(
+                0.24 + 0.24 * 0.05,
+                all_pt_coadded / all_pt_error,
+                s = 80,
+                color = "g",
+                marker = "x",
+                label = "coadded points"
+                )
+            
         ax[0].legend(ncols = 3)
         
         # Plot scatter and error bar of significance plot
@@ -1514,6 +1562,8 @@ class COMAP2FPXS():
             color = "r",
         )
         
+    
+        
         # Add some zero line
         ax[0].axhline(0, color = "k", alpha = 0.5)
         ax[1].axhline(0, color = "k", alpha = 0.5)
@@ -1531,15 +1581,17 @@ class COMAP2FPXS():
         ax[1].set_xscale("log")
 
         # Define ticks and ticklabels
-        klabels = [0.05, 0.1, 0.2, 0.5, 1.0]
+        klabels = [0.2, 0.3, 0.4, 0.6, 0.8, 1.0]
+        # klabels = [0.05, 0.1, 0.2, 0.5, 1.0]
 
         ax[0].set_xticks(klabels)
         ax[0].set_xticklabels(klabels, fontsize = 16)
         ax[1].set_xticks(klabels)
         ax[1].set_xticklabels(klabels, fontsize = 16)
 
-        ax[0].set_xlim(0.06, 1.0)
-        ax[1].set_xlim(0.06, 1.0)
+        
+        ax[0].set_xlim(k_1d.min() * 0.8, 1.0)
+        ax[1].set_xlim(k_1d.min() * 0.8, 1.0)
 
         # ax[0].set_xlim(0.1, 1.0)
         # ax[1].set_xlim(0.1, 1.0)
@@ -1616,7 +1668,7 @@ class COMAP2FPXS():
                 color = "k",
             )
 
-        ax[2].legend(fontsize = 16, ncol = 4)
+        ax[2].legend(fontsize = 16, ncol = 4, loc = "upper center")
 
         ax[2].set_xlabel(r"$\chi^2$", fontsize = 16)
         ax[2].set_ylabel(r"$P(\chi^2)$", fontsize = 16)
