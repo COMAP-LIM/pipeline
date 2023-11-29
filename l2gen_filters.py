@@ -859,7 +859,7 @@ class Frequency_filter(Filter):
                         if self.use_prior:
                             a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
                         else:
-                            a, m = self.gain_temp_sep(y, P_reduced, F_reduced)
+                            a, m = self.gain_temp_sep(y, P_reduced, F_reduced, l2.samprate)
                     else:
                         a = np.zeros((1, l2.Ntod))
                         m = np.zeros((2, l2.Ntod))
