@@ -460,17 +460,17 @@ parser.add_argument("--accept_mod_params", type=str, default="accept_params.py")
 parser.add_argument(
     "--patch_definition_file",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/patches_celestial.txt",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/patches_celestial.txt",
 )
 parser.add_argument(
     "--weather_filepath",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/weather_list.txt",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/weather_list.txt",
 )
 parser.add_argument(
     "--accept_data_folder",
     type=str,
-    default="/mn/stornext/d22/cmbco/comap/protodir/auxiliary/scan_data/",
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/scan_data/",
 )
 parser.add_argument(
     "--make_accept_mod_plots",
@@ -848,7 +848,7 @@ parser.add_argument(
 parser.add_argument(
     "--model_name",
     type=str,
-    default="",
+    default="power_cov",
     help="(make_cube) Name of model to use. By defualt 'power_cov' is used.",
 )
 
