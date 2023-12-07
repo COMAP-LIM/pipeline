@@ -131,8 +131,14 @@ class COMAP2FPXS():
             # assume that map file name follows mapmaker file name pattern for all fields.
 
             fields = self.params.fields
-            field_combinations = [(f"{field_name}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5", f"{field_name}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5")
+            if np.any(["rnd" in var.casefold() for var in self.primary_variables]) or np.any(["rnd" in var.casefold() for var in self.secondary_variables]): 
+                rnd_string = f"_rnd{self.params.jk_rnd_split_seed}" 
+            else:
+                rnd_string = ""
+            
+            field_combinations = [(f"{field_name}_{self.params.map_name}{rnd_string}{self.params.psx_map_name_postfix}.h5", f"{field_name}_{self.params.map_name}{rnd_string}{self.params.psx_map_name_postfix}.h5")
                         for field_name in fields]            
+                
         else:
             # Else use file names from map file name list (when to compute FPXS of custom map list)
             field_combinations = [(name, name) for name in mapnames]
@@ -165,6 +171,20 @@ class COMAP2FPXS():
                 desc = f"Total",
                 position = 0,
             )
+            
+        
+        if self.params.psx_rnd_run:
+            
+            all_spectra = np.zeros(
+            (   
+                len(self.primary_variables),
+                len(self.included_feeds), 
+                len(self.included_feeds), 
+                self.params.psx_number_of_k_bins, 
+                self.params.psx_number_of_k_bins,
+            )
+        )
+        
         # MPI parallel run over all FPXS combinations
         for i in range(Number_of_combinations):
 
@@ -184,7 +204,7 @@ class COMAP2FPXS():
                 
                 # Extract file names, split keys and feed combinations from current combination
                 mapnames, splits, feeds = all_combinations[i]
-       
+
                 map1, map2 = mapnames
                 split1, split2 = splits
                 feed1, feed2 = feeds
@@ -240,18 +260,22 @@ class COMAP2FPXS():
                 spectrum_subdir = "spectra_2D"
                 if self.params.psx_mode == "saddlebag":
                     spectrum_subdir += "_saddlebag"
-                    
+                
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, spectrum_subdir, outdir, cross_spectrum.outname)):
                     continue
                 else:
                     # Read maps from generated map paths, and provide cosmology to translate from
                     # observational units to cosmological ones.
-                    cross_spectrum.read_map(
-                        mappaths, 
-                        self.cosmology, 
-                    )
-                    
+                    try:
+                        cross_spectrum.read_map(
+                            mappaths, 
+                            self.cosmology, 
+                        )
+                    except KeyError:                         
+                        print(f"\033[95m Map for {feed1}x{feed2} {splits} not found. Moving to next map cross!\033[00m")
+                        continue
+                        
                     # Compute cross-spectrum for current FPXS combination
                     cross_spectrum.calculate_xs_2d(
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
@@ -286,11 +310,17 @@ class COMAP2FPXS():
                         
                         cross_spectrum.weighted_overlap = np.nanmean(cross_spectrum.weighted_overlap[cross_spectrum.weighted_overlap != 0])
                         
-                        # cross_spectrum.run_noise_sims_2d(
-                        #     self.params.psx_noise_sim_number,
-                        #     no_of_k_bins=self.params.psx_number_of_k_bins + 1,
-                        #     seed = seed + (i + 1),
-                        # )
+                        if self.params.psx_rnd_run:
+                            current_primary_split = split1[0].split("/")[-1].split("map_")[-1][:4]
+                            split_idx = np.where(np.array(self.primary_variables) == current_primary_split)[0]
+                            all_spectra[split_idx, feed1 - 1, feed2 - 1, ...] = cross_spectrum.xs
+                        
+                        elif not self.params.psx_rnd_run and self.params.psx_noise_sim_number > 0:
+                            cross_spectrum.run_noise_sims_2d(
+                                self.params.psx_noise_sim_number,
+                                no_of_k_bins=self.params.psx_number_of_k_bins + 1,
+                                seed = seed + (i + 1),
+                            )
 
                     else:
                         cross_spectrum.xs *= transfer_function_wn
@@ -298,14 +328,39 @@ class COMAP2FPXS():
                                         
                     # Save resulting FPXS from current combination to file
                     cross_spectrum.make_h5_2d(outdir)
-
+        
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
         if self.rank == 0 and not self.params.psx_rnd_run:
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
             self.compute_averages()
-
+        
+        elif self.params.psx_rnd_run:
+            all_spectra_buffer = np.zeros_like(all_spectra)
+            self.comm.Reduce(
+                [all_spectra, MPI.DOUBLE],
+                [all_spectra_buffer, MPI.DOUBLE],
+                op=MPI.SUM,
+                root=0,
+            )
+            
+            if self.rank == 0:
+                all_spectra = all_spectra_buffer
+                rndsubdir = "rnd_split_files"
+                if self.params.psx_mode == "saddlebag":
+                    rndsubdir += "_saddlebag"
+                rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
+                rndpath = os.path.join(rndpath, f"{self.params.fields[0]}_{self.params.map_name}_rnd{self.params.jk_rnd_split_seed}{self.params.psx_map_name_postfix}")
+                if not os.path.exists(rndpath):
+                    os.makedirs(rndpath, exist_ok = True)
+                
+                rndfile = os.path.join(rndpath, f"rndfile_seed{self.params.jk_rnd_split_seed}.h5")
+                if not os.path.exists(rndfile):
+                    with h5py.File(rndfile, "w") as outfile:
+                        outfile["all_spectra"] = all_spectra
+    
+    
     def compute_averages(self):
         if self.params.psx_mode == "saddlebag":
             average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra_saddlebag")
@@ -338,20 +393,26 @@ class COMAP2FPXS():
         N_splits = len(self.split_map_combinations)
         N_k = self.params.psx_number_of_k_bins
 
-        with h5py.File(f"/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src/{self.params.fields[0]}_all_rnd_spectra_{self.params.psx_mode}.h5", "r") as rndfile:
-            all_rnd_spectra = rndfile["all_spectra"][()]
-            all_rnd_std = rndfile["all_std"][()] 
+        if self.params.psx_noise_sim_number <= 0 and len(self.params.psx_rnd_file_list) == 0:
+            raise ValueError("Cannot compute average power spectrum without noise simulations or an RND ensemble.")
+        elif len(self.params.psx_rnd_file_list) > 0:
+            import glob
+            rndsubdir = "rnd_split_files"
+            if self.params.psx_mode == "saddlebag":
+                rndsubdir += "_saddlebag"
+            rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
             
-        # with h5py.File(f"/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src/{self.params.fields[0]}_all_rnd_spectra_{83762}_{self.params.psx_mode}.h5", "r") as rndfile:
-        #     all_rnd_spectra = rndfile["all_spectra"][()]
-        #     # all_rnd_std = rndfile["all_std"][()] 
-                
-        # with h5py.File(f"/mn/stornext/d5/data/nilsoles/nils/COMAP_general/src/{self.params.fields[0]}_all_rnd_spectra_{773655}_{self.params.psx_mode}.h5", "r") as rndfile:
-        #     # all_rnd_spectra = rndfile["all_spectra"][()]
-        #     all_rnd_std = rndfile["all_std"][()] 
-                
-        
-        self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
+            for num_rnd, rndfile_name in enumerate(self.params.psx_rnd_file_list):
+                rndfile = os.path.join(rndpath, f"{self.params.fields[0]}_{rndfile_name}")
+                rndfile = glob.glob(os.path.join(rndfile, f"*.h5"))[0]
+                with h5py.File(rndfile, "r") as infile:
+                    rnd_spectra = infile["all_spectra"][()] 
+                if num_rnd == 0:
+                    all_rnd_spectra = rnd_spectra
+                else:
+                    all_rnd_spectra = np.concatenate((all_rnd_spectra, rnd_spectra), axis = 0)
+            all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
+            self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
                 
         for map1, map2 in self.field_combinations:
             # Generate name of outpute data directory
@@ -465,12 +526,20 @@ class COMAP2FPXS():
                         
                         
                         cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap"], indir)
-
-                        # xs_wn = cross_spectrum.white_noise_simulation
-                        xs_wn = all_rnd_spectra[:, feed1, feed2, ...]
+                        
+                        if len(self.params.psx_rnd_file_list) > 0:
+                            xs_wn = all_rnd_spectra[:, feed1, feed2, ...]
+                            xs_sigma = all_rnd_std[feed1, feed2, ...]
+                        else:
+                            xs_wn = cross_spectrum.white_noise_simulation
+                            xs_sigma = cross_spectrum.rms_xs_std_2D
+                            # Applying white noise transfer function
+                            transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
+                            
+                            xs_sigma *= transfer_function_wn 
+                            xs_wn *= transfer_function_wn[None, ...]
+                            
                         xs = cross_spectrum.xs_2D
-                        # xs_sigma = cross_spectrum.rms_xs_std_2D
-                        xs_sigma = all_rnd_std[feed1, feed2, ...]
 
                         k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
@@ -483,11 +552,6 @@ class COMAP2FPXS():
                         
                         transfer_function = self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
 
-                        # Applying white noise transfer function
-                        # transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
-                        
-                        # xs_sigma *= transfer_function_wn 
-                        # xs_wn *= transfer_function_wn[None, ...]
                         
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 
@@ -497,6 +561,7 @@ class COMAP2FPXS():
                         _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
                         # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
                         _transfer_function_mask[:5, :] = False
+                        _transfer_function_mask[-2:, :] = False
                         
                         transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
 
@@ -663,30 +728,12 @@ class COMAP2FPXS():
                     
                     PTE_data_cov[i] = scipy.stats.chi2.sf(chi2_data_cov[i], df = np.sum(transfer_function_mask))
                     PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i], df = np.sum(transfer_function_mask))
-                    PTE_data[i] = scipy.stats.chi2.sf(chi2_data_cov[i], df = np.sum(transfer_function_mask))
+                    PTE_data[i] = scipy.stats.chi2.sf(chi2_data[i], df = np.sum(transfer_function_mask))
 
-                    # print(np.sqrt(cov_2d.diagonal()), xs_error[i, ...].flatten())
-                    # print(inv_xs_wn_covariance)
                     
-                    print("hei 2d", PTE_data[i], chi2_data[i])
-                    print("hei 2d coadd", PTE_data_coadd[i], chi2_data_coadd[i])
-                    print("hei 2d cov", PTE_data_cov[i], chi2_data_cov[i])
-                    # print(0.5 * np.max(np.abs((inv_xs_wn_covariance - inv_xs_wn_covariance.T))))
-                    # fig, ax = plt.subplots(1, 1, figsize = (8, 8))
-                    # img = ax.imshow(
-                    #     inv_xs_wn_covariance,
-                    #     vmin = -np.max(np.abs(inv_xs_wn_covariance)),
-                    #     vmax = np.max(np.abs(inv_xs_wn_covariance)),
-                    #     cmap = "RdBu_r",
-                    #     interpolation = "none",
-                    # )
-                    # print(inv_xs_wn_covariance.shape)
-                    # cbar = plt.colorbar(img, ax = ax)
-                    # fig.savefig("debug_cov_inv.png")
-                    
-                    # sys.exit()
-                    
-                if np.all(~np.isfinite(chi2)):
+                    print("2D PTE:", PTE_data_coadd[i], "2D chi2:", chi2_data_coadd[i])
+                                    
+                if np.all(~np.isfinite(chi2)) or np.all(chi2 == 0):
                     continue
 
                 weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
@@ -776,10 +823,7 @@ class COMAP2FPXS():
                 PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = _error_1d.size)
                 PTE_data_1d[i] = scipy.stats.chi2.sf(chi2_data_1d[i], df = _error_1d.size)
 
-                print("hei 1d", PTE_data_1d[i], chi2_data_1d[i])
-                print("hei 1d coadd", PTE_data_coadd_1d[i], chi2_data_coadd_1d[i])
-                print("hei 1d cov", PTE_data_cov_1d[i], chi2_data_cov_1d[i])
-
+                print("1D PTE:", PTE_data_coadd_1d[i], "1D chi2:", chi2_data_coadd_1d[i])
                         
                 if not self.params.psx_generate_white_noise_sim:
                     if self.params.psx_mode == "saddlebag":
@@ -1327,15 +1371,6 @@ class COMAP2FPXS():
         
         ax.set_xlabel("bin number", fontsize = 16)
         ax.set_ylabel("bin number", fontsize = 16)
-    
-        cbar = fig.colorbar(img, ax=ax, fraction=0.046, pad=0.018)
-        cbar.set_label(
-            r"$\sigma_\mathrm{propagation} / \sqrt{diag(N)}$",
-            size=16,
-        )
-        cbar.ax.tick_params(rotation=45)
-        
-        
         fig.savefig(outname_corr, bbox_inches = "tight")
 
 
@@ -2051,7 +2086,7 @@ class COMAP2FPXS():
         self.power_spectrum_dir = self.params.power_spectrum_dir
         
         # Mapmaker map name and directory
-        self.map_name = self.params.map_name + self.params.psx_map_name_postfix
+        self.map_name = self.params.map_name + f"_rnd{self.params.jk_rnd_split_seed}" + self.params.psx_map_name_postfix
         self.map_dir = self.params.map_dir
 
         # Jackknive "split" definition file path, defining which splits to use 
