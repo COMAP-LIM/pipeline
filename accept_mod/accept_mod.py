@@ -439,6 +439,8 @@ def get_scan_stats(filepath, map_grid=None):
             pca = np.zeros((4, 10000))
             # eigv = np.zeros(0)
             # print('Found no pca comps', scanid)
+        
+        pcaf_ampl_ind = my_file['pca_feed_ampl'][:4]
 
         npca_ind = np.zeros((n_det_ind, n_sb))
         npcaf_ind = np.zeros((n_det_ind, n_sb))
@@ -486,6 +488,7 @@ def get_scan_stats(filepath, map_grid=None):
     npca = np.zeros((n_det, n_sb))
     npcaf = np.zeros((n_det, n_sb))
     ampl = np.zeros((4, n_det, n_sb, n_freq_hr))
+    pcaf_ampl = np.zeros((4, n_det, n_sb, n_freq_hr))
     tsys = np.zeros((n_det, n_sb, n_freq))
     chi2 = np.zeros((n_det, n_sb, n_freq))
     sd = np.zeros((3, n_det, n_sb, 4, 1000))
@@ -506,6 +509,7 @@ def get_scan_stats(filepath, map_grid=None):
     acc[pixels] = acc_ind
     acc_specific[pixels] = acc_ind_specific
     ampl[:, pixels, :, :] = ampl_ind
+    pcaf_ampl[:, pixels, :, :] = pcaf_ampl_ind
     npca[pixels, :] = npca_ind
     npcaf[pixels, :] = npcaf_ind
     tsys[pixels] = tsys_ind
@@ -557,6 +561,8 @@ def get_scan_stats(filepath, map_grid=None):
     ampl = np.nanmean(np.abs(ampl), axis=3)
     ampl = 100 * np.sqrt(ampl ** 2 * pca.std(1)[:, None, None] ** 2 / radiometer ** 2)
     # ampl[np.where(ampl == 0)] = np.nan
+    pcaf_ampl = np.nanmean(np.abs(pcaf_ampl), axis=3)
+    pcaf_ampl = 100 * np.sqrt(pcaf_ampl ** 2 * pca.std(1)[:, None, None] ** 2 / radiometer ** 2)
 
     # Here comes the different diagnostic data that is calculated
     # Obsid
@@ -683,6 +689,9 @@ def get_scan_stats(filepath, map_grid=None):
     insert_data_in_array(data, ampl[1], 'pca2')
     insert_data_in_array(data, ampl[2], 'pca3')
     insert_data_in_array(data, ampl[3], 'pca4')
+    insert_data_in_array(data, pcaf_ampl[0], 'pcf1')
+    insert_data_in_array(data, pcaf_ampl[1], 'pcf2')
+    insert_data_in_array(data, np.sum(ampl+pcaf_ampl, axis=0), 'pcsm')
 
     # weather statistic
     try:
@@ -1702,7 +1711,7 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     elif string == 'dayn':
         # day/night split
         closetonight = extract_data_from_array(scan_data, 'night').copy()
-        closetonight += np.random.normal(0, 1e-10, closetonight.shape[0])[:, None, None]
+        closetonight += np.random.normal(0, 1e-6, closetonight.shape[0])[:, None, None]
         cutoff = np.percentile(closetonight[accept_list], 50.0)
         jk_list[np.where(closetonight > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
@@ -1720,6 +1729,30 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     elif string == 'sidr':
         # sidereal time split 
         sid = extract_data_from_array(scan_data, 'sidereal')
+        cutoff = np.percentile(sid[accept_list], 50.0)
+        # print('Sidereal time cutoff: ', cutoff)
+        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+    elif string == 'sid1':
+        # sidereal time split 
+        sid = extract_data_from_array(scan_data, 'sidereal')
+        sid = np.abs(sid - 160)
+        cutoff = np.percentile(sid[accept_list], 50.0)
+        # print('Sidereal time cutoff: ', cutoff)
+        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+    elif string == 'sid2':
+        # sidereal time split 
+        sid = extract_data_from_array(scan_data, 'sidereal')
+        sid = np.abs(sid - 200)
+        cutoff = np.percentile(sid[accept_list], 50.0)
+        # print('Sidereal time cutoff: ', cutoff)
+        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        cutoff_list[n-1] = cutoff
+    elif string == 'sid3':
+        # sidereal time split 
+        sid = extract_data_from_array(scan_data, 'sidereal')
+        sid = np.abs(sid - 240)
         cutoff = np.percentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         jk_list[np.where(sid > cutoff)] += int(2 ** n) 
@@ -1778,7 +1811,7 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     elif string == 'rain':
         # rain split 
         rain = extract_data_from_array(scan_data, 'rain').copy()
-        rain += np.random.normal(0, 1e-10, rain.shape[0])[:, None, None]
+        rain += np.random.normal(0, 1e-6, rain.shape[0])[:, None, None]
         cutoff = np.percentile(rain[accept_list], 50.0)
         jk_list[np.where(rain > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
@@ -1898,6 +1931,52 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
         jk_list[np.where(sigma > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
+    elif string == 'npca':
+        npca = extract_data_from_array(scan_data, 'npca').copy()
+        npcaf = extract_data_from_array(scan_data, 'npcaf').copy()
+        npca_both = npca + npcaf
+        npca_both[~accept_list] = np.nan
+        npca_both += np.random.normal(0, 1e-4, npca_both.shape[0])[:, None, None]
+        cutoff = np.nanpercentile(npca_both, 50.0, axis = 0)
+
+        jk_list[np.where(npca_both > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'pcaa':
+        pca_ampl_sum = extract_data_from_array(scan_data, 'pcsm').copy()
+        pca_ampl_sum[~accept_list] = np.nan
+        cutoff = np.nanpercentile(pca_ampl_sum, 50.0, axis = 0)
+        jk_list[np.where(pca_ampl_sum > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 's01f':
+        sigma0_1f = extract_data_from_array(scan_data, 'sigma_mean').copy()
+        sigma0_1f[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sigma0_1f, 50.0, axis = 0)
+        jk_list[np.where(sigma0_1f > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'fk1f':
+        fknee_1f = extract_data_from_array(scan_data, 'fknee_mean').copy()
+        fknee_1f[~accept_list] = np.nan
+        cutoff = np.nanpercentile(fknee_1f, 50.0, axis = 0)
+        jk_list[np.where(fknee_1f > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'al1f':
+        alpha_1f = extract_data_from_array(scan_data, 'alpha_mean').copy()
+        alpha_1f[~accept_list] = np.nan
+        cutoff = np.nanpercentile(alpha_1f, 50.0, axis = 0)
+        jk_list[np.where(alpha_1f > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'obhf':
+        # obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
+        scanid = np.array([int(str(scanid)) for scanid in scan_list])
+        scanid_mean = np.mean(scanid)
+        above_mean = (scanid + np.random.normal(0, 1e-10, scanid.shape[0])) > scanid_mean
+        jk_list[:] += above_mean[:, None, None] * int(2 ** n)
+        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
 
         ######## Here you can add new jack-knives  ############
         ### elif .......:
@@ -2046,7 +2125,7 @@ if __name__ == "__main__":
         
 
                 
-            if params.make_accept_mod_plots and not data_from_file:
+            if params.make_accept_mod_plots:
                 ### Making scan data plots ###
                 print("Making scan data plots")
                 plot_folder = os.path.join(data_folder, "plots", fieldname)
@@ -2054,8 +2133,8 @@ if __name__ == "__main__":
                     os.mkdir(plot_folder)
 
                 lims = {
-                    "obsid" : [6000, 38000],
-                    "scanid" : [600000, 3800000],
+                    "obsid" : [6000, 40000],
+                    "scanid" : [600000, 4000000],
                     "mjd" : [58600, 60500],
                     "night": [0, 12],
                     "sidereal" : [0, 360],
@@ -2064,11 +2143,11 @@ if __name__ == "__main__":
                     "chi2" : [-6, 6],
                     "acceptrate" : [0, 1],
                     "acceptrate_specific" : [0, 1],
-                    "az_chi2" : [-10, 10],
-                    "max_az_chi2" : [-10, 10],
-                    "med_az_chi2" : [-10, 10],
+                    "az_chi2" : [-7, 7],
+                    "max_az_chi2" : [-4, 10],
+                    "med_az_chi2" : [-4, 5],
                     "fbit" : [0, 0],
-                    "az_amp" : [-0.002, 0.002],
+                    "az_amp" : [-0.001, 0.001],
                     "el_amp" : [-1.5, 1.5],
                     "n_spikes" : [-1, 30],
                     "n_jumps" : [-0.1, 10.1],
@@ -2077,35 +2156,38 @@ if __name__ == "__main__":
                     "tsys" : [0, 120],
                     "npca" : [-0.1, 12.1],
                     "npcaf" : [-0.1, 12.1],
-                    "pca1" : [0, 100],
-                    "pca2" : [0, 60],
-                    "pca3" : [0, 40],
-                    "pca4" : [0, 20],
+                    "pca1" : [0, 51],
+                    "pca2" : [0, 31],
+                    "pca3" : [0, 21],
+                    "pca4" : [0, 11],
+                    'pcf1' : [0.0, 30.0],
+                    'pcf2' : [0.0, 25.0],
+                    'pcsm' : [0, 60.0],
                     "weather" : [-0.05, 1.05],
-                    "kurtosis" : [-0.05, 0.05],
-                    "skewness" : [-0.04, 0.04],
-                    "scan_length" : [0, 25],
+                    "kurtosis" : [-0.03, 0.03],
+                    "skewness" : [-0.02, 0.02],
+                    "scan_length" : [0, 20],
                     "saddlebag" : [-0.1, 5.1],
                     "acceptmod_error" : [-0.1, 5.1],
-                    "sigma_poly0" : [0, 0.1],
-                    "fknee_poly0" : [0, 110],
-                    "alpha_poly0" : [-8, 4],
-                    "sigma_poly1" : [0, 0.1],
-                    "fknee_poly1" : [0, 110],
-                    "alpha_poly1" : [-8, 4],
-                    "power_mean" : [-1e9, 1.5e10],
-                    "sigma_mean" : [-10000, 110000],
-                    "fknee_mean" : [0, 110],
-                    "alpha_mean" : [-8, 4],
+                    "sigma_poly0" : [0, 0.0025],
+                    "fknee_poly0" : [0, 31],
+                    "alpha_poly0" : [-4, 2],
+                    "sigma_poly1" : [0, 0.0002],
+                    "fknee_poly1" : [0, 10],
+                    "alpha_poly1" : [-4, 2],
+                    "power_mean" : [-1e7, 1.5e8],
+                    "sigma_mean" : [-100, 1100],
+                    "fknee_mean" : [0, 30],
+                    "alpha_mean" : [-4, 2],
                     "airtemp" : [-25, 45],
                     "dewtemp" : [-30, 60],
                     "humidity" : [-0.1, 1.1],
-                    "pressure" : [690, 1310],
-                    "rain" : [-0.1, 25.1],
+                    "pressure" : [790, 1010],
+                    "rain" : [-0.1, 3.0],
                     "winddir" : [-1, 361],
                     "windspeed" : [-1, 21],
                     "moon_dist" : [20, 200],
-                    "moon_angle" : [-200, 420],
+                    "moon_angle" : [-200, 370],
                     "moon_cent_sl" : [-0.1, 2.1],
                     "moon_outer_sl" : [-0.1, 2.1],    
                     "sun_dist" : [0, 181],
@@ -2144,7 +2226,7 @@ if __name__ == "__main__":
                     return bins, data_binned
                 
 
-                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*3, Nstats*3/4))
+                fig, ax = plt.subplots(int(math.ceil(Nstats/4)), 4, figsize=(12*3, Nstats*3/4))
                 for i in range(Nstats):
                     stat = stats_list[i]
                     stat_cut = stats_cut[stat]
@@ -2166,7 +2248,7 @@ if __name__ == "__main__":
                 plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_time_plot.png"), bbox_inches="tight", dpi=200)
                 
 
-                fig, ax = plt.subplots(Nstats//4, 4, figsize=(12*3, Nstats*3/4))
+                fig, ax = plt.subplots(int(math.ceil(Nstats/4)), 4, figsize=(12*3, Nstats*3/4))
                 for i in range(Nstats):
                     stat = stats_list[i]
                     stat_cut = stats_cut[stat]
