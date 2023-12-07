@@ -157,8 +157,10 @@ class SimCube:
                     if "simulation" not in key:
                         self._data[key] = value[()]
 
-            self._data["x_edges"] = self._data["x"]
-            self._data["y_edges"] = self._data["y"]
+            self._data["x_centers"] = self._data["x_bin_centers"]
+            self._data["y_centers"] = self._data["y_bin_centers"]
+            self._data["x_edges"] = self._data["x_bin_edges"]
+            self._data["y_edges"] = self._data["y_bin_edges"]
                 
                 
         elif ".npz" in self.path:

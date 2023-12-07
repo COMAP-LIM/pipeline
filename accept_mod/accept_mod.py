@@ -1721,6 +1721,15 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
         cutoff = np.percentile(mjd[accept_list], 50.0)
         jk_list[np.where(mjd > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
+        
+    elif string == 'tsys':
+        # halfmission split
+        tsys = extract_data_from_array(scan_data, 'tsys')
+        tsys[~accept_list] = np.nan 
+        cutoff = np.nanpercentile(tsys, 50, axis = 0)
+        jk_list[np.where(tsys > cutoff)] += int(2 ** n)
+        cutoff_list[n-1] = cutoff
+        
     elif string == 'sdlb':
         # saddlebag split
         saddlebags = extract_data_from_array(scan_data, 'saddlebag')
