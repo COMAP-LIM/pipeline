@@ -617,17 +617,18 @@ class CrossSpectrum_nmaps:
             outfile.create_dataset("IoU", data = self.IoU)
             outfile.create_dataset("weighted_overlap", data = self.weighted_overlap)
 
-            # if self.params.psx_white_noise_sim_seed is not None:
-            #     outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
-            #     outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
-            #     outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
-            #     outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
-            #     outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
-            # else:
-            #     outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
-            #     outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
-            #     outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
-            #     outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
+            if self.params.psx_noise_sim_number > 0 and not self.params.psx_rnd_run:
+                if self.params.psx_white_noise_sim_seed is not None:
+                    outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D)
+                    outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D)
+                    outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+                    outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
+                    outfile.create_dataset("white_noise_seed", data = self.params.psx_white_noise_sim_seed)
+                else:
+                    outfile.create_dataset("rms_xs_mean_2D", data=self.rms_xs_mean_2D[0])
+                    outfile.create_dataset("rms_xs_std_2D", data=self.rms_xs_std_2D[0])
+                    outfile.create_dataset("white_noise_covariance", data=self.white_noise_covariance)
+                    outfile.create_dataset("white_noise_simulation", data = self.all_noise_simulations)
 
             for key in vars(
                 self.params
