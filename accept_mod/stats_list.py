@@ -66,6 +66,9 @@ stats_list = [
     'pca2',          # average variance of removed pca mode 2
     'pca3',          # average variance of removed pca mode 3
     'pca4',          # average variance of removed pca mode 4
+    'pcf1',
+    'pcf2',
+    'pcsm',
     'sigma_poly0',   # sigma of mean in poly filter
     'fknee_poly0',   # fknee of mean in poly filter
     'alpha_poly0',   # alpha of mean in poly filter
