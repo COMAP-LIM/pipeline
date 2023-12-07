@@ -629,6 +629,13 @@ parser.add_argument(
     help="(comap2fpxs) Whether this is a random split run that should not be used for average spectra.",
 )
 
+parser.add_argument(
+    "--psx_rnd_file_list",
+    type=str,
+    nargs="+",
+    default = [],
+    help="(comap2fpxs) List of RND map file directories relative to power_spectrum_dir. The files given are used to generate the power spectrum error bars in RND runs.",
+)
 
 parser.add_argument(
     "--from_file",
@@ -726,7 +733,7 @@ parser.add_argument(
 parser.add_argument(
     "--psx_noise_sim_number",
     type=int,
-    default=500,
+    default=0,
     help="(comap2fpxs) Number of noise simulations to run to get power spectrum error bars.",
 )
 
@@ -821,6 +828,8 @@ parser.add_argument(
     default = 1.0,
     help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
 )
+
+
 
 ###### Physics ######
 parser.add_argument(
