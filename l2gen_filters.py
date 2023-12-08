@@ -387,6 +387,58 @@ class DecimationOld(Filter):
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
 
 
+class Pointing_Template_Subtraction_Bidirectional(Filter):
+    name = "pnt_bi"
+    name_long = "pointing template subtraction bidirectional"
+
+    def __init__(self, params, use_ctypes=True, omp_num_threads=2):
+        self.use_ctypes = use_ctypes
+        self.omp_num_threads = omp_num_threads
+    
+    def run(self, l2):
+        l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
+        l2.tofile_dict["el_az_amp_bidir"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 4))
+        def az_func(x, d, c):
+            return d*x + c
+
+        def az_el_template(az, d, c):
+            return d*az + c
+
+        d1, c1 = 0, 0
+        d2, c2 = 0, 0
+        for feed in range(l2.Nfeeds):
+            for sb in range(l2.Nsb):
+                for freq in range(l2.Nfreqs):
+                    if l2.scantype == "ces":
+                        _az = l2.az[feed][l2.mask_temporal[feed]]
+
+                        az_speed = np.zeros_like(_az)
+                        az_speed[1:] = _az[1:] - _az[:-1]
+                        az_speed[0] = az_speed[1]
+
+                        az_pos_dir = az_speed > 0
+
+                        _tod1 = l2.tod[feed, sb, freq][l2.mask_temporal[feed]][az_pos_dir]
+                        _tod2 = l2.tod[feed, sb, freq][l2.mask_temporal[feed]][~az_pos_dir]
+
+                        _az1 = _az[az_pos_dir]
+                        _az2 = _az[~az_pos_dir]
+
+                        if np.isfinite(_tod1).all():
+                            (d1, c1), _ = curve_fit(az_func, _az1, _tod1, (d1, c1))
+                        else:
+                            d1, c1 = 0, 0
+                        if np.isfinite(_tod2).all():
+                            (d2, c2), _ = curve_fit(az_func, _az2, _tod2, (d2, c2))
+                        else:
+                            d2, c2 = 0, 0
+                        l2.tod[feed,sb,freq][az_pos_dir] -= az_el_template(_az1, d1, c1)
+                        l2.tod[feed,sb,freq][~az_pos_dir] -= az_el_template(_az2, d2, c2)
+                        l2.tofile_dict["el_az_amp_bidir"][feed,sb,freq,:] = d1, c1, d2, c2
+                    else:
+                        raise ValueError("NON CES SCAN")
+
+
 
 class Pointing_Template_Subtraction(Filter):
     name = "point"
