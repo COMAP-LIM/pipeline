@@ -1661,16 +1661,35 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
         jk_list[:] = 0 
         return jk_list, cutoff_list, strings
     
-    for j, string in enumerate(strings):
-        implement_split(params, scan_data, jk_list, cutoff_list, string, j+1)
+    el = extract_data_from_array(scan_data, 'el').copy()
+    el[~accept_list] = np.nan
+    cutoff = np.nanpercentile(el, 50.0, axis=0)
+    el0_mask = el < cutoff
 
+    jk_list0 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
+    jk_list1 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
+    scan_data0 = scan_data.copy()
+    scan_data1 = scan_data.copy()
+    scan_data0[~el0_mask] = np.nan
+    scan_data1[el0_mask] = np.nan
+    accept_list0 = accept_list.copy()
+    accept_list1 = accept_list.copy()
+    accept_list0[~el0_mask] = False
+    accept_list1[el0_mask] = False
+    for j, string in enumerate(strings):
+        if string == "elev":  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
+            implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, j+1)
+        else:
+            implement_split(params, accept_list0, scan_data0, jk_list0, cutoff_list, string, j+1)
+            implement_split(params, accept_list1, scan_data1, jk_list1, cutoff_list, string, j+1)
+    jk_list += jk_list0 + jk_list1
     # insert 0 on rejected sidebands, add 1 on accepted 
     jk_list[np.invert(accept_list)] = 0
     jk_list[accept_list] += 1 
     return jk_list, cutoff_list, strings
 
 
-def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
+def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, n):
     
     # Generating all possible random split keys
     import itertools
@@ -1695,41 +1714,46 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     if string == 'odde':
         obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
         odd = np.array(obsid) % 2
-
-        jk_list[:] += odd[:, None, None] * int(2 ** n)
+        odd = np.zeros((scan_data.shape[:-1]), dtype=int) + odd[:,None,None]
+        odd[~accept_list] = 0
+        jk_list[:] += odd * int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
     elif "rnd" in string.casefold():
         # random scan split
         seed = params.jk_rnd_split_seed
         seed += subseeds[allstrings.index(string)]
         np.random.seed(seed)
-        bits = np.random.randint(0, 2, int(1e8))
-        bits = bits[scan_list.astype(int)]
-        jk_list += bits[:, None, None] * int(2 ** n)
+        bits = np.zeros((scan_data.shape[:-1]), dtype=np.int64)
+        for ifeed in range(scan_data.shape[1]):
+            for isb in range(scan_data.shape[2]):
+                indices = np.arange(scan_data.shape[0], dtype=np.int64)
+                indices = indices[accept_list[:,ifeed,isb]]
+                np.random.shuffle(indices)
+                bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
+        jk_list += bits * int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    
     elif string == 'dayn':
         # day/night split
         closetonight = extract_data_from_array(scan_data, 'night').copy()
-        closetonight += np.random.normal(0, 1e-6, closetonight.shape[0])[:, None, None]
-        cutoff = np.percentile(closetonight[accept_list], 50.0)
+        closetonight[~accept_list] = np.nan
+        closetonight += np.random.normal(0, 1e-6, closetonight.shape)
+        cutoff = np.nanpercentile(closetonight, 50.0)
         jk_list[np.where(closetonight > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
     elif string == 'half':
         # halfmission split
-        mjd = extract_data_from_array(scan_data, 'mjd')
-        cutoff = np.percentile(mjd[accept_list], 50.0)
+        mjd = extract_data_from_array(scan_data, 'mjd').copy()
+        mjd[~accept_list] = np.nan
+        cutoff = np.nanpercentile(mjd, 50.0)
         jk_list[np.where(mjd > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
-        
     elif string == 'tsys':
         # halfmission split
-        tsys = extract_data_from_array(scan_data, 'tsys')
+        tsys = extract_data_from_array(scan_data, 'tsys').copy()
         tsys[~accept_list] = np.nan 
         cutoff = np.nanpercentile(tsys, 50, axis = 0)
         jk_list[np.where(tsys > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
-        
     elif string == 'sdlb':
         # saddlebag split
         saddlebags = extract_data_from_array(scan_data, 'saddlebag')
@@ -1738,7 +1762,7 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     elif string == 'sidr':
         # sidereal time split 
         sid = extract_data_from_array(scan_data, 'sidereal')
-        cutoff = np.percentile(sid[accept_list], 50.0)
+        cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         jk_list[np.where(sid > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
@@ -1746,7 +1770,7 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
         # sidereal time split 
         sid = extract_data_from_array(scan_data, 'sidereal')
         sid = np.abs(sid - 160)
-        cutoff = np.percentile(sid[accept_list], 50.0)
+        cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         jk_list[np.where(sid > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
@@ -1754,15 +1778,16 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
         # sidereal time split 
         sid = extract_data_from_array(scan_data, 'sidereal')
         sid = np.abs(sid - 200)
-        cutoff = np.percentile(sid[accept_list], 50.0)
+        cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         jk_list[np.where(sid > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
     elif string == 'sid3':
         # sidereal time split 
-        sid = extract_data_from_array(scan_data, 'sidereal')
+        sid = extract_data_from_array(scan_data, 'sidereal').copy()
+        sid[~accept_list] = np.nan
         sid = np.abs(sid - 240)
-        cutoff = np.percentile(sid[accept_list], 50.0)
+        cutoff = np.nanpercentile(sid[accept_list], 50.0, axis=0)
         # print('Sidereal time cutoff: ', cutoff)
         jk_list[np.where(sid > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
@@ -1772,100 +1797,112 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
         cutoff_list[n-1] = 0.0 # placeholder'
     elif string == 'ambt':
         # ambient temperature split 
-        ambt = extract_data_from_array(scan_data, 'airtemp')
-        cutoff = np.percentile(ambt[accept_list], 50.0)
+        ambt = extract_data_from_array(scan_data, 'airtemp').copy()
+        ambt[~accept_list] = np.nan
+        cutoff = np.nanpercentile(ambt, 50.0, axis=0)
         jk_list[np.where(ambt > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
     elif string == 'dtmp':
         # dew temperature
         #  temperature split 
-        dtmp = extract_data_from_array(scan_data, 'dewtemp')
-        cutoff = np.percentile(dtmp[accept_list], 50.0)
+        dtmp = extract_data_from_array(scan_data, 'dewtemp').copy()
+        dtmp[~accept_list] = np.nan
+        cutoff = np.nanpercentile(dtmp, 50.0, axis=0)
         jk_list[np.where(dtmp > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
     elif string == 'elev':
         # elevation split 
-        el = extract_data_from_array(scan_data, 'el')
-        cutoff = np.percentile(el[accept_list], 50.0)
+        el = extract_data_from_array(scan_data, 'el').copy()
+        el[~accept_list] = np.nan
+        cutoff = np.nanpercentile(el, 50.0, axis=0)
         jk_list[np.where(el > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
     elif string == 'wind':
         # windspeed split 
-        wind = extract_data_from_array(scan_data, 'windspeed')
-        cutoff = np.percentile(wind[accept_list], 50.0)
+        wind = extract_data_from_array(scan_data, 'windspeed').copy()
+        wind[~accept_list] = np.nan
+        cutoff = np.nanpercentile(wind, 50.0, axis=0)
         jk_list[np.where(wind > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
 
     elif string == 'widr':
         # north-south wind direction split 
-        winddir = extract_data_from_array(scan_data, 'winddir')
-        cutoff = np.percentile(np.cos(np.radians(winddir[accept_list])), 50.0)
+        winddir = extract_data_from_array(scan_data, 'winddir').copy()
+        winddir[~accept_list] = np.nan
+        cutoff = np.nanpercentile(np.cos(np.radians(winddir)), 50.0, axis=0)
         jk_list[np.where(winddir > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
 
     elif string == 'hmty':
         # humidity split 
-        humidity = extract_data_from_array(scan_data, 'humidity')
-        cutoff = np.percentile(humidity[accept_list], 50.0)
+        humidity = extract_data_from_array(scan_data, 'humidity').copy()
+        humidity[~accept_list] = np.nan
+        cutoff = np.nanpercentile(humidity, 50.0, axis=0)
         jk_list[np.where(humidity > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
 
     elif string == 'pres':
         # pressure split 
-        pressure = extract_data_from_array(scan_data, 'pressure')
-        cutoff = np.percentile(pressure[accept_list], 50.0)
+        pressure = extract_data_from_array(scan_data, 'pressure').copy()
+        pressure[~accept_list] = np.nan
+        cutoff = np.nanpercentile(pressure, 50.0, axis=0)
         jk_list[np.where(pressure > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
 
     elif string == 'rain':
         # rain split 
         rain = extract_data_from_array(scan_data, 'rain').copy()
-        rain += np.random.normal(0, 1e-6, rain.shape[0])[:, None, None]
-        cutoff = np.percentile(rain[accept_list], 50.0)
+        rain[~accept_list] = np.nan
+        rain += np.random.normal(0, 1e-6, rain.shape)
+        cutoff = np.nanpercentile(rain, 50.0, axis=0)
         jk_list[np.where(rain > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
 
     elif string == 'wthr':
         # weather split 
-        weather = extract_data_from_array(scan_data, 'weather')
-        cutoff = np.percentile(weather[accept_list], 50.0)
+        weather = extract_data_from_array(scan_data, 'weather').copy()
+        weather[~accept_list] = np.nan
+        cutoff = np.nanpercentile(weather, 50.0, axis=0)
         jk_list[np.where(weather > cutoff)] += int(2 ** n) 
         cutoff_list[n-1] = cutoff
 
-
     elif string == 'sune':
         # sun_elevation split 
-        sunel = extract_data_from_array(scan_data, 'sun_el')
-        cutoff = np.percentile(sunel[accept_list], 50.0)
+        sunel = extract_data_from_array(scan_data, 'sun_el').copy()
+        sunel[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sunel, 50.0, axis=0)
         jk_list[np.where(sunel > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
     elif string == 'snup':
         # sun_up split (sun elevation > -5 deg) 
-        sunel = extract_data_from_array(scan_data, 'sun_el')
+        sunel = extract_data_from_array(scan_data, 'sun_el').copy()
         jk_list[np.where(sunel > -5.0)] += int(2 ** n) 
         cutoff_list[n-1] = 0.0 # placeholder
 
     elif string == 'modi':
         # distance to moon split 
-        moondist = extract_data_from_array(scan_data, 'moon_dist')
-        cutoff = np.percentile(moondist[accept_list], 50.0)
+        moondist = extract_data_from_array(scan_data, 'moon_dist').copy()
+        moondist[~accept_list] = np.nan
+        cutoff = np.nanpercentile(moondist, 50.0, axis=0)
         jk_list[np.where(moondist > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
     elif string == 'sudi':
         # distance to sun split 
-        sundist = extract_data_from_array(scan_data, 'sun_dist')
-        cutoff = np.percentile(sundist[accept_list], 50.0)
+        sundist = extract_data_from_array(scan_data, 'sun_dist').copy()
+        sundist[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sundist, 50.0, axis=0)
         jk_list[np.where(sundist > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
     elif string == 'wint':
-        mjd = extract_data_from_array(scan_data, 'mjd')
+        mjd = extract_data_from_array(scan_data, 'mjd').copy()
+        mjd[~accept_list] = np.nan
         mid_winter = 58863  # 15. Jan 2020
         days_since_mid_winter = (mjd - mid_winter) % 365                                                                                                                                                         
         close_to_winter = np.minimum(np.abs(days_since_mid_winter), np.abs(365 - days_since_mid_winter))
-        cutoff = np.percentile(close_to_winter[accept_list], 50.0)
+        cutoff = np.nanpercentile(close_to_winter, 50.0, axis=0)
         jk_list[np.where(close_to_winter > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
@@ -1887,13 +1924,15 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
 
     elif string == 'azmp':  ## az filter amplitude
         az_amp = extract_data_from_array(scan_data, 'az_amp').copy() 
-        cutoff = np.percentile(az_amp[accept_list], 50.0)
+        az_amp[~accept_list] = np.nan
+        cutoff = np.nanpercentile(az_amp, 50.0, axis=0)
         jk_list[np.where(az_amp > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
     elif string == 'fpol':  ## fknee of second polyfilter component
         fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy() 
-        cutoff = np.percentile(fknee[accept_list], 50.0)
+        fknee[~accept_list] = np.nan 
+        cutoff = np.nanpercentile(fknee, 50.0, axis=0)
         jk_list[np.where(fknee > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
@@ -1982,9 +2021,14 @@ def implement_split(params, scan_data, jk_list, cutoff_list, string, n):
     elif string == 'obhf':
         # obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
         scanid = np.array([int(str(scanid)) for scanid in scan_list])
-        scanid_mean = np.mean(scanid)
-        above_mean = (scanid + np.random.normal(0, 1e-10, scanid.shape[0])) > scanid_mean
-        jk_list[:] += above_mean[:, None, None] * int(2 ** n)
+        scanid_recast = np.zeros(scan_data.shape[:-1]) + scanid[:,None,None]
+        scanid_recast += np.random.normal(0, 1e-6, scanid_recast.shape)
+        for ifeed in range(scan_data.shape[1]):
+            for isb in range(scan_data.shape[2]):
+                scanid_idxsort = np.argsort(scanid_recast[:,ifeed,isb])
+                scanid_idxsort = scanid_idxsort[accept_list[:,ifeed,isb]]
+                cutoff_idx = scanid_idxsort.shape[0]//2
+                jk_list[scanid_idxsort[:cutoff_idx],ifeed,isb] += int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
 
         ######## Here you can add new jack-knives  ############
