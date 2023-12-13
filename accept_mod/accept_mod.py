@@ -2044,7 +2044,7 @@ if __name__ == "__main__":
     spec.loader.exec_module(stats_list)
     stats_list = stats_list.stats_list
     fields = read_runlist(params)
-
+    
     patch_filepath = params.patch_definition_file
     patch_info = get_patch_info(patch_filepath)
 
@@ -2216,8 +2216,8 @@ if __name__ == "__main__":
                 
                 import sys
                 # sys.path.append("/mn/stornext/d22/cmbco/comap/protodir/accept_mod/")
-                from accept_params import stats_cut
-                
+                stats_cut = accept_params.stats_cut
+
                 Nstats = len(stats_list) - 14
                 
                 
@@ -2254,7 +2254,7 @@ if __name__ == "__main__":
                     ax[i//4, i%4].plot(bins_weeks, data_weeks, c="tab:orange")
                     ax[i//4, i%4].set_title(stat)
                 plt.tight_layout()
-                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_time_plot.png"), bbox_inches="tight", dpi=200)
+                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + f"_{params.map_name}" + "_time_plot.png"), bbox_inches="tight", dpi=200)
                 
 
                 fig, ax = plt.subplots(int(math.ceil(Nstats/4)), 4, figsize=(12*3, Nstats*3/4))
@@ -2269,5 +2269,7 @@ if __name__ == "__main__":
                     ax[i//4, i%4].axvline(stat_cut[0], ls="--", c="k")
                     ax[i//4, i%4].axvline(stat_cut[1], ls="--", c="k")
                     ax[i//4, i%4].set_title(stat)
+
+                        
                 plt.tight_layout()
-                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + "_histograms.png"), bbox_inches="tight", dpi=200)
+                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + f"_{params.map_name}" + "_histograms.png"), bbox_inches="tight", dpi=200)
