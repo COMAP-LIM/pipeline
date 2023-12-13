@@ -44,7 +44,7 @@ with open(cosmology_path, mode = "rb") as cosmofile:
 number_of_k_bin_edges = 15
 
 # Map paths
-simmap_path = os.path.join(params.map_dir, f"{params.fields[0]}_{params.map_name}.h5")
+simmap_path = os.path.join(params.map_dir, f"{params.fields[0]}_{params.map_name}{params.psx_map_name_postfix}.h5")
 cubemap_path = os.path.join(params.map_dir, f"{params.fields[0]}_{params.map_name}_signal_tod.h5")
 
 # Defining map objects
