@@ -434,6 +434,7 @@ class Pointing_Template_Subtraction_Bidirectional(Filter):
                             d2, c2 = 0, 0
                         l2.tod[feed,sb,freq][az_pos_dir] -= az_el_template(_az1, d1, c1)
                         l2.tod[feed,sb,freq][~az_pos_dir] -= az_el_template(_az2, d2, c2)
+                        l2.tofile_dict["el_az_amp"][feed,sb,freq,:] = 0, (d1+d2)/2, (c1+c2)/2
                         l2.tofile_dict["el_az_amp_bidir"][feed,sb,freq,:] = d1, c1, d2, c2
                     else:
                         raise ValueError("NON CES SCAN")
