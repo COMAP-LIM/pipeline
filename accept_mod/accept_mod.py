@@ -1590,6 +1590,11 @@ def save_data_2_h5(params, scan_list, scan_data, fieldname, runid):
     stats_list_arr = np.array(stats_list, dtype=dt)
     f1.create_dataset('stats_list', data=stats_list_arr)
     f1.create_dataset("runID", data = runid)
+    for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
+        if getattr(params, key) == None:  # hdf5 didn't like the None type.
+            f1[f"params/{key}"] = "None"
+        else:
+            f1[f"params/{key}"] = getattr(params, key)
     f1.close()
     return filename
 
@@ -2054,6 +2059,11 @@ def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_
     split_list_arr = np.array(split_list, dtype=dt)
     f1.create_dataset('split_list', data=split_list_arr)
     f1.create_dataset("runID", data = runid)
+    for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
+        if getattr(params, key) == None:  # hdf5 didn't like the None type.
+            f1[f"params/{key}"] = "None"
+        else:
+            f1[f"params/{key}"] = getattr(params, key)
     f1.close()
     return filename
 
