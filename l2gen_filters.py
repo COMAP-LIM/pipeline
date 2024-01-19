@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_With_Signal, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
 from scipy.interpolate import interp1d
 
+
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 class Filter:
@@ -1882,8 +1883,8 @@ class Calibration(Filter):
     def run(self, l2):
         if not self.params.mask_tsys_at_beginning:
             l2.tod *= l2.Tsys[:,:,:,None]
-        l2.freqmask[~np.isfinite(l2.Tsys)] = False
-        l2.freqmask_reason[~np.isfinite(l2.Tsys)] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
+        l2.freqmask[(~np.isfinite(l2.Tsys))*(l2.freqmask)] = False
+        l2.freqmask_reason[(~np.isfinite(l2.Tsys))*(l2.freqmask)] += 2**l2.freqmask_counter; l2.freqmask_counter += 1
         l2.freqmask_reason_string.append("Tsys NaN or inf")
 
         l2.freqmask[l2.Tsys < self.params.min_tsys] = False
