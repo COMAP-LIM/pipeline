@@ -1749,7 +1749,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         # halfmission split
         mjd = extract_data_from_array(scan_data, 'mjd').copy()
         mjd[~accept_list] = np.nan
-        cutoff = np.nanpercentile(mjd, 50.0)
+        cutoff = np.nanpercentile(mjd, 50.0, axis=0)
         jk_list[np.where(mjd > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
     elif string == 'tsys':
