@@ -388,6 +388,7 @@ class DecimationOld(Filter):
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
 
 
+
 class Pointing_Template_Subtraction_Bidirectional(Filter):
     name = "pnt_bi"
     name_long = "pointing template subtraction bidirectional"
@@ -399,46 +400,34 @@ class Pointing_Template_Subtraction_Bidirectional(Filter):
     def run(self, l2):
         l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
         l2.tofile_dict["el_az_amp_bidir"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 4))
-        def az_func(x, d, c):
-            return d*x + c
-
-        def az_el_template(az, d, c):
-            return d*az + c
 
         d1, c1 = 0, 0
         d2, c2 = 0, 0
+        if l2.scantype != "ces":
+            raise ValueError("non-CES scantypes not supported by the azimuth pointing filter.")
+
         for feed in range(l2.Nfeeds):
+            _az = l2.az[feed][l2.mask_temporal[feed]] - np.mean(l2.az[feed][l2.mask_temporal[feed]])
+            az_speed = np.zeros_like(_az)
+            az_speed[1:] = _az[1:] - _az[:-1]
+            az_speed[0] = az_speed[1]
+            az_pos_dir = az_speed > 0
             for sb in range(l2.Nsb):
-                for freq in range(l2.Nfreqs):
-                    if l2.scantype == "ces":
-                        _az = l2.az[feed][l2.mask_temporal[feed]]
 
-                        az_speed = np.zeros_like(_az)
-                        az_speed[1:] = _az[1:] - _az[:-1]
-                        az_speed[0] = az_speed[1]
+                _tod1 = l2.tod[feed, sb][:,l2.mask_temporal[feed]][:,az_pos_dir]
+                _tod2 = l2.tod[feed, sb][:,l2.mask_temporal[feed]][:,~az_pos_dir]
 
-                        az_pos_dir = az_speed > 0
+                _az1 = _az[az_pos_dir]
+                _az2 = _az[~az_pos_dir]
 
-                        _tod1 = l2.tod[feed, sb, freq][l2.mask_temporal[feed]][az_pos_dir]
-                        _tod2 = l2.tod[feed, sb, freq][l2.mask_temporal[feed]][~az_pos_dir]
+                d1 = np.sum(_az1*_tod1, axis=-1)/np.sum(_az1**2)
+                l2.tod[feed,sb][:,az_pos_dir] -= d1[:,None]*_az1[None,:]
+                d2 = np.sum(_az2*_tod2, axis=-1)/np.sum(_az2**2)
+                l2.tod[feed,sb][:,~az_pos_dir] -= d2[:,None]*_az2[None,:]
 
-                        _az1 = _az[az_pos_dir]
-                        _az2 = _az[~az_pos_dir]
-
-                        if np.isfinite(_tod1).all():
-                            (d1, c1), _ = curve_fit(az_func, _az1, _tod1, (d1, c1))
-                        else:
-                            d1, c1 = 0, 0
-                        if np.isfinite(_tod2).all():
-                            (d2, c2), _ = curve_fit(az_func, _az2, _tod2, (d2, c2))
-                        else:
-                            d2, c2 = 0, 0
-                        l2.tod[feed,sb,freq][az_pos_dir] -= az_el_template(_az1, d1, c1)
-                        l2.tod[feed,sb,freq][~az_pos_dir] -= az_el_template(_az2, d2, c2)
-                        l2.tofile_dict["el_az_amp"][feed,sb,freq,:] = 0, (d1+d2)/2, (c1+c2)/2
-                        l2.tofile_dict["el_az_amp_bidir"][feed,sb,freq,:] = d1, c1, d2, c2
-                    else:
-                        raise ValueError("NON CES SCAN")
+                l2.tofile_dict["el_az_amp"][feed,sb,:,1] = (d1+d2)/2
+                l2.tofile_dict["el_az_amp_bidir"][feed,sb,:,0] = d1
+                l2.tofile_dict["el_az_amp_bidir"][feed,sb,:,2] = d2
 
 
 
@@ -452,69 +441,17 @@ class Pointing_Template_Subtraction(Filter):
     
     def run(self, l2):
         l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
-        if not self.use_ctypes:
-            def az_func(x, d, c):
-                return d*x + c
-            def az_el_func(x, g, d, c):
-                return g*x[0] + d*x[1] + c
-            def az_el_template(feed, g, d, c):
-                return g/np.sin(l2.el[feed]*np.pi/180.0) + d*l2.az[feed] + c
+        if l2.scantype != "ces":
+            raise ValueError("non-CES scantypes not supported by the azimuth pointing filter.")
+        for feed in range(l2.Nfeeds):
+            _az = l2.az[feed][l2.mask_temporal[feed]] - np.mean(l2.az[feed][l2.mask_temporal[feed]])
+            for sb in range(l2.Nsb):
+                _tod = l2.tod[feed, sb][l2.mask_temporal[feed]]
+                d = np.sum(_az*_tod, axis=-1)/np.sum(_az**2)
+                l2.tod[feed,sb] -= d[:,None]*_az[None,:]
+                l2.tofile_dict["el_az_amp"][feed,sb,:,1] = 0, d, 0   # The two other amplitudes are 0 (kept for legacy reasons).
 
-            g, d, c = 0, 0, 0
-            for feed in range(l2.Nfeeds):
-                for sb in range(l2.Nsb):
-                    for freq in range(l2.Nfreqs):
-                        if l2.scantype == "ces":
-                            _az = l2.az[feed][l2.mask_temporal[feed]]
-                            _tod = l2.tod[feed, sb, freq][l2.mask_temporal[feed]]
-                            if np.isfinite(_tod).all():
-                                (d, c), _ = curve_fit(az_func, _az, _tod, (d, c))
-                            else:
-                                d, c = 0, 0
-                        else:
-                            if np.isfinite(l2.tod[feed, sb, freq]).all():
-                                (g, d, c), _ = curve_fit(az_el_func, (1.0/np.sin(l2.el[feed]*np.pi/180.0), l2.az[feed]), l2.tod[feed, sb, freq], (g, d, c), sigma=l2.mask_temporal[feed])
-                            else:
-                                g, d, c = 0, 0, 0
-                        l2.tod[feed,sb,freq] = l2.tod[feed,sb,freq] - az_el_template(feed, g, d, c)
-                        l2.tofile_dict["el_az_amp"][feed,sb,freq,:] = g, d, c
 
-        else:
-            C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/pointing/pointinglib.so.1")
-            
-            pointinglib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
-            float32_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=3, flags="contiguous")
-            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
-            pointinglib.az_fit.argtypes = [float64_array1, float32_array3, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
-            pointinglib.az_el_fit.argtypes = [float64_array1, float64_array1, float32_array3, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1, float64_array1]
-            if l2.scantype == "ces":
-                for ifeed in range(l2.Nfeeds):
-                    _az = np.ascontiguousarray(l2.az[ifeed][l2.mask_temporal[ifeed]])
-                    _tod = np.ascontiguousarray(l2.tod[ifeed][:,:,l2.mask_temporal[ifeed]])
-                    Ntod_effective = _tod.shape[-1]
-                    c_est = np.zeros(l2.Nfreqs*l2.Nsb)
-                    d_est = np.zeros(l2.Nfreqs*l2.Nsb)
-                    pointinglib.az_fit(_az, _tod, l2.Nfreqs*l2.Nsb, Ntod_effective, c_est, d_est)
-                    c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
-                    d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
-                    l2.tod[ifeed] -= l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
-                    l2.tofile_dict["el_az_amp"][ifeed,:,:,0] = np.zeros((l2.Nsb, l2.Nfreqs))
-                    l2.tofile_dict["el_az_amp"][ifeed,:,:,1] = d_est
-                    l2.tofile_dict["el_az_amp"][ifeed,:,:,2] = c_est
-            else:
-                for ifeed in range(l2.Nfeeds):
-                    c_est = np.zeros(l2.Nfreqs*l2.Nsb)
-                    d_est = np.zeros(l2.Nfreqs*l2.Nsb)
-                    g_est = np.zeros(l2.Nfreqs*l2.Nsb)
-                    el_term = 1.0/np.sin(l2.el[ifeed]*np.pi/180.0)
-                    pointinglib.az_el_fit(l2.az[ifeed], el_term, l2.tod[ifeed], l2.Nfreqs*l2.Nsb, l2.Ntod, c_est, d_est, g_est)
-                    c_est = c_est.reshape((l2.Nsb, l2.Nfreqs))
-                    d_est = d_est.reshape((l2.Nsb, l2.Nfreqs))
-                    g_est = g_est.reshape((l2.Nsb, l2.Nfreqs))
-                    l2.tod[ifeed] -= el_term[None,None,:]*g_est[:,:,None] + l2.az[ifeed][None,None,:]*d_est[:,:,None] + c_est[:,:,None]
-                    l2.tofile_dict["el_az_amp"][ifeed,:,:,0] = g_est
-                    l2.tofile_dict["el_az_amp"][ifeed,:,:,1] = d_est
-                    l2.tofile_dict["el_az_amp"][ifeed,:,:,2] = c_est
 
 class Polynomial_filter(Filter):
     name = "poly"
