@@ -349,7 +349,7 @@ class l2gen_runner:
                             database_dict["n_pca_comp"][iscan] = f["n_pca_comp"][()]
                             database_dict["n_pca_feed_comp"][iscan,feeds-1] = f["n_pca_feed_comp"][()]
 
-                    with h5py.File(os.path.join(self.params.level2_dir, field), "w") as f:
+                    with h5py.File(os.path.join(self.params.level2_dir, field + "_database.hd5"), "w") as f:
                         for key in database_dict.keys():
                             f[key] = database_dict[key]
 
