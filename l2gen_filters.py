@@ -407,23 +407,21 @@ class Pointing_Template_Subtraction_Bidirectional(Filter):
             raise ValueError("non-CES scantypes not supported by the azimuth pointing filter.")
 
         for feed in range(l2.Nfeeds):
-            _az = l2.az[feed][l2.mask_temporal[feed]] - np.mean(l2.az[feed][l2.mask_temporal[feed]])
+            _az = l2.az[feed] - np.mean(l2.az[feed])
             az_speed = np.zeros_like(_az)
             az_speed[1:] = _az[1:] - _az[:-1]
             az_speed[0] = az_speed[1]
             az_pos_dir = az_speed > 0
+            az1 = _az[az_pos_dir]
+            az2 = _az[~az_pos_dir]
+            az1_sum = np.sum(az1**2)
+            az2_sum = np.sum(az2**2)
             for sb in range(l2.Nsb):
 
-                _tod1 = l2.tod[feed, sb][:,l2.mask_temporal[feed]][:,az_pos_dir]
-                _tod2 = l2.tod[feed, sb][:,l2.mask_temporal[feed]][:,~az_pos_dir]
-
-                _az1 = _az[az_pos_dir]
-                _az2 = _az[~az_pos_dir]
-
-                d1 = np.sum(_az1*_tod1, axis=-1)/np.sum(_az1**2)
-                l2.tod[feed,sb][:,az_pos_dir] -= d1[:,None]*_az1[None,:]
-                d2 = np.sum(_az2*_tod2, axis=-1)/np.sum(_az2**2)
-                l2.tod[feed,sb][:,~az_pos_dir] -= d2[:,None]*_az2[None,:]
+                d1 = np.sum(az1*l2.tod[feed, sb][:, az_pos_dir], axis=-1)/az1_sum
+                l2.tod[feed,sb][:,az_pos_dir] -= d1[:,None]*az1[None,:]
+                d2 = np.sum(az2*l2.tod[feed, sb][:, ~az_pos_dir], axis=-1)/az2_sum
+                l2.tod[feed,sb][:,~az_pos_dir] -= d2[:,None]*az2[None,:]
 
                 l2.tofile_dict["el_az_amp"][feed,sb,:,1] = (d1+d2)/2
                 l2.tofile_dict["el_az_amp_bidir"][feed,sb,:,0] = d1
