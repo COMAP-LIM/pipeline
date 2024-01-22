@@ -66,40 +66,63 @@ class level2_file:
             dir_path = os.path.dirname(os.path.realpath(__file__))  # Path to current directory.
             self.git_hash = git.Repo(dir_path, search_parent_directories=True).head.object.hexsha  # Current git commit hash.
 
+            ### Frequency masking setup ###
+            self.freqmask_reason_string = ["Imported freqmask",
+                                            "NaN or inf in TOD",
+                                            "Marked channels",
+                                            "Can't read or find Tsys calib file.",
+                                            "Both calibs marked as unsuccessful.",
+                                            "Tsys NaN or inf",
+                                            "Tsys < min_tsys",
+                                            "Tsys > running median max",
+                                            "Aliasing suppression (AB_mask)",
+                                            "Aliasing suppression (leak_mask)",
+                                            "Box 32 chi2",  "Box 32 prod",  "Box 32 sum",
+                                            "Box 128 chi2", "Box 128 prod", "Box 128 sum",
+                                            "Box 512 chi2", "Box 512 prod", "Box 512 sum",
+                                            "Stripe 32 chi2",   "Stripe 32 prod",
+                                            "Stripe 128 chi2",  "Stripe 128 prod",
+                                            "Stripe 1024 chi2", "Stripe 1024 prod",
+                                            "Radiometer std",
+                                            "Max corr",
+                                            "Lonely unmasked channel",
+                                            f"Less than 10% of band unmasked",
+                                            ]
+            self.freqmask_reason_num_dict = {}
+            for i, mask_reason in enumerate(self.freqmask_reason_string):
+                self.freqmask_reason_num_dict[mask_reason] = i
+
+            # self.freqmask_string_numbering = {
+            #     "NaN or inf in TOD" : 1,
+            #     "Marked channels" : 2,
+            #     "Tsys NaN or inf" : 3,
+
+            # }
+
             ### Preliminary Masking ###
             self.mask_temporal = np.ones((self.Nfeeds, self.Ntod), dtype=bool)
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
-            self.freqmask_reason_string = []
             self.freqmask_counter = 0
-            self.freqmask[self.feeds==20] = False
-            self.freqmask_reason[self.feeds==20] += 2**self.freqmask_counter
-            self.freqmask_counter += 1
-            self.freqmask_reason_string.append("Feed 20")
             self.n_nans = np.sum(~np.isfinite(self.tod), axis=-1)
             self.freqmask[self.n_nans > 0] = False
-            self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_counter
-            self.freqmask_counter += 1
-            self.freqmask_reason_string.append("NaN or inf in TOD")
+            self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_reason_num_dict["NaN or inf in TOD"]
             self.freqmask[:,:,:2] = False
             self.freqmask[:,:,512] = False
             self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
             self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
             if self.params.sbA_num_masked_channels != 0:
                 self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
-                self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_counter
-            for i in range(len(self.feeds)):
-                feed = self.feeds[i]
-                if feed == 4 or feed == 10:   # Where do these come from...?
-                    self.freqmask[i,2,952:] = False
-                    self.freqmask[i,3,:72] = False
-                elif feed == 16:
-                    self.freqmask[i,0,550:900] = False
-                elif feed == 17:
-                    self.freqmask[i,1,276:526] = False
-            self.freqmask_counter += 1
-            self.freqmask_reason_string.append("Marked channels")
-            
+                self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_reason_num_dict["Marked channels"]
+            # for i in range(len(self.feeds)):
+            #     feed = self.feeds[i]
+            #     if feed == 4 or feed == 10:   # Where do these come from...?
+            #         self.freqmask[i,2,952:] = False
+            #         self.freqmask[i,3,:72] = False
+            #     elif feed == 16:
+            #         self.freqmask[i,0,550:900] = False
+            #     elif feed == 17:
+            #         self.freqmask[i,1,276:526] = False
             
 
             self.tod[~self.freqmask] = np.nan
