@@ -12,11 +12,10 @@ import numpy as np
 import logging
 import datetime
 import os
-import psutil
-import random
 from mpi4py import MPI
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import sys
+import h5py
 from l2gen_l2class import level2_file
 import l2gen_filters
 from tools.read_runlist import read_runlist
@@ -274,6 +273,91 @@ class l2gen_runner:
                 self.comm.send(return_dict, dest=0, tag=DONE_TAG)
 
 
+    def clean_up(self):
+        # Function called when all scans are finished processing. Creates a database and ensures all files were successfully created.
+        if self.rank == 0:
+            print(f"Finished all scans. Starting cleanup...")
+        self.read_runlist(ignore_existing=False)  # Creating runlist of ALL scans, including processed ones.
+
+        if self.rank == 0:
+            print(f"Checking that all l2 files exist...")
+            for iscan in trange(len(self.runlist)):
+                scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename = self.runlist[iscan]
+                corrupt_files = []
+                missing_files = []
+                try:
+                    f = h5py.File(l2_filename, "r")
+                except Exception as error:
+                    if error is OSError:
+                        corrupt_files.append(l2_filename)
+                    elif error is FileNotFoundError:
+                        missing_files.append(l2_filename)
+                    else:
+                        print(f"Unknown error {error} encountered when trying to read hdf5 file!")
+            if len(corrupt_files) + len(missing_files) > 0:
+                print(f"Found corrupt and/or missing files. Exiting.")
+                print("Corrupt files:", corrupt_files)
+                print("Missing files:", missing_files)
+                return
+            else:
+                print(f"Found no missing or corrupt files.")
+
+            if self.params.create_l2_summary_database:
+                ### L2 summary database. Although all this information is available in the l2 files, it is slow to collect the invidial data when analysing it. ###
+                print(f"Creating summary l2 database.")
+                for field in self.params.fields:
+                    runlist_subset = [item for item in self.runlist if item[4] == field]
+                    Nscans = len(runlist_subset)
+                    if Nscans == 0:
+                        continue
+                    database_dict = {
+                        "scanid" : np.zeros(Nscans, dtype=np.uint32),
+                        "mjd_start" : np.zeros(Nscans) + np.nan,
+                        "scan_samples" : np.zeros(Nscans, dtype=np.uint32),
+                        "acceptrate" : np.zeros((Nscans, 19, 4)) + np.nan,
+                        "freqmask_full" : np.zeros((Nscans, 19, 4, 1024), dtype=bool),
+                        "freqmask_reason" : np.zeros((Nscans, 19, 4, 1024), dtype=np.uint64),
+                        "n_nan" : np.zeros((Nscans, 19, 4, 1024), dtype=np.uint32),
+                        "sigma0" : np.zeros((Nscans, 19, 4, 64)) + np.nan,
+                        "chi2" : np.zeros((Nscans, 19, 4, 64)) + np.nan,
+                        "Tsys" : np.zeros((Nscans, 19, 4, 1024)) + np.nan,
+                        "Gain" : np.zeros((Nscans, 19, 4, 1024)) + np.nan,
+                        "n_pca_comp" : np.zeros((Nscans)) + np.nan,
+                        "n_pca_feed_comp" : np.zeros((Nscans, 19)) + np.nan,
+                        "point_cel_feed1" : np.zeros((Nscans, 30000, 2), dtype=np.float32) + np.nan,
+                        "point_tel_feed1" : np.zeros((Nscans, 30000, 2), dtype=np.float32) + np.nan,
+                    }
+                    for iscan in trange(Nscans):
+                        scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename = runlist_subset[iscan]
+                        with h5py.File(l2_filename, "r") as f:
+                            Ntod = f["time"].shape[-1]
+                            if Ntod <= 30000:
+                                database_dict["point_cel_feed1"][iscan,:Ntod] = f["point_cel"][0,:]
+                                database_dict["point_tel_feed1"][iscan,:Ntod] = f["point_tel"][0,:]
+                            feeds = f["feeds"][()]
+                            database_dict["scan_samples"][iscan] = Ntod
+                            database_dict["scanid"][iscan] = f["scanid"][()]
+                            database_dict["mjd_start"][iscan] = f["mjd_start"][()]
+                            database_dict["acceptrate"][iscan,feeds-1] = f["acceptrate"][()]
+                            database_dict["freqmask_full"][iscan,feeds-1] = f["freqmask_full"][()]
+                            database_dict["freqmask_reason"][iscan,feeds-1] = f["freqmask_reason"][()]
+                            database_dict["n_nan"][iscan,feeds-1] = f["n_nan"][()]
+                            database_dict["sigma0"][iscan,feeds-1] = f["sigma0"][()]
+                            database_dict["chi2"][iscan,feeds-1] = f["chi2"][()]
+                            database_dict["Tsys"][iscan,feeds-1] = f["Tsys"][()]
+                            database_dict["Gain"][iscan,feeds-1] = f["Gain"][()]
+                            database_dict["n_pca_comp"][iscan] = f["n_pca_comp"][()]
+                            database_dict["n_pca_feed_comp"][iscan,feeds-1] = f["n_pca_feed_comp"][()]
+
+                    with h5py.File(os.path.join(self.params.level2_dir, field), "w") as f:
+                        for key in database_dict.keys():
+                            f[key] = database_dict[key]
+
+            print("L2gen finished!")
+
+
+
+
     def read_params(self):
         self.params = 0
         if self.rank == 0:
@@ -311,10 +395,10 @@ class l2gen_runner:
 
 
 
-    def read_runlist(self):
+    def read_runlist(self, ignore_existing=True):
         self.runlist = []
         if self.rank == 0:
-            self.runlist = read_runlist(self.params, ignore_existing=True)
+            self.runlist = read_runlist(self.params, ignore_existing=ignore_existing)
 
         self.runlist = self.comm.bcast(self.runlist, root=0)
 
@@ -393,3 +477,4 @@ if __name__ == "__main__":
         omp_num_threads = 1
     l2r = l2gen_runner(omp_num_threads=omp_num_threads)
     l2r.run()
+    l2r.clean_up()
