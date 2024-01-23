@@ -141,7 +141,8 @@ class Mapmaker:
         with h5py.File(split_data_path, "r") as splitfile:
             self.splitdata = {}
             for key, value in splitfile.items():
-                self.splitdata[key] = value[()]
+                if not isinstance(value, h5py.Group):
+                    self.splitdata[key] = value[()]
 
         # List of map datasets we want to bin.
         # By default only the "non-split" maps will be binned
