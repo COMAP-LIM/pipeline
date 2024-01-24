@@ -134,7 +134,8 @@ class Mapmaker:
         with h5py.File(scan_data_path, "r") as scanfile:
             self.scandata = {}
             for key, value in scanfile.items():
-                self.scandata[key] = value[()]
+                if not isinstance(value, h5py.Group):
+                    self.scandata[key] = value[()]
 
         split_data_path = os.path.join(self.accept_dir, split_data_path)
 
