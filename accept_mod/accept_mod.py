@@ -1686,22 +1686,10 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
 
         rise0_mask = sid < cutoff
 
-        jk_list00 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
-        jk_list01 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
-        jk_list10 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
-        jk_list11 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
-        # scan_data00 = scan_data.copy()
-        # scan_data01 = scan_data.copy()
-        # scan_data10 = scan_data.copy()
-        # scan_data11 = scan_data.copy()
         el0_rise0_mask = el0_mask & rise0_mask
         el0_rise1_mask = el0_mask & (~rise0_mask)
         el1_rise0_mask = (~el0_mask) & rise0_mask
         el1_rise1_mask = (~el0_mask) & (~rise0_mask)
-        # scan_data00[~el0_rise0_mask] = np.nan
-        # scan_data01[~el0_rise1_mask] = np.nan
-        # scan_data10[~el1_rise0_mask] = np.nan
-        # scan_data11[~el1_rise1_mask] = np.nan
         accept_list00 = accept_list.copy()
         accept_list01 = accept_list.copy()
         accept_list10 = accept_list.copy()
@@ -1714,43 +1702,13 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
             if string == "elev":  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
                 implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, j+1)
             else:
-                # implement_split(params, accept_list00, scan_data00, jk_list00, cutoff_list, string, j+1)
-                # implement_split(params, accept_list01, scan_data01, jk_list01, cutoff_list, string, j+1)
-                # implement_split(params, accept_list10, scan_data10, jk_list10, cutoff_list, string, j+1)
-                # implement_split(params, accept_list11, scan_data11, jk_list11, cutoff_list, string, j+1)
                 implement_split(params, accept_list00, scan_data, jk_list, cutoff_list, string, j+1)
                 implement_split(params, accept_list01, scan_data, jk_list, cutoff_list, string, j+1)
                 implement_split(params, accept_list10, scan_data, jk_list, cutoff_list, string, j+1)
                 implement_split(params, accept_list11, scan_data, jk_list, cutoff_list, string, j+1)
 
-        # np.save("/mn/stornext/d16/cmbco/comap/jonas/analysis/acceptmod/jk_list00.npy", jk_list00)
-        # np.save("/mn/stornext/d16/cmbco/comap/jonas/analysis/acceptmod/jk_list01.npy", jk_list01)
-        # np.save("/mn/stornext/d16/cmbco/comap/jonas/analysis/acceptmod/jk_list10.npy", jk_list10)
-        # np.save("/mn/stornext/d16/cmbco/comap/jonas/analysis/acceptmod/jk_list11.npy", jk_list11)
-        # np.save("/mn/stornext/d16/cmbco/comap/jonas/analysis/acceptmod/jk_list.npy", jk_list)
-        # jk_list += jk_list00 + jk_list01 + jk_list10 + jk_list11
-        # np.save("/mn/stornext/d16/cmbco/comap/jonas/analysis/acceptmod/jk_list_after.npy", jk_list)
-        # jk_list3 = jk_list.copy()
-        # jk_list3 += jk_list00 | jk_list01 | jk_list10 | jk_list11
-        # jk_list2 = jk_list00 + jk_list01 + jk_list10 + jk_list11
-        # jk_list_test |= jk_list00
-        # jk_list_test |= jk_list10
-        # jk_list_test |= jk_list01
-        # jk_list_test |= jk_list11
-        # jk_list_test2 = jk_list00 | jk_list01 | jk_list10 + jk_list11
-
-        # print(np.sum(np.abs(jk_list - jk_list3)))
-        # print(np.sum(np.abs(jk_list2 - jk_list_test2)))
-        # print(np.sum(np.abs(jk_list2 - jk_list_test)))
-        # print(np.sum(np.abs(jk_list - jk_list_test2)))
-        # print(np.sum(np.abs(jk_list - jk_list_test)))
-        # assert((jk_list2 == jk_list_test2).all())
-        # assert((jk_list2 == jk_list_test).all())
-        # assert((jk_list == jk_list_test2).all())
-        # assert((jk_list == jk_list_test).all())
-        # jk_list = jk_list_test
-
     else:
+        # The old method, only ensuring that splits were even in elev.
         jk_list0 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
         jk_list1 = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
         scan_data0 = scan_data.copy()
