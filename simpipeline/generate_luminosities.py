@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 import scipy.interpolate
+import astropy.units as u #*** get rid of this dependency
 import sys
 import os
 
@@ -374,6 +375,75 @@ def get_sfr_table(bad_extrapolation=False):
  functions to get the tracer luminosity (not the CO luminosity) based on the halo mass
 """
 
+def schechter(L, coeffs):
+    
+    [Lstar, phistar, alpha, _, _] = coeffs
+    
+    return (phistar / Lstar) * (L/Lstar)**alpha * np.exp(-L/Lstar)
+
+def halomassfunction(halos, params):
+    """
+    calculates the number density of dM halos per logarithmic mass bin between log10M and log10(M+dM)
+    then integrates that from each M to infinity to get the halo mass function
+    """
+    
+    # NUMBER of halos with log masses between log10M and log10(M+dM)
+    N, logMprime = np.histogram(np.log10(halos.M), bins=500)
+    dlogMprime = logMprime[1:] - logMprime[:-1]
+    logMprimecents = logMprime[:-1] + dlogMprime / 2
+    
+    # VOLUME of the simulation in cMpc**3
+    cosmo = halos.cosmo
+    volumeslice = cosmo.comoving_volume(params.z_f) - cosmo.comoving_volume(params.z_i)
+    vol = (volumeslice / (4*np.pi*u.sr) * (params.fov_x * params.fov_y * u.deg**2)).to(u.Mpc**3)
+    
+    # number density dn/dlog10M
+    dndlogM = N / vol    
+    
+    # integrated from M to infinity at each value of M
+    dndlogMdlogM = dndlogM * dlogMprime
+    intnM = []
+    for i,M in enumerate(logMprimecents):
+        intval = np.sum(dndlogMdlogM[i:])
+        intnM.append(intval.value)
+
+    intnM = np.array(intnM)
+    
+    return (logMprimecents, intnM)
+
+def abundancematch(function, coeffs, halos, params):
+    """
+    coeffs[-2] and coeffs[-1] are the min and max luminosity respectively
+    
+    """
+    
+    logLprime = np.log10(np.logspace(coeffs[-2], coeffs[-1], 101))
+    dlogLprime = logLprime[1:] - logLprime[:-1]
+    dLprime = 10**logLprime[1:] - 10**logLprime[:-1]
+    logLprimecents = logLprime[:-1] + dlogLprime/2
+    
+    phiLarr = function(10**logLprimecents, coeffs)
+    phiLdL = phiLarr*dLprime*u.erg/u.s
+
+    intL = []
+    for i,L in enumerate(logLprimecents):
+        intLval = np.sum(phiLdL[i:])
+        intL.append(intLval.value)
+
+    intL = np.array(intL)
+    
+    logMprimecents, intnM = halomassfunction(halos, params)
+    
+#     Mtestarr = np.linspace(np.min(halos.M), np.max)
+    intMforM = np.interp(np.log10(halos.M), logMprimecents, intnM)
+    LforintM = np.interp(intMforM, np.flip(intL), np.flip(logLprimecents))
+    
+    # convert to solar luminosities and store in the halo catalog
+    halos.Lcat = 10**LforintM / 3.826e33 
+
+    return halos.Lcat, params
+
+
 
 @timeme
 def Mhalo_to_Lcatalog(halos, params):
@@ -396,6 +466,7 @@ def Mhalo_to_Lcatalog(halos, params):
     model = params.catalog_model
 
     dict = {'lya_chung':            Mhalo_to_LLya_Chung,
+            'schechter':           Mhalo_to_Lcatalog_schechter,
             'default':          Mhalo_to_Lcatalog_test1,
             'test2':          Mhalo_to_Lcatalog_test2
             }
@@ -404,7 +475,7 @@ def Mhalo_to_Lcatalog(halos, params):
         return dict[model](halos, params)
 
     else:
-        sys.exit('\n\n\tYour model, '+model+', does not seem to exist\n\t\tPlease check src/halos_to_luminosity.py to add it\n\n')
+        sys.exit('\n\n\tYour model, '+model+', does not seem to exist\n\t\tPlease check src/generateluminosities.py to add it\n\n')
 
 def Mhalo_to_LLya_Chung(halos, params):
     """
@@ -413,7 +484,7 @@ def Mhalo_to_LLya_Chung(halos, params):
     """
 
     try:
-        coeffs = params.coeffs
+        coeffs = params.catcoeffs
     except AttributeError:
         coeffs = None 
 
@@ -442,10 +513,14 @@ def Mhalo_to_LLya_Chung(halos, params):
     # zero out NaNs
     Llya[np.where(np.isnan(Llya))] = 0.0
 
-    params.catdex = 0. #**** this is just a placeholder
+    params.catdex = sigma_sfr #**** this is just a placeholder
 
     return Llya, params
 
+def Mhalo_to_Lcatalog_schechter(halos, params):
+    """ wrapper to use a schechter function to generate catalog luminosities"""
+    Llya, params = abundancematch(schechter, params.catcoeffs, halos, params)
+    return Llya, params
 
 
 def Mhalo_to_Lcatalog_test1(halos, params):
@@ -454,7 +529,7 @@ def Mhalo_to_Lcatalog_test1(halos, params):
     """
 
     try:
-        coeffs = params.coeffs
+        coeffs = params.catcoeffs
     except AttributeError:
         coeffs = None
 
@@ -487,7 +562,7 @@ def Mhalo_to_Lcatalog_test2(halos, params):
     """
 
     try:
-        coeffs = params.coeffs
+        coeffs = params.catcoeffs
     except AttributeError:
         coeffs = None
 
@@ -556,6 +631,7 @@ def add_co_tracer_dependant_scatter(halos, rho, codex, catdex, seed):
     mean = [0,0]
     cov = [[sigmaco**2, sigmaco*sigmatr*rho],
            [sigmaco*sigmatr*rho, sigmatr**2]]
+    halos.cov = cov
 
     # LINEAR normal scalings for co and the halo tracer
     coscale, trscale = scalerng.multivariate_normal(mean, cov, size=len(halos.Lco)).T
