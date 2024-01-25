@@ -207,6 +207,31 @@ class SimMap():
                 mapssm/= self.Ompix
             # flip back frequency bins
             self.map = mapssm[:,:,::-1]
+            
+            """ do the catalog map as well for x-corr, etc """
+            # Transform from Luminosity to Temperature (uK)
+        # ... or to flux density (Jy/sr)
+        if hasattr(halos, 'Lcat'):
+            if (units=='intensity'):
+                if debug.verbose: print('\n\tcalculating halo intensities')
+                halos.Tcat = I_line(halos, map, attribute='Lcat')
+            else:
+                if debug.verbose: print('\n\tcalculating halo temperatures')
+                halos.Tcat = T_line(halos, map, attribute='Lcat')
+                
+            # flip frequency bins because np.histogram needs increasing bins
+            bins3D = [map.pix_binedges_x, map.pix_binedges_y, map.nu_binedges[::-1]]
+
+            # bin in RA, DEC, NU_obs
+            if debug.verbose: print('\n\tBinning catalog halos into map')
+            catmaps, edges = np.histogramdd( np.c_[halos.ra, halos.dec, halos.nu],
+                                             bins    = bins3D,
+                                             weights = halos.Tcat )
+            if (units=='intensity'):
+                catmaps/= map.Ompix 
+            # flip back frequency bins
+            self.catmap = catmaps[:,:,::-1]
+                
 
 
     def write(self, params):
@@ -221,7 +246,8 @@ class SimMap():
                  map_pixel_ra    = self.pix_bincents_x,
                  map_pixel_dec   = self.pix_bincents_y,
                  map_frequencies = self.nu_bincents,
-                 map_cube        = self.map)
+                 map_cube        = self.map,
+                 cat_cube        = self.catmap)
 
         return
 
