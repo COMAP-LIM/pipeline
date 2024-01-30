@@ -40,10 +40,10 @@ stats_cut = {
 
     # High-level sanity checks
     'tsys': [20.0, 65.0],
-    'power_mean': [0.0, 1e10],
-    'sigma_mean': [1e-5, 2000],
+    'power_mean': [0.0, 1e8],
+    'sigma_mean': [20, 600],
     'fknee_mean': [5, 12],
-    'alpha_mean': [-1.4, -0.7],
+    'alpha_mean': [-1.3, -0.75],
     'n_spikes': [0.0, 20.0],
     'n_jumps': [0.0, 0.99],
     'n_anomalies': [0.0, 2.0],
