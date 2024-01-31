@@ -197,6 +197,14 @@ parser.add_argument(
     help="Use hdf5 GZIP compression when writing the level2 tod data to file."
 )
 
+parser.add_argument(
+    "--create_l2_summary_database",
+    type=str2bool,
+    default=True,
+    help="Whether l2gen should create a summary database of level 2 file stats at the end of run."
+)
+
+
 
 ###### FILTER SETTINGS ######
 ### Start-of-scan exponential subtraction filter
