@@ -423,7 +423,9 @@ class COMAP2FPXS():
             
             for num_rnd, rndfile_name in enumerate(self.params.psx_rnd_file_list):
                 rndfile = os.path.join(rndpath, f"{self.params.fields[0]}_{rndfile_name}")
+                print(rndfile)
                 rndfile = glob.glob(os.path.join(rndfile, f"*.h5"))[0]
+
                 with h5py.File(rndfile, "r") as infile:
                     rnd_spectra = infile["all_spectra"][()] 
                     rnd_overlap = infile["all_overlap"][()] 
@@ -433,10 +435,16 @@ class COMAP2FPXS():
                 else:
                     all_rnd_spectra = np.concatenate((all_rnd_spectra, rnd_spectra), axis = 0)
                     all_rnd_overlap = np.concatenate((all_rnd_overlap, rnd_overlap), axis = 0)
-            
-            all_rnd_overlap = np.nanmin(all_rnd_overlap, axis = 0)
+                
+                
+            all_rnd_overlap = np.nanmean(all_rnd_overlap, axis = 0)
                     
             all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
+            
+            print(np.nanmin(all_rnd_std))
+            print(np.nanmax(all_rnd_std))
+            print(np.nanmedian(all_rnd_std))
+            
             self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
                 
         for map1, map2 in self.field_combinations:
@@ -587,7 +595,7 @@ class COMAP2FPXS():
                         # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
                         
                         _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
-                        # _transfer_function_mask[:5, :] = False
+                        _transfer_function_mask[:5, :] = False
                         _transfer_function_mask[-2:, :] = False
                         _transfer_function_mask[:, -1:] = False
                         
