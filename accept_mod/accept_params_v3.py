@@ -39,7 +39,7 @@ stats_cut = {
     'acceptrate_specific': [0.8, 1.0],
 
     # High-level sanity checks
-    'tsys': [20.0, 65.0],
+    'tsys': [25.0, 65.0],
     'power_mean': [0.0, 1e8],
     'sigma_mean': [20, 600],
     'fknee_mean': [5, 12],
@@ -60,8 +60,8 @@ stats_cut = {
     'skewness': [-0.005, 0.01],
 
     # Tests on L2gen filter parameters
-    'npca' : [0.0, 6.0],
-    'npcaf' : [0.0, 3.0],
+    'npca' : [0.0, 6.5],
+    'npcaf' : [0.0, 3.5],
     'pca1': [0.0, 12.0],
     'pca2': [0.0, 5.0],
     'pca3': [0.0, 4.0],
@@ -69,12 +69,12 @@ stats_cut = {
     'pcf1' : [0.0, 10.0],
     'pcf2' : [0.0, 7.5],
     'pcsm' : [0, 30.0],
-    'sigma_poly0': [1e-7, 0.003],  #[float("nan"), float("nan")], #[1e-7, 1e-1],
+    'sigma_poly0': [0, 0.00015],  #[float("nan"), float("nan")], #[1e-7, 1e-1],
     'fknee_poly0': [5, 12],  #[float("nan"), float("nan")], #[1e-4, 1e2],
     'alpha_poly0': [-1.2, -0.7],  #[float("nan"), float("nan")], #[-4.0, 2.0],
     'sigma_poly1': [1e-7, 5e-4],  #[float("nan"), float("nan")], #[1e-5, 1e-2],
     'fknee_poly1': [1e-8, 1.0],  #[float("nan"), float("nan")], #[1e-4, 1e2],
-    'alpha_poly1': [-4, 1.5],  #[float("nan"), float("nan")], #[-5.0, 3.0],
+    'alpha_poly1': [-2, -0.1],  #[float("nan"), float("nan")], #[-5.0, 3.0],
 
     # PS chi2 statistics
     'ps_chi2': [-3.0, 20.0],
