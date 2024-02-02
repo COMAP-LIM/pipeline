@@ -114,17 +114,20 @@ class level2_file:
             if self.params.sbA_num_masked_channels != 0:
                 self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_reason_num_dict["Marked channels"]
-            # for i in range(len(self.feeds)):
-            #     feed = self.feeds[i]
-            #     if feed == 4 or feed == 10:   # Where do these come from...?
-            #         self.freqmask[i,2,952:] = False
-            #         self.freqmask[i,3,:72] = False
-            #     elif feed == 16:
-            #         self.freqmask[i,0,550:900] = False
-            #     elif feed == 17:
-            #         self.freqmask[i,1,276:526] = False
-            
+            for i in range(len(self.feeds)):  # Channel ranges we've found to misbehave consistently.
 
+                feed = self.feeds[i]
+                if feed == 4 or feed == 10:
+                    self.freqmask[i,2,952:] = False
+                    self.freqmask[i,2,:952] = False
+                    self.freqmask[i,3,:72] = False
+                    self.freqmask[i,3,952:] = False
+                elif feed == 16:
+                    self.freqmask[i,0,124:474] = False
+                # elif feed == 16:
+                #     self.freqmask[i,0,550:900] = False
+                elif feed == 17:
+                    self.freqmask[i,1,276:526] = False
             self.tod[~self.freqmask] = np.nan
             self.acceptrate = np.mean(self.freqmask, axis=-1)
 
