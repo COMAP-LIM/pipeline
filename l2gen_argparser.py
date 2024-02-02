@@ -292,6 +292,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--load_PCA_override_num_of_components",
+    type=int,
+    default=0,
+    help="(pca). If PCA components are read from file, this option can be used to subtract a static number of components. Set to 0 for default behavior (read num of components from file)."
+)
+
+parser.add_argument(
+    "--load_fPCA_override_num_of_components",
+    type=int,
+    default=0,
+    help="(pca). Same as 'load_PCA_override_num_of_components', but for feed-PCA filter."
+)
+
+parser.add_argument(
     "--max_pca_comp",
     type=int,
     default=12,

@@ -962,8 +962,10 @@ class PCA_filter(Filter):
                 comps = f["pca_comp"][()]
                 n_pca_comp = f["n_pca_comp"][()]
                 pca_eigvals = f["pca_eigvals"][()]
-
-            pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
+            if self.params.load_PCA_override_num_of_components > 0:  # This option sets the number of components to use, overriding the number from the l2 file.
+                n_pca_comp = self.params.load_PCA_override_num_of_components
+            comps = comps[:n_pca_comp]
+            pca_ampl = np.zeros((n_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             for ifeed in range(l2.Nfeeds):
                 ak = np.nansum(l2.tod[ifeed,:,:,:,None]*np.transpose(comps, (1,0)), axis=2)
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*np.transpose(comps, (1,0))[None,None,:,:], axis=-1)
@@ -1144,6 +1146,9 @@ class PCA_feed_filter(Filter):
                 comps = f["pca_feed_comp"][()]
                 n_pca_comp = f["n_pca_feed_comp"][()]
                 pca_eigvals = f["pca_feed_eigvals"][()]
+
+            if self.params.load_fPCA_override_num_of_components > 0:  # This option sets the number of components to use, overriding the number from the l2 file.
+                n_pca_comp[:] = self.params.load_fPCA_override_num_of_components
 
             for ifeed in range(l2.Nfeeds):
                 comp = comps[:n_pca_comp[ifeed],ifeed]
