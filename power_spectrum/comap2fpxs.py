@@ -437,7 +437,7 @@ class COMAP2FPXS():
                     all_rnd_overlap = np.concatenate((all_rnd_overlap, rnd_overlap), axis = 0)
                 
                 
-            all_rnd_overlap = np.nanmean(all_rnd_overlap, axis = 0)
+            all_rnd_overlap = np.nanmedian(all_rnd_overlap, axis = 0)
                     
             all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
             
@@ -873,7 +873,7 @@ class COMAP2FPXS():
                         os.mkdir(average_name)
                 else:
                     if self.params.psx_mode == "saddlebag":
-                        average_name = os.path.join(fig_dir, "average_spectra")
+                        average_name = os.path.join(fig_dir, "average_spectra_saddlebag")
                     else:
                         average_name = os.path.join(fig_dir, "average_spectra")
 
@@ -1054,9 +1054,9 @@ class COMAP2FPXS():
 
         matplotlib.rcParams["xtick.labelsize"] = 16
         matplotlib.rcParams["ytick.labelsize"] = 16
-        matplotlib.rcParams["hatch.color"] = "gray"
-        matplotlib.rcParams["hatch.linewidth"] = 0.3
-
+        matplotlib.rcParams["hatch.color"] = "green"
+        matplotlib.rcParams["hatch.linewidth"] = 0.5
+        
         if self.params.psx_null_diffmap:
             try:
                 split1 = splits[0][0].split("map_")[-1][5:]
@@ -1128,7 +1128,7 @@ class COMAP2FPXS():
             [0, 1], 
             0, 
             1, 
-            hatch='xxxx', 
+            hatch='xx', 
             transform = ax[0, 0].transAxes, 
             alpha = 0, 
             zorder = 2
@@ -1168,7 +1168,7 @@ class COMAP2FPXS():
             [0, 1], 
             0, 
             1, 
-            hatch='xxxx', 
+            hatch='xx', 
             transform = ax[0, 1].transAxes, 
             alpha = 0, 
             zorder = 2
@@ -1208,7 +1208,7 @@ class COMAP2FPXS():
             [0, 1], 
             0, 
             1, 
-            hatch='xxxx', 
+            hatch='xx', 
             transform = ax[0, 2].transAxes, 
             alpha = 0, 
             zorder = 2
@@ -1433,12 +1433,13 @@ class COMAP2FPXS():
             )
         
         # Plot spherically averaged mean FPXS
-        # Only want to use points between 0.04 and 1.0 /Mpc
-        where = np.logical_and(k_1d > 0.1, k_1d < 1.0)
+        # Only want to use points between 0.04 and 1.0 /Mpc        
+        # where = np.logical_and(k_1d > 0.1, k_1d < 1.0)
+        where = np.logical_and(k_1d > 0.1, k_1d < 0.8)
         
         # Plot y-limits
         lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
-        lim = np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
+        lim = 2 * np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
         
         # lim = 2e4
 
@@ -1737,8 +1738,8 @@ class COMAP2FPXS():
         # Define default ticks label sizes
         matplotlib.rcParams["xtick.labelsize"] = 10
         matplotlib.rcParams["ytick.labelsize"] = 10
-        matplotlib.rcParams["hatch.color"] = "lightgray"
-        matplotlib.rcParams["hatch.linewidth"] = 0.3
+        matplotlib.rcParams["hatch.color"] = "green"
+        matplotlib.rcParams["hatch.linewidth"] = 0.5
 
         # Define the two split names that were cross-correlated
         if self.params.psx_null_diffmap:
@@ -1771,8 +1772,8 @@ class COMAP2FPXS():
             interpolation = "none",
             extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
             cmap = cmap,
-            vmin = overlap_vs_rnd.min(),
-            vmax = overlap_vs_rnd.max(),
+            vmin = 0,
+            vmax = np.nanmax(overlap_vs_rnd) + 0.1 * np.nanstd(overlap_vs_rnd),
             rasterized = True,
             zorder = 1,
         )
@@ -1781,7 +1782,7 @@ class COMAP2FPXS():
             [0.5, N_feed + 0.5], 
             0.5, 
             N_feed + 0.5, 
-            hatch='xxxx', 
+            hatch='xx', 
             alpha = 0, 
             zorder = 2
         )
@@ -1798,8 +1799,8 @@ class COMAP2FPXS():
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
             cmap=cmap,
-            vmin = overlap_vs_rnd.min(),
-            vmax = overlap_vs_rnd.max(),
+            vmin = 0,
+            vmax = np.nanmax(overlap_vs_rnd) + 0.1 * np.nanstd(overlap_vs_rnd),
             rasterized=True,
             zorder = 3,
         )
@@ -1832,7 +1833,7 @@ class COMAP2FPXS():
             [0.5, N_feed + 0.5], 
             0.5, 
             N_feed + 0.5, 
-            hatch='xxxx', 
+            hatch='xx', 
             alpha = 0, 
             zorder = 2
         )
@@ -1887,6 +1888,9 @@ class COMAP2FPXS():
                 color = "r",
                 label = "Relative Noise Weigted Overlap",
             )
+            # ax1.axvline(self.params.psx_relative_overlap_limit, linestyle = "dashed", color = "r", label = f"Cut limit :{self.params.psx_relative_overlap_limit:.2f}")
+            ax1.axvline(self.params.psx_overlap_limit, linestyle = "dashed", color = "b", label = f"Cut limit :{self.params.psx_overlap_limit:.2f}")
+        
         ax1.legend()
         ax1.set_ylabel("Number Count")
         ax1.set_xlabel("Overlap Statistic")
@@ -1907,8 +1911,8 @@ class COMAP2FPXS():
         # Define default ticks label sizes
         matplotlib.rcParams["xtick.labelsize"] = 10
         matplotlib.rcParams["ytick.labelsize"] = 10
-        matplotlib.rcParams["hatch.color"] = "gray"
-        matplotlib.rcParams["hatch.linewidth"] = 0.3
+        matplotlib.rcParams["hatch.color"] = "green"
+        matplotlib.rcParams["hatch.linewidth"] = 0.5
         # Define the two split names that were cross-correlated
         if self.params.psx_null_diffmap:
             split1 = splits[0][0].split("map_")[-1][5:]
@@ -1954,7 +1958,7 @@ class COMAP2FPXS():
             [0.5, N_feed + 0.5], 
             0.5, 
             N_feed + 0.5, 
-            hatch='xxxx', 
+            hatch='xx', 
             alpha = 0, 
             zorder = 2
         )
@@ -2005,7 +2009,7 @@ class COMAP2FPXS():
             [0.5, N_feed + 0.5], 
             0.5, 
             N_feed + 0.5, 
-            hatch='xxxx', 
+            hatch='xx', 
             alpha = 0, 
             zorder = 2
         )
