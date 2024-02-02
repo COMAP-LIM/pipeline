@@ -79,9 +79,9 @@ class PCA_SubTractor:
         ncomp = nsb * nfreq
 
         # Define empty buffers
-        all_freqvec = np.zeros((nfeed, ncomp, nsb * nfreq))
-        all_angvec = np.zeros((nfeed, ncomp, nra * ndec))
-        all_singular_values = np.zeros((nfeed, ncomp))
+        all_freqvec = np.zeros((nfeed, self.ncomps, nsb * nfreq))
+        all_angvec = np.zeros((nfeed, self.ncomps, nra * ndec))
+        all_singular_values = np.zeros((nfeed,  nsb * nfreq))
 
         # Perform PCA decomposition of data per feed
         for feed in tqdm(range(nfeed)):
@@ -97,14 +97,14 @@ class PCA_SubTractor:
             # )
 
             # Fill buffers
-            all_freqvec[feed, :, :] = freq_vec.T
-            all_angvec[feed, :, :] = ang_vec
+            all_freqvec[feed, :self.ncomps, :] = (freq_vec.T)[:self.ncomps, :]
+            all_angvec[feed, :self.ncomps, :] = ang_vec[:self.ncomps, :]
             all_singular_values[feed, :] = singular_values
 
         # Return eigenvectors and singular values of PCA
         return (
-            all_freqvec.reshape(nfeed, ncomp, nsb, nfreq),
-            all_angvec.reshape(nfeed, ncomp, nra, ndec),
+            all_freqvec.reshape(nfeed, self.ncomps, nsb, nfreq),
+            all_angvec.reshape(nfeed, self.ncomps, nra, ndec),
             all_singular_values,
         )
 
