@@ -1247,8 +1247,8 @@ parser.add_argument(
     "--mpca_rmsnorm",
     type=str,
     help="""Which normalistion to use before PCA decomposition.
-    Choose between "approx", "sigma_wn" or "var". Default is "sigma_wn".""",
-    default="sigma_wn",
+    Choose between "approx", "sigma_wn", "var" and "exper". Default is "exper".""",
+    default="exper",
 )
 
 parser.add_argument(
