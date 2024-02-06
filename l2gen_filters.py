@@ -1364,7 +1364,7 @@ class Masking(Filter):
                 freqmask = freqmask[feedmask, ...]
 
             l2.freqmask[~freqmask] = False
-            l2.freqmask_reason[freqmask] += l2.freqmask_reason_num_dict["Imported freqmask"]
+            l2.freqmask_reason[freqmask] += 2**l2.freqmask_reason_num_dict["Imported freqmask"]
         else:
             ### Aliasing masking ###
             if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
@@ -1376,8 +1376,8 @@ class Masking(Filter):
                     leak_mask[:,isb,:] = leak_mask[:,isb,::-1]
                 l2.freqmask[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
                 l2.freqmask[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] = False
-                l2.freqmask_reason[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += l2.freqmask_reason_num_dict["Aliasing suppression (AB_mask)"]
-                l2.freqmask_reason[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += l2.freqmask_reason_num_dict["Aliasing suppression (leak_mask)"]
+                l2.freqmask_reason[AB_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += 2**l2.freqmask_reason_num_dict["Aliasing suppression (AB_mask)"]
+                l2.freqmask_reason[leak_mask[l2.feeds-1] < self.params.aliasing_mask_dB] += 2**l2.freqmask_reason_num_dict["Aliasing suppression (leak_mask)"]
                 l2.tofile_dict["AB_aliasing"] = AB_mask
                 l2.tofile_dict["leak_aliasing"] = leak_mask
 
