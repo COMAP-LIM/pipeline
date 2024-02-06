@@ -982,8 +982,7 @@ class PCA_filter(Filter):
             pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
             P = l2.Ntod
-            M = l2.tod.reshape(N, P)
-            M = M[l2.freqmask.flatten(), :]
+            M = l2.tod.reshape(N, P)[l2.freqmask.flatten(), :].copy()
             M[~np.isfinite(M)] = 0
             M = M[np.sum(M != 0, axis=-1) != 0]
             N_effective = M.shape[0]
