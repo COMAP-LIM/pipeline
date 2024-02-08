@@ -69,7 +69,7 @@ stats_cut = {
     'pcf1' : [0.0, 10.0],
     'pcf2' : [0.0, 7.5],
     'pcsm' : [0, 30.0],
-    'sigma_poly0': [0, 0.00015],  #[float("nan"), float("nan")], #[1e-7, 1e-1],
+    'sigma_poly0': [0, 0.0015],  #[float("nan"), float("nan")], #[1e-7, 1e-1],
     'fknee_poly0': [5, 12],  #[float("nan"), float("nan")], #[1e-4, 1e2],
     'alpha_poly0': [-1.2, -0.7],  #[float("nan"), float("nan")], #[-4.0, 2.0],
     'sigma_poly1': [1e-7, 5e-4],  #[float("nan"), float("nan")], #[1e-5, 1e-2],
