@@ -52,7 +52,10 @@ def PCA_experimental_ctypes(data, map_rms):
     inv_rms_2[inv_rms_2==0] = 1.0
     inv_rms_2[~np.isfinite(inv_rms_2)] = 1.0
     freqvec = np.random.normal(0, 1, 256)
+    freqvec /= np.linalg.norm(freqvec)
     angvec = np.random.normal(0, 1, (120*120))
+    angvec = np.array(np.sum(map_signal, axis=0), dtype=np.float64)
+    angvec /= np.linalg.norm(angvec)
 
     map_signal_T = np.ascontiguousarray(map_signal.T)
     inv_rms_2_T = np.ascontiguousarray(inv_rms_2.T)
