@@ -381,6 +381,9 @@ class COMAP2FPXS():
     
     
     def compute_averages(self):
+        
+        beam_tf = self.beam_transfer_function() 
+        
         if self.params.psx_mode == "saddlebag":
             average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra_saddlebag")
         else:
@@ -438,15 +441,15 @@ class COMAP2FPXS():
                 
                 
             all_rnd_overlap = np.nanmedian(all_rnd_overlap, axis = 0)
-                    
-            all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
             
-            print(np.nanmin(all_rnd_std))
-            print(np.nanmax(all_rnd_std))
-            print(np.nanmedian(all_rnd_std))
-            
+            print(all_rnd_spectra[all_rnd_spectra.shape[0] // 3:].shape[0], all_rnd_spectra[:all_rnd_spectra.shape[0] // 3].shape[0], all_rnd_spectra.shape[0])
+            # all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
+            all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 3], axis = 0, ddof = 1)
+            all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 3:]
+            print(all_rnd_spectra.shape[0])
             self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
-                
+            
+        
         for map1, map2 in self.field_combinations:
             # Generate name of outpute data directory
             mapname1 = map1.split("/")[-1]
@@ -560,7 +563,7 @@ class COMAP2FPXS():
                             continue            
                         
                         
-                        cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap"], indir)
+                        cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap", "dx", "dy", "dz"], indir)
                         
                         if len(self.params.psx_rnd_file_list) > 0:
                             xs_wn = all_rnd_spectra[:, feed1, feed2, ...]
@@ -587,7 +590,22 @@ class COMAP2FPXS():
                         
                         transfer_function = self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
 
+                        # px_window = self.pix_window(k_bin_centers_perp, cross_spectrum.dx)
+                        # freq_window = self.pix_window(k_bin_centers_par, cross_spectrum.dz)
+                        # transfer_function *= beam_tf(k_bin_centers_perp)[:, None] * px_window[:, None] 
+                        # transfer_function *= freq_window[None, :] 
+                        # print(feed1, feed2, cross_spectrum.dx, cross_spectrum.dy, cross_spectrum.dz)
+                        # print(beam_tf(k_bin_centers_perp))
                         
+                        # fig, ax = plt.subplots(figsize = (15, 4))
+                        # ax.plot(k_bin_centers_par, freq_window, label = "freq")
+                        # ax.plot(k_bin_centers_perp, px_window, label = "px")
+                        # ax.plot(k_bin_centers_perp, beam_tf(k_bin_centers_perp), label = "beam")
+                        
+                        # ax.set_yscale("log")
+                        # ax.set_xscale("log")
+                        # fig.savefig("dummy.png")
+
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 
                         # transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
@@ -725,9 +743,11 @@ class COMAP2FPXS():
                     PTE_data_cov[i] = scipy.stats.chi2.sf(chi2_data_cov[i], df = np.sum(transfer_function_mask))
                     PTE_data[i] = scipy.stats.chi2.sf(chi2_data[i], df = np.sum(transfer_function_mask))
                     PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i], df = np.sum(transfer_function_mask))
-                    PTE_data_coadd_numeric[i] = 1 - np.sum(chi2_wn_cov[i, :] <= chi2_data_coadd[i]) / self.params.psx_noise_sim_number
+                    # PTE_data_coadd_numeric[i] = 1 - np.sum(chi2_wn[i, :] <= chi2_data_coadd[i]) / self.params.psx_noise_sim_number
+                    ecdf = scipy.stats.ecdf(chi2_wn[i, :])
+                    PTE_data_coadd_numeric[i] = 1 - ecdf.cdf.evaluate(chi2_data_coadd[i])
 
-                    print("2D PTE:", PTE_data_coadd[i], "2D chi2:", chi2_data_coadd[i])
+                    print("2D PTE:", PTE_data_coadd[i], "2D PTE numeric:", PTE_data_coadd_numeric[i])
                                     
                 if np.all(~np.isfinite(chi2)) or np.all(chi2 == 0):
                     continue
@@ -818,9 +838,11 @@ class COMAP2FPXS():
                 PTE_data_cov_1d[i] = scipy.stats.chi2.sf(chi2_data_cov_1d[i], df = _error_1d.size)
                 PTE_data_1d[i] = scipy.stats.chi2.sf(chi2_data_1d[i], df = _error_1d.size)
                 PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = _error_1d.size)
-                PTE_data_coadd_numeric_1d[i] = 1 - np.sum(chi2_wn_cov_1d[i, :] <= chi2_data_coadd_1d[i]) / self.params.psx_noise_sim_number
+                #PTE_data_coadd_numeric_1d[i] = 1 - np.sum(chi2_wn_1d[i, :] <= chi2_data_coadd_1d[i]) / self.params.psx_noise_sim_number
+                ecdf = scipy.stats.ecdf(chi2_wn_1d[i, :])
+                PTE_data_coadd_numeric_1d[i] = 1 - ecdf.cdf.evaluate(chi2_data_coadd_1d[i])
 
-                print("1D PTE:", PTE_data_coadd_1d[i], "1D chi2:", chi2_data_coadd_1d[i])
+                print("1D PTE:", PTE_data_coadd_1d[i], "1D PTE numeric:", PTE_data_coadd_numeric_1d[i])
                         
                 if not self.params.psx_generate_white_noise_sim:
                     if self.params.psx_mode == "saddlebag":
@@ -894,7 +916,8 @@ class COMAP2FPXS():
 
                     
                     
-                self.angle2Mpc = cross_spectrum.angle2Mpc
+                self.angle2Mpc = cross_spectrum.angle2Mpc * u.Mpc / u.arcmin
+
                 self.map_dx = cross_spectrum.dx
                 self.map_dy = cross_spectrum.dy
                 self.map_dz = cross_spectrum.dz
@@ -1261,7 +1284,7 @@ class COMAP2FPXS():
         ax2.set_yticklabels(majorticks)
         
         ax2.set_ylim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
-        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc), 2).astype(str))
+        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc.value), 2).astype(str))
         ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
 
         ###############################
@@ -2425,7 +2448,8 @@ class COMAP2FPXS():
 
         # Defining 2D grid to use to compute beam transfer function
         dx = 1e-3 * u.deg
-        dx_cosmo = (dx * self.angle2Mpc).to(u.Mpc)
+        
+        dx_cosmo = (dx * self.angle2Mpc).decompose().to(u.Mpc)
         x_kernel = np.arange(-1, 1, dx.value)
         y_kernel = np.arange(-1, 1, dx.value)
         X, Y = np.meshgrid(x_kernel, y_kernel)
@@ -2457,24 +2481,30 @@ class COMAP2FPXS():
         
         kx = kx[np.argsort(kx)]
         ky = ky[np.argsort(ky)]
-
-        NX = NY = kx.shape
+        
+        NX = kx.size
+        NY = ky.size
         
         kx = kx[NX // 2:]
         ky = ky[NY // 2:]
         
-        tf_beam_fourier = tf_beam_fourier[NX // 2:, NY // 2:]
+        tf_beam_fourier = tf_beam_fourier[:NX // 2, :NY // 2]
         
-        # Returning a interpolation of beam transfer unction
-        tf_beam_interp = interpolate.RectBivariateSpline(
-            kx,
-            ky,
-            tf_beam_fourier, 
-            s = 0, # No smoothing when splining
-            kx = 3, # Use bi-cubic spline in x-direction
-            ky = 3, # Use bi-cubic spline in x-direction
-            )
-        
+        # # Returning a interpolation of beam transfer unction
+        # tf_beam_interp = interpolate.RectBivariateSpline(
+        #     kx,
+        #     ky,
+        #     tf_beam_fourier, 
+        #     s = 0, # No smoothing when splining
+        #     kx = 3, # Use bi-cubic spline in x-direction
+        #     ky = 3, # Use bi-cubic spline in x-direction
+        #     )
+
+        tf_beam_interp = interpolate.CubicSpline(
+            kx, 
+            tf_beam_fourier[0, :]
+        ) 
+
         return tf_beam_interp
 
     def generate_new_monte_carlo_seed(self):

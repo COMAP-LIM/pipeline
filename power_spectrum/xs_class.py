@@ -606,8 +606,8 @@ class CrossSpectrum_nmaps:
             
             outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
             outfile.create_dataset("dx", data = self.map_dx)
-            outfile.create_dataset("dy", data = self.map_dx)
-            outfile.create_dataset("dz", data = self.map_dx)
+            outfile.create_dataset("dy", data = self.map_dy)
+            outfile.create_dataset("dz", data = self.map_dz)
 
             outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
             outfile["dx"].attrs["unit"] = "Mpc"

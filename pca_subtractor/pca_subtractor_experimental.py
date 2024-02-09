@@ -60,7 +60,7 @@ def PCA_experimental_ctypes(data, map_rms):
     map_signal_T = np.ascontiguousarray(map_signal.T)
     inv_rms_2_T = np.ascontiguousarray(inv_rms_2.T)
 
-    C_LIB_PATH = os.path.join(parent_directory, "/C_libs/mPCA/mPCAlib.so.1")
+    C_LIB_PATH = os.path.join(parent_directory, "C_libs/mPCA/mPCAlib.so.1")
     mPCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
     float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
     float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")

@@ -77,15 +77,15 @@ stats_cut = {
     'alpha_poly1': [-2, -0.1],  #[float("nan"), float("nan")], #[-5.0, 3.0],
 
     # PS chi2 statistics
-    'ps_chi2': [-3.0, 20.0],
-    'ps_s_sb_chi2': [-4.0, 15.0],
-    'ps_s_feed_chi2': [-4.0, 20.0],
-    'ps_s_chi2': [-5.0, 40.0],
-    'ps_o_sb_chi2': [-4.0, 20.0],
-    'ps_o_feed_chi2': [-3.0, 30.0],
-    'ps_o_chi2': [-5.0, 150.0],
-    'ps_z_s_sb_chi2': [-10.0, 10.0],
-    'ps_xy_s_sb_chi2': [-40.0, 5.0],
+    'ps_chi2': [float("nan"), float("nan")],
+    'ps_s_sb_chi2': [float("nan"), float("nan")],
+    'ps_s_feed_chi2': [float("nan"), float("nan")],
+    'ps_s_chi2': [float("nan"), float("nan")],
+    'ps_o_sb_chi2': [float("nan"), float("nan")],
+    'ps_o_feed_chi2': [float("nan"), float("nan")],
+    'ps_o_chi2': [float("nan"), float("nan")],
+    'ps_z_s_sb_chi2': [float("nan"), float("nan")],
+    'ps_xy_s_sb_chi2': [float("nan"), float("nan")],
     
     # Standing waves (not used)
     'sw_01': [float("nan"), float("nan")],
