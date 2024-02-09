@@ -65,7 +65,7 @@ def PCA_experimental_ctypes(data, map_rms):
     float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
     float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
     mPCAlib.PCA_experimental.argtypes = [float32_array2, float32_array2, float32_array2, float32_array2, float64_array1, float64_array1, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double]
-    mPCAlib.PCA_experimental(map_signal, map_signal_T, inv_rms_2, inv_rms_2_T, angvec, freqvec, 256, 120*120, 1000, 1e-10)
+    mPCAlib.PCA_experimental(map_signal, map_signal_T, inv_rms_2, inv_rms_2_T, angvec, freqvec, 256, 120*120, 500, 1e-8)
 
     return angvec, freqvec
 
