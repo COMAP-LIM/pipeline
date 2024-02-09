@@ -1000,7 +1000,7 @@ class PCA_filter(Filter):
             N_effective = np.sum(M.shape[0])
             sigma0 = np.nanmean(np.std(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2))
             # Don't ask:
-            empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00476 - 3.957e-03*np.log10(P)*np.log10(N_effective) + 8.757e-05*(np.log10(P)*np.log10(N_effective))**2
+            empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00964 - 1.498e-03*(np.log10(P)+np.log10(N_effective))**2 + 9.911e-05*(np.log10(P)+np.log10(N_effective))**3 -6.306e-04*np.abs(np.log10(P)-np.log10(N_effective))**3 + 3.934e-04*np.abs(np.log10(P)-np.log10(N_effective))**4
             lambda_threshold = self.params.pca_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
             self.n_pca_comp = np.sum(singular_values > lambda_threshold)
             if self.params.verbose:
@@ -1202,7 +1202,7 @@ class PCA_feed_filter(Filter):
                     comps[:,i] /= np.linalg.norm(comps[:,i])
                 N_effective = M.shape[0]
                 sigma0 = np.nanmean(np.nanstd(M[:,1:] - M[:,:-1], axis=-1)/np.sqrt(2))
-                empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00476 - 3.957e-03*np.log10(P)*np.log10(N_effective) + 8.757e-05*(np.log10(P)*np.log10(N_effective))**2
+                empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00964 - 1.498e-03*(np.log10(P)+np.log10(N_effective))**2 + 9.911e-05*(np.log10(P)+np.log10(N_effective))**3 -6.306e-04*np.abs(np.log10(P)-np.log10(N_effective))**3 + 3.934e-04*np.abs(np.log10(P)-np.log10(N_effective))**4
                 lambda_threshold = self.params.pcaf_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
                 l2.tofile_dict["pca_feed_lambda_threshold"][ifeed] = lambda_threshold
                 self.n_pca_comp = np.sum(singular_values > lambda_threshold)
