@@ -2140,7 +2140,10 @@ if __name__ == "__main__":
     
     patch_filepath = params.patch_definition_file
     patch_info = get_patch_info(patch_filepath)
-
+    
+    if params.jk_rnd_split_seed is not None:
+        params.jk_data_string = params.jk_data_string + f"_rnd{params.jk_rnd_split_seed}"
+    
     weather_filepath = params.weather_filepath
     data_folder = params.accept_data_folder
     id_string = params.accept_data_id_string + '_'
@@ -2170,7 +2173,7 @@ if __name__ == "__main__":
                 scan_data = my_file['scan_data'][()]
         else:
             scan_list, scan_data = get_scan_data(params, fields, fieldname)
-        
+
         if rank == 0:
             if not data_from_file:
                 scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
@@ -2181,9 +2184,7 @@ if __name__ == "__main__":
             jk_list, cutoff_list, split_list = make_jk_list(params, accept_list, scan_list, scan_data, jk_param_list_file)
             print('Made jk_list')
             
-            if params.jk_rnd_split_seed is not None:
-                params.jk_data_string = params.jk_data_string + f"_rnd{params.jk_rnd_split_seed}"
-                
+          
             jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
             jk_data_name_list.append(jk_data_name)
 
