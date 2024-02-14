@@ -227,34 +227,38 @@ class Mapmaker:
 
             # Dictionary to contain mapping between split id number and dataset name
             split_key_mapping = {}
-            for i, number in enumerate(unique_numbers):
-                # For each unique number generate mapping between number and split name
-                for p, primary in enumerate(primary_splits):
 
-                    if primary in temporal_splits:
-                        key = f"{primary}"
-                    else:
-                        # Begin mapping name with primary key
-                        key = f"{primary}"
-                        key += f"{bits[i, N_secondary_splits + p]:d}"
+            if self.rank == 0:
+                for i, number in tqdm.tqdm(enumerate(unique_numbers), total=len(unique_numbers)):
+                    # For each unique number generate mapping between number and split name
+                    for p, primary in enumerate(primary_splits):
 
-                    # Add secondary keys to primary key
-                    for s, secondary in enumerate(secondary_splits[::-1]):
-                        
-                        if secondary in temporal_splits:
-                            key += f"{secondary}"
+                        if primary in temporal_splits:
+                            key = f"{primary}"
                         else:
-                            key += f"{secondary}"
-                            key += f"{bits[i,N_secondary_splits - 1 - s]:d}"
+                            # Begin mapping name with primary key
+                            key = f"{primary}"
+                            key += f"{bits[i, N_secondary_splits + p]:d}"
 
-                    # Save mapping in dictionary
-                    if key not in split_key_mapping.keys():
-                        split_key_mapping[key] = np.array([number])
-                    else:
-                        split_key_mapping[key] = np.append(
-                            split_key_mapping[key], [number]
-                        )
+                        # Add secondary keys to primary key
+                        for s, secondary in enumerate(secondary_splits[::-1]):
+                            
+                            if secondary in temporal_splits:
+                                key += f"{secondary}"
+                            else:
+                                key += f"{secondary}"
+                                key += f"{bits[i,N_secondary_splits - 1 - s]:d}"
 
+                        # Save mapping in dictionary
+                        if key not in split_key_mapping.keys():
+                            split_key_mapping[key] = [number]
+                        else:
+                            split_key_mapping[key].append(number)
+
+                for key in split_key_mapping.keys():
+                    split_key_mapping[key] = np.array(split_key_mapping[key])
+
+            split_key_mapping = self.comm.bcast(split_key_mapping, root=0)
             temporal_secondary_combinations = list(itertools.product(
                 *(N_temporal_secondary_splits * [range(2)])
                 ))
@@ -1334,7 +1338,6 @@ def main():
 
     tod2comap = Mapmaker(omp_num_threads=omp_num_threads)
     tod2comap.parse_accept_data()
-
     if tod2comap.params.directional:
         tod2comap.which_az_direction = 1
         base_name = tod2comap.params.map_name
