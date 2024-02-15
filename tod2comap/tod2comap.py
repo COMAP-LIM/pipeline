@@ -120,13 +120,15 @@ class Mapmaker:
         
 
     def parse_accept_data(self):
-        if len(self.jk_data_string) >= 1:
-            self.jk_data_string = f"_{self.jk_data_string}"
 
         if self.params.jk_rnd_split_seed is not None:
             self.params.jk_data_string = self.params.jk_data_string + f"_rnd{self.params.jk_rnd_split_seed}"
+            self.jk_data_string = self.params.jk_data_string
             self.params.map_name = self.params.map_name + f"_rnd{self.params.jk_rnd_split_seed}"
         
+        if len(self.jk_data_string) >= 1:
+            self.jk_data_string = f"_{self.jk_data_string}"
+
         scan_data_path = f"scan_data_{self.accept_data_id_string}_{self.fieldname}.h5"
         split_data_path = f"jk_data_{self.accept_data_id_string}{self.jk_data_string}_{self.fieldname}.h5"
 
