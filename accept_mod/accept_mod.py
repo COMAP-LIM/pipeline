@@ -2327,6 +2327,24 @@ if __name__ == "__main__":
                     data_binned[N_binned < bin_size_days*5*20*4] = np.nan
                     return bins, data_binned
                 
+                fig, ax = plt.subplots(int(math.ceil(Nstats/4)), 4, figsize=(12*3, Nstats*3/4))
+                for i in range(Nstats):
+                    stat = stats_list[i]
+                    stat_cut = stats_cut[stat]
+                    histrange = lims[stat]
+                    _data = scan_data[:,:,:,i].copy()
+                    _data[_data < histrange[0]] = histrange[0] + 1e-8
+                    _data[_data > histrange[1]] = histrange[1] - 1e-8
+                    for ifeed in range(_data.shape[1]):
+                        ax[i//4, i%4].hist(_data[:,ifeed].flatten(), density=True, bins=100, range=histrange, histtype="step", lw=1.0, alpha=0.3, color="k")
+                    ax[i//4, i%4].hist(_data.flatten(), density=True, bins=100, range=histrange, histtype="step", lw=2)
+                    ax[i//4, i%4].axvline(stat_cut[0], ls="--", c="k")
+                    ax[i//4, i%4].axvline(stat_cut[1], ls="--", c="k")
+                    ax[i//4, i%4].set_title(stat)
+
+                        
+                plt.tight_layout()
+                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + f"_{params.map_name}" + "_histograms.png"), bbox_inches="tight", dpi=200)
 
                 fig, ax = plt.subplots(int(math.ceil(Nstats/4)), 4, figsize=(12*3, Nstats*3/4))
                 for i in range(Nstats):
@@ -2343,26 +2361,8 @@ if __name__ == "__main__":
 
                     ax[i//4, i%4].axhline(stat_cut[0], ls="--", c="k")
                     ax[i//4, i%4].axhline(stat_cut[1], ls="--", c="k")
-                    ax[i//4, i%4].scatter(scan_data[:,:,:,2].flatten()[::10], _data[::10], s=0.01)
+                    ax[i//4, i%4].scatter(scan_data[:,:,:,2].flatten()[::31], _data[::31], s=0.01, alpha=0.1)
                     ax[i//4, i%4].plot(bins_weeks, data_weeks, c="tab:orange")
                     ax[i//4, i%4].set_title(stat)
                 plt.tight_layout()
                 plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + f"_{params.map_name}" + "_time_plot.png"), bbox_inches="tight", dpi=200)
-                
-
-                fig, ax = plt.subplots(int(math.ceil(Nstats/4)), 4, figsize=(12*3, Nstats*3/4))
-                for i in range(Nstats):
-                    stat = stats_list[i]
-                    stat_cut = stats_cut[stat]
-                    histrange = lims[stat]
-                    _data = scan_data[:,:,:,i].flatten().copy()
-                    _data[_data < histrange[0]] = histrange[0] + 1e-8
-                    _data[_data > histrange[1]] = histrange[1] - 1e-8
-                    ax[i//4, i%4].hist(_data, density=True, bins=100, range=histrange, histtype="step", lw=2)
-                    ax[i//4, i%4].axvline(stat_cut[0], ls="--", c="k")
-                    ax[i//4, i%4].axvline(stat_cut[1], ls="--", c="k")
-                    ax[i//4, i%4].set_title(stat)
-
-                        
-                plt.tight_layout()
-                plt.savefig(os.path.join(plot_folder, params.accept_data_id_string + "_" + fieldname + f"_{params.map_name}" + "_histograms.png"), bbox_inches="tight", dpi=200)
