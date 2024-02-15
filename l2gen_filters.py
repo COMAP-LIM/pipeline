@@ -1018,7 +1018,7 @@ class PCA_filter(Filter):
             PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
 
             for icomp in range(self.n_pca_comp):
-                PCAlib.subtract_eigcomp(l2.tod, np.ascontiguousarray(comps[:,icomp]), pca_ampl[icomp], tod.shape[0]*tod.shape[1]*tod.shape[2], tod.shape[-1])
+                PCAlib.subtract_eigcomp(l2.tod, np.ascontiguousarray(comps[:,icomp]), pca_ampl[icomp], l2.tod.shape[0]*l2.tod.shape[1]*l2.tod.shape[2], l2.tod.shape[-1])
 
             # for ifeed in range(l2.Nfeeds):
             #     ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
