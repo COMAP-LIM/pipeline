@@ -982,9 +982,9 @@ class PCA_filter(Filter):
             pca_ampl = np.zeros((self.max_pca_comp, l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             N = l2.Nfeeds*l2.Nsb*l2.Nfreqs
             P = l2.Ntod
-            M = l2.tod.reshape(N, P)[l2.freqmask.flatten(), :].copy()
-            M[~np.isfinite(M)] = 0
-            M = M[np.sum(M != 0, axis=-1) != 0]
+            M = l2.tod.reshape(N, P)[l2.freqmask.flatten(), :]#.copy()
+            #M[~np.isfinite(M)] = 0
+            #M = M[np.sum(M != 0, axis=-1) != 0]
             N_effective = M.shape[0]
             if N_effective > 20:
                 pca = PCA(n_components=self.max_pca_comp, random_state=49)
@@ -1009,10 +1009,21 @@ class PCA_filter(Filter):
             comps = comps
             del(M)
 
-            for ifeed in range(l2.Nfeeds):
-                ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
-                l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:self.n_pca_comp], axis=-1)
-                pca_ampl[:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
+
+            C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/PCA/PCAlib.so.1")
+            PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
+            float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
+            float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
+            PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
+
+            for icomp in range(self.n_pca_comp):
+                PCAlib.subtract_eigcomp(l2.tod, np.ascontiguousarray(comps[:,icomp]), pca_ampl[icomp], tod.shape[0]*tod.shape[1]*tod.shape[2], tod.shape[-1])
+
+            # for ifeed in range(l2.Nfeeds):
+            #     ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
+            #     l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:self.n_pca_comp], axis=-1)
+            #     pca_ampl[:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
             l2.tofile_dict["pca_ampl"] = pca_ampl#[::-1]  # Scipy gives smallest eigenvalues first, we want largest first.
             l2.tofile_dict["pca_comp"] = np.transpose(comps, (1,0))#[::-1]
             l2.tofile_dict["n_pca_comp"] = self.n_pca_comp
