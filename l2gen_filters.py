@@ -988,7 +988,7 @@ class PCA_filter(Filter):
             N_effective = M.shape[0]
             if N_effective > 20:
                 pca = PCA(n_components=self.max_pca_comp, random_state=49)
-                comps = pca.fit_transform(M.T)
+                comps = np.array(pca.fit_transform(M.T), dtype=np.float64)
                 singular_values = pca.singular_values_
                 del(pca)
             else:
@@ -1006,7 +1006,6 @@ class PCA_filter(Filter):
             if self.params.verbose:
                 print(f"PCA scan {l2.scanid} num of modes: {self.n_pca_comp}")
             self.n_pca_comp = max(self.n_pca_comp, self.params.min_pca_comp)
-            comps = comps
             del(M)
 
 
@@ -1432,8 +1431,8 @@ class Masking(Filter):
                     # Start from the already existing freqmasks.
                     freqmask = l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2].flatten()
                     freqmask_reason = l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2].flatten()
-
                     C = np.corrcoef(tod)  # Correlation matrix.
+                    del(tod)
 
                     l2.tofile_dict["premask_C_lowres"][ifeed, ihalf] = np.nanmean(C.reshape((2*l2.Nfreqs//16, 16, 2*l2.Nfreqs//16, 16)), axis=(1,3))
 
@@ -1670,6 +1669,8 @@ class Masking(Filter):
             l2.signal_tod[~l2.freqmask] = np.nan
 
         l2.acceptrate = np.mean(l2.freqmask, axis=(-1))
+
+        print("time final: ", time.time()-t0)        
 
         # Just printing stuff:
         def get_color(value):

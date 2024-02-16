@@ -235,14 +235,13 @@ void PCA_lanczos(float *X, double *V, double *alphas, double *betas, int n, int 
 
 
 extern "C"
-void subtract_eigcomp(float *tod, double *r, double *ak, int Nouter, int Ntod){
+void subtract_eigcomp(float *tod, double *r, double *ak, long Nouter, long Ntod){
     // for(int ifeed=0; ifeed<Nfeeds; ifeed++){
     //     for(int isb=0; isb<Nsb; isb++){
     //         for(int ifreq=0; ifreq<Nfreqs; ifreq++){
     //             int outer_idx = ifeed*Nfreqs*Nsb + isb*Nfreqs + ifreq;
     #pragma omp parallel for
-    for(int outer_idx=0; outer_idx<Nouter; outer_idx++){
-
+    for(long outer_idx=0; outer_idx<Nouter; outer_idx++){
         ak[outer_idx] = dot_product_float_double(&tod[outer_idx*Ntod], r, Ntod);
 
         for(int itod=0; itod<Ntod; itod++){
