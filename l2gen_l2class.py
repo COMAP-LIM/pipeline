@@ -116,7 +116,7 @@ class level2_file:
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_reason_num_dict["Marked channels"]
             for i in range(len(self.feeds)):  # Channel ranges we've found to misbehave consistently.
                 feed = self.feeds[i]
-                if feed == 4 or feed == 10:   # Where do these come from...?
+                if feed == 4 or feed == 10:   # These should be changed (some are backwards, look at git blame for correct version), but it seemed to fuck stuff up...
                     self.freqmask[i,2,952:] = False
                     self.freqmask[i,3,:72] = False
                 elif feed == 16:
