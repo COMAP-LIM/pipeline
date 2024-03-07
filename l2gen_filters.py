@@ -1763,6 +1763,9 @@ class Tsys_calc(Filter):
             l2.Gain[ifeed,:,:] = (Phot_interp - Pcold[ifeed])/(Thot_interp - Tcmb)
             l2.Tsys[ifeed,:,:] = (Thot_interp - Tcmb)/(Phot_interp/Pcold[ifeed] - 1)
 
+        l2.freqmask[(~np.isfinite(l2.Tsys))*(l2.freqmask)] = False
+        l2.freqmask_reason[(~np.isfinite(l2.Tsys))*(l2.freqmask)] += 2**l2.freqmask_reason_num_dict["Tsys NaN or inf"]
+
         l2.tofile_dict["Tsys"] = l2.Tsys
         l2.tofile_dict["Gain"] = l2.Gain
         l2.tofile_dict["Pcold"] = Pcold
@@ -1789,8 +1792,6 @@ class Calibration(Filter):
     def run(self, l2):
         if not self.params.mask_tsys_at_beginning:
             l2.tod *= l2.Tsys[:,:,:,None]
-        l2.freqmask[(~np.isfinite(l2.Tsys))*(l2.freqmask)] = False
-        l2.freqmask_reason[(~np.isfinite(l2.Tsys))*(l2.freqmask)] += 2**l2.freqmask_reason_num_dict["Tsys NaN or inf"]
 
         l2.freqmask[l2.Tsys < self.params.min_tsys] = False
         l2.freqmask_reason[l2.Tsys < self.params.min_tsys] += 2**l2.freqmask_reason_num_dict["Tsys < min_tsys"]
