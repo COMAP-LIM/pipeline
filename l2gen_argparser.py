@@ -457,7 +457,7 @@ parser.add_argument(
 parser.add_argument(
     "--mask_tsys_at_beginning",
     type=str2bool,
-    default=False,
+    default=True,
     help="(cal) Whether to mask tsys spikes at the very beginning of the pipeline, instead of at the end.",
 )
 
