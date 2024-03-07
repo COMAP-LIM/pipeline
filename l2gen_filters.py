@@ -1670,7 +1670,7 @@ class Masking(Filter):
 
         l2.acceptrate = np.mean(l2.freqmask, axis=(-1))
 
-        print("time final: ", time.time()-t0)        
+        # print("time final: ", time.time()-t0)        
 
         # Just printing stuff:
         def get_color(value):
