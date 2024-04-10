@@ -384,7 +384,7 @@ class COMAP2FPXS():
     
     def compute_averages(self):
         
-        # beam_tf = self.beam_transfer_function() 
+        beam_tf = self.beam_transfer_function() 
         
         if self.params.psx_mode == "saddlebag":
             average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra_saddlebag")
@@ -429,12 +429,11 @@ class COMAP2FPXS():
             for num_rnd, rndfile_name in enumerate(self.params.psx_rnd_file_list):
                 rndfile = os.path.join(rndpath, f"{self.params.fields[0]}_{rndfile_name}")
                 rndfile = glob.glob(os.path.join(rndfile, f"*.h5"))[0]
-                print(rndfile)
+                print("Loading RND-file from: ", rndfile)
                 
                 with h5py.File(rndfile, "r") as infile:
                     rnd_spectra = infile["all_spectra"][()] 
                     rnd_overlap = infile["all_overlap"][()] 
-                    print(rndfile, np.where(rnd_spectra == 0), np.all(rnd_spectra == 0), rnd_spectra.shape, np.sum(rnd_spectra == 0) / rnd_spectra.size)
                 if num_rnd == 0:
                     all_rnd_spectra = rnd_spectra
                     all_rnd_overlap = rnd_overlap
@@ -449,9 +448,10 @@ class COMAP2FPXS():
             # all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
             
             ### 60-120 ###
-            all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 3], axis = 0, ddof = 1)
-            all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 3:]
-          
+            all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
+            all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 4:]
+            print(np.all(all_rnd_spectra == 0))
+            
             ### 90-90 ###
             # all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 2], axis = 0, ddof = 1)
             # all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 2:]
@@ -604,34 +604,42 @@ class COMAP2FPXS():
 
                         
                         transfer_function = self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
+                        
+                        px_window = self.pix_window(k_bin_centers_perp, cross_spectrum.dx)
+                        freq_window = self.pix_window(k_bin_centers_par, cross_spectrum.dz)
+                        transfer_function *= beam_tf(k_bin_centers_perp)[:, None] * px_window[:, None] 
+                        transfer_function *= freq_window[None, :] 
+                        
 
-                        # px_window = self.pix_window(k_bin_centers_perp, cross_spectrum.dx)
-                        # freq_window = self.pix_window(k_bin_centers_par, cross_spectrum.dz)
-                        # transfer_function *= beam_tf(k_bin_centers_perp)[:, None] * px_window[:, None] 
-                        # transfer_function *= freq_window[None, :] 
                         # print(feed1, feed2, cross_spectrum.dx, cross_spectrum.dy, cross_spectrum.dz)
                         # print(beam_tf(k_bin_centers_perp))
                         
-                        # fig, ax = plt.subplots(figsize = (15, 4))
+                        # fig, ax = plt.subplots(1, 1, figsize = (15, 4))
                         # ax.plot(k_bin_centers_par, freq_window, label = "freq")
                         # ax.plot(k_bin_centers_perp, px_window, label = "px")
                         # ax.plot(k_bin_centers_perp, beam_tf(k_bin_centers_perp), label = "beam")
                         
-                        # ax.set_yscale("log")
-                        # ax.set_xscale("log")
+                        # # ax.set_yscale("log")
+                        # # ax.set_xscale("log")
+                        # ax.legend()
                         # fig.savefig("dummy.png")
 
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
 
                         # transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
-                        transfer_function_mask = np.logical_and(kgrid > 0.2, np.sign(transfer_function) >= 0) 
-                        # transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
+                        # transfer_function_mask = np.logical_and(kgrid > 0.2, np.sign(transfer_function) >= 0) 
+                        transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
                         
                         _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
                         _transfer_function_mask[:5, :] = False
-                        _transfer_function_mask[-2:, :] = False
+                        # _transfer_function_mask[-2:, :] = False
+
+                        # _transfer_function_mask[2 * np.pi / (np.array(k_bin_centers_perp) * self.angle2Mpc.value) > 50, :] = False # Mask all perp scales above a degree (effective overlap lacks)
+                        
+                        _transfer_function_mask[-1, :] = False
                         _transfer_function_mask[:, -1:] = False
                         
+    
                         transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
 
 
@@ -686,7 +694,7 @@ class COMAP2FPXS():
                                         xs_sum += xs / xs_sigma ** 2
                                         wn_xs_sum += xs_wn / xs_sigma[None, ...] ** 2
                                         xs_inv_var += 1 / xs_sigma ** 2
-                                    
+                
                 if self.params.psx_null_diffmap:
                     _chi2 = loaded_chi2_grid[current_cross_variable, ...].copy()
                     for ii in range(_chi2.shape[0]):
@@ -760,14 +768,14 @@ class COMAP2FPXS():
                 chi2_cdf_x = np.linspace(0, 1e3, int(1e4))
                 chi2_cdf_y = ecdf.cdf.evaluate(chi2_cdf_x)
                 
-                # df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x, df), chi2_cdf_x, chi2_cdf_y, p0 = np.sum(transfer_function_mask)) 
-                df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x + df, np.sum(transfer_function_mask)), chi2_cdf_x, chi2_cdf_y, p0 = np.sum(transfer_function_mask)) 
+                df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x, df), chi2_cdf_x, chi2_cdf_y, p0 = np.sum(transfer_function_mask)) 
+                # df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x + df, np.sum(transfer_function_mask)), chi2_cdf_x, chi2_cdf_y, p0 = np.sum(transfer_function_mask)) 
                 
                 self.df_2d_best_fit = df_opt[0]
-                print("2D chi2 best-fit DF:", *df_opt)
+                print("2D chi2-dist. best-fit shift:", *df_opt)
                 # PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i], df = np.sum(transfer_function_mask))
-                # PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i], df = df_opt[0])
-                PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i] + df_opt[0], df = np.sum(transfer_function_mask))
+                PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i], df = df_opt[0])
+                # PTE_data_coadd[i] = scipy.stats.chi2.sf(chi2_data_coadd[i] + df_opt[0], df = np.sum(transfer_function_mask))
 
                 print("2D PTE:", PTE_data_coadd[i], "2D PTE numeric:", PTE_data_coadd_numeric[i], "2D chi2: ", chi2_data_coadd[i])
                                     
@@ -881,15 +889,15 @@ class COMAP2FPXS():
                 chi2_cdf_x = np.linspace(0, 1e2, int(1e4))
                 chi2_cdf_y = ecdf.cdf.evaluate(chi2_cdf_x)
                 
-                # df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x, df), chi2_cdf_x, chi2_cdf_y, p0 = df_1d) 
-                df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x + df, df_1d), chi2_cdf_x, chi2_cdf_y, p0 = df_1d) 
+                df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x, df), chi2_cdf_x, chi2_cdf_y, p0 = df_1d) 
+                # df_opt, _ = scipy.optimize.curve_fit(lambda x, df: scipy.stats.chi2.cdf(x + df, df_1d), chi2_cdf_x, chi2_cdf_y, p0 = df_1d) 
                 
                 self.df_1d_best_fit = df_opt[0]
-                print("1D chi2 best-fit DF:", *df_opt)
+                print("1D chi2-dist. best-fit shift:", *df_opt)
                 
                 # PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = df_1d)
-                # PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = df_opt[0])
-                PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i] + df_opt[0], df = df_1d)
+                PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = df_opt[0])
+                # PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i] + df_opt[0], df = df_1d)
                 print("1D PTE:", PTE_data_coadd_1d[i], "1D PTE numeric:", PTE_data_coadd_numeric_1d[i], "1D chi2: ", chi2_data_coadd_1d[i])
                         
                 if not self.params.psx_generate_white_noise_sim:
@@ -1030,6 +1038,7 @@ class COMAP2FPXS():
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
+                outfile.create_dataset("transfer_function", data = transfer_function)
                 outfile.create_dataset("xs_covariance_2d", data = xs_wn_covariance)
                 outfile.create_dataset("xs_covariance_1d", data = xs_wn_covariance_1d)
                 
@@ -1071,8 +1080,8 @@ class COMAP2FPXS():
 
                 outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
                 outfile.create_dataset("dx", data = self.map_dx)
-                outfile.create_dataset("dy", data = self.map_dx)
-                outfile.create_dataset("dz", data = self.map_dx)
+                outfile.create_dataset("dy", data = self.map_dy)
+                outfile.create_dataset("dz", data = self.map_dz)
 
                 outfile["angle2Mpc"].attrs["unit"] = "Mpc/arcmin"
                 outfile["dx"].attrs["unit"] = "Mpc"
@@ -1368,8 +1377,8 @@ class COMAP2FPXS():
         #         )
             
         # chi2_analytical = chi2.pdf(x, df = np.sum(transfer_function_mask))
-        # chi2_analytical = chi2.pdf(x, df = self.df_2d_best_fit)
-        chi2_analytical = chi2.pdf(x + self.df_2d_best_fit, df = np.sum(transfer_function_mask))
+        chi2_analytical = chi2.pdf(x, df = self.df_2d_best_fit)
+        # chi2_analytical = chi2.pdf(x + self.df_2d_best_fit, df = np.sum(transfer_function_mask))
         
         ax1.plot(
             x,
@@ -1377,8 +1386,8 @@ class COMAP2FPXS():
             color = "r",
             linestyle = "dashed",
             lw = 3,
-            label = rf"$\chi^2(dof = {np.sum(transfer_function_mask)})$",
-            # label = rf"$\chi^2(dof = {self.df_2d_best_fit:.2f})$",
+            # label = rf"$\chi^2(dof = {np.sum(transfer_function_mask)})$",
+            label = rf"$\chi^2(dof = {self.df_2d_best_fit:.2f})$",
         )
         
         chi2_sum, PTE, PTE_numeric = summary_stats_list
@@ -1388,8 +1397,8 @@ class COMAP2FPXS():
         if chi2_sum >= x_lim[0] and chi2_sum <= x_lim[1]:
             ax1.axvline(
                 chi2_sum, 
-                label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {np.sum(transfer_function_mask)}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
-                # label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {self.df_2d_best_fit:.2f}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
+                # label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {np.sum(transfer_function_mask)}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
+                label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {self.df_2d_best_fit:.2f}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
                 linestyle = "dashed",
                 lw = 3,
                 color = "k",
@@ -1402,8 +1411,8 @@ class COMAP2FPXS():
                 0,
                 width = 0.0005,
                 head_length = 5,
-                label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {np.sum(transfer_function_mask)}, " + rf"PTE: {PTE:.3f}",
-                # label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {self.df_2d_best_fit:.2f}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
+                # label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {np.sum(transfer_function_mask)}, " + rf"PTE: {PTE:.3f}",
+                label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {self.df_2d_best_fit:.2f}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
                 color = "k",
             )
         elif chi2_sum > x_lim[1]:
@@ -1414,8 +1423,8 @@ class COMAP2FPXS():
                 0,
                 width = 0.0005,
                 head_length = 5,
-                label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {np.sum(transfer_function_mask)}, " + rf"PTE: {PTE:.3f}",
-                # label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {self.df_2d_best_fit:.2f}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
+                # label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {np.sum(transfer_function_mask)}, " + rf"PTE: {PTE:.3f}",
+                label = rf"$\chi^2_\mathrm{{data}} = \sum_i (d_i/\sigma_i)^2$ = {chi2_sum:.3f},  " + f"dof: {self.df_2d_best_fit:.2f}, " + rf"PTE: {PTE:.3f}, PTE numeric {PTE_numeric:.3f}",
                 color = "k",
             )
 
@@ -1595,8 +1604,8 @@ class COMAP2FPXS():
         number_accepted_cross_spectra = np.abs(_chi2_grid) < self.params.psx_chi2_cut_limit
         number_accepted_cross_spectra = np.sum(np.logical_and(number_accepted_cross_spectra, overlap_grid > self.params.psx_overlap_limit))
 
-        ax[0].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {_chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + f"dof: {np.sum(np.isfinite((xs_mean)))}" + " " * 5 + rf"PTE: {PTE:.3f} PTE numeric {PTE_numeric:.3f}", fontsize = 16)
-        # ax[0].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {_chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + f"dof: {self.df_1d_best_fit:.2f}" + " " * 5 + rf"PTE: {PTE:.3f} PTE numeric {PTE_numeric:.3f}", fontsize = 16)
+        # ax[0].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {_chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + f"dof: {np.sum(np.isfinite((xs_mean)))}" + " " * 5 + rf"PTE: {PTE:.3f} PTE numeric {PTE_numeric:.3f}", fontsize = 16)
+        ax[0].set_title(rf"# accepted $\chi^2 < {self.params.psx_chi2_cut_limit}$: {number_accepted_cross_spectra} / {_chi2_grid.size}" + " " * 5 + rf"$\chi^2 = \sum_i (d_i/\sigma_i)^2$: {chi2_sum:.3f}" + " " * 5 + f"dof: {self.df_1d_best_fit:.2f}" + " " * 5 + rf"PTE: {PTE:.3f} PTE numeric {PTE_numeric:.3f}", fontsize = 16)
         
         
         if not self.params.psx_null_diffmap:
@@ -1735,8 +1744,8 @@ class COMAP2FPXS():
                 label = r"$\sum_i (d_i/\sigma_i)^2$",
             )
 
-        # chi2_analytical = scipy.stats.chi2.pdf(x, df = self.df_1d_best_fit)
-        chi2_analytical = scipy.stats.chi2.pdf(x + self.df_1d_best_fit, df = np.sum(np.isfinite(xs_mean / xs_sigma)))
+        chi2_analytical = scipy.stats.chi2.pdf(x, df = self.df_1d_best_fit)
+        # chi2_analytical = scipy.stats.chi2.pdf(x + self.df_1d_best_fit, df = np.sum(np.isfinite(xs_mean / xs_sigma)))
         # chi2_analytical = scipy.stats.chi2.pdf(x, df = np.sum(np.isfinite(xs_mean / xs_sigma)))
         ax[2].plot(
             x,
@@ -1744,8 +1753,8 @@ class COMAP2FPXS():
             color = "r",
             linestyle = "dashed",
             lw = 3,
-            label = rf"$\chi^2(dof = {np.sum(np.isfinite(xs_mean / xs_sigma))})$",
-            # label = rf"$\chi^2(dof = {self.df_1d_best_fit:.2f})$",
+            # label = rf"$\chi^2(dof = {np.sum(np.isfinite(xs_mean / xs_sigma))})$",
+            label = rf"$\chi^2(dof = {self.df_1d_best_fit:.2f})$",
         )
         
         if chi2_sum >= x_lim[0] and chi2_sum <= x_lim[1]:
