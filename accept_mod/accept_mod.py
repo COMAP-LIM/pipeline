@@ -1781,6 +1781,19 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
                 bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
         jk_list += bits * int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
+    elif "trtp" in string.casefold():
+        # random scan split
+        seed = 42
+        np.random.seed(seed)
+        bits = np.zeros((scan_data.shape[:-1]), dtype=np.int64)
+        for ifeed in range(scan_data.shape[1]):
+            for isb in range(scan_data.shape[2]):
+                indices = np.arange(scan_data.shape[0], dtype=np.int64)
+                indices = indices[accept_list[:,ifeed,isb]]
+                np.random.shuffle(indices)
+                bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
+        jk_list += bits * int(2 ** n)
+        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
     elif string == 'dayn':
         # day/night split
         closetonight = extract_data_from_array(scan_data, 'night').copy()
