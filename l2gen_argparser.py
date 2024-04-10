@@ -496,6 +496,11 @@ parser.add_argument(
     default="/mn/stornext/d16/cmbco/comap/data/aux_data/weather_list.txt",
 )
 parser.add_argument(
+    "--observerlog_blacklist_filepath",
+    type=str,
+    default="/mn/stornext/d16/cmbco/comap/data/aux_data/blacklists/blacklist_mask_observerlog.npy",
+)
+parser.add_argument(
     "--accept_data_folder",
     type=str,
     default="/mn/stornext/d16/cmbco/comap/data/aux_data/scan_data/",
