@@ -85,9 +85,13 @@ class PCA_SubTractor:
 
         # Perform PCA decomposition of data per feed
         for feed in tqdm(range(nfeed)):
+        # for feed in [7]:
             feed_data = data[feed, :]
             feed_data = feed_data.reshape(nsb * nfreq, nra * ndec)
-            freq_vec, singular_values, ang_vec = linalg.svd(
+            
+
+            # freq_vec, singular_values, ang_vec = np.linalg.svd(
+            freq_vec, singular_values, ang_vec = np.linalg.svd(
                 feed_data, full_matrices=False
             )
 
@@ -361,6 +365,14 @@ class PCA_SubTractor:
 
         # Compute PCA of all feed-map datasets
         for key in self.keys_to_pca:
+            
+            # if "rndD" not in key or ("rndE" not in key or "rndF" not in key):
+            #     continue
+            # if not "RNDC1elev1" in key:
+            #     continue
+            
+            # print(" " * 4 + "Dataset: " + f"{key}")
+            
             if self.verbose:
                 print(" " * 4 + "Dataset: " + f"{key}")
 
@@ -427,11 +439,16 @@ class PCA_SubTractor:
                 self.weights[~np.isfinite(self.weights)] = 0
 
             # Normalize data
-            indata = self.normalize_data(key, norm).astype(np.float64)
+            indata = self.normalize_data(key, norm)#.astype(np.float64)
 
-            # Compute SVD basis of indata
-            freqvec, angvec, singular_values = self.get_svd_basis(indata)
-
+            try:
+                # Compute SVD basis of indata
+                freqvec, angvec, singular_values = self.get_svd_basis(indata)
+            except:
+                print(f"SVD crash on key {key} :(")
+                np.save(f"debug_svd_data_{key.split('/')[-1]}", indata)
+                exit(1)
+                
             # Save computed PCA components
             self.map[key + "_pca_freqvec"] = freqvec
             self.map[key + "_pca_angvec"] = angvec
@@ -447,7 +464,7 @@ class PCA_SubTractor:
                 map_saddlebag_key = re.sub(r"map", "map_saddlebag", key)
                 rms_saddlebag_key = re.sub(r"map", "sigma_wn_saddlebag", key)
                 nhit_saddlebag_key = re.sub(r"map", "nhit_saddlebag", key)
-                print(map_saddlebag_key)
+
                 if "nhit" in self.map.keys:
                     map_saddlebag, nhit_saddlebag, rms_saddlebag = self.get_coadded_saddlebags(key)
                     self.map[nhit_saddlebag_key] = nhit_saddlebag
