@@ -8,6 +8,7 @@ stats_list = [
     'scan_length',   # length of scan in minutes
     'saddlebag',     # saddlebag number (1-4)
     'acceptmod_error', # An error was encountered in accept-mod.
+    'blacklisted',   # The scan (or a specific feed/slb) is marked in the observer log as bad.
 
     # Time and pointing related info
     'night',         # distance in h from 2 AM (UTC - 7)

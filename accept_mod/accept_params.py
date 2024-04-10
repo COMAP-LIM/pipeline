@@ -8,6 +8,7 @@ stats_cut = {
     'scan_length': [2.0, 15.0],
     'saddlebag': [0.0, 5.0],
     'acceptmod_error': [0.0, 0.0],
+    'blacklisted' : [0.0, 0.0],
 
     # Time and pointing related info
     'night': [0.0, 12.0],

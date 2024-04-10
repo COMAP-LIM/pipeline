@@ -693,6 +693,11 @@ def get_scan_stats(filepath, map_grid=None):
     insert_data_in_array(data, pcaf_ampl[1], 'pcf2')
     insert_data_in_array(data, np.sum(ampl+pcaf_ampl, axis=0), 'pcsm')
 
+    # Observerlog blacklisting
+    obslog_blacklist = np.load(observerlog_blacklist_filepath)
+    blacklisted = obslog_blacklist[obsid]
+    insert_data_in_array(data, blacklisted, "blacklisted")
+
     # weather statistic
     try:
         weather  = np.loadtxt(weather_filepath)
@@ -2145,6 +2150,7 @@ if __name__ == "__main__":
         params.jk_data_string = params.jk_data_string + f"_rnd{params.jk_rnd_split_seed}"
     
     weather_filepath = params.weather_filepath
+    observerlog_blacklist_filepath = params.observerlog_blacklist_filepath
     data_folder = params.accept_data_folder
     id_string = params.accept_data_id_string + '_'
     jk_string = params.jk_data_string + '_'
