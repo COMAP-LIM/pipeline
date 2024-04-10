@@ -658,9 +658,10 @@ class Mapmaker:
         
         # Check if noise level is above allowed limit
         if np.any(sigma0[sigma0 > 0] < self.radiometer_limits[0]):
-            print(
-                f"\033[95m WARNING: Scan: {l2data.id} lowest non-zero sigma_wn  {np.nanmin(sigma0[sigma0 > 0]):.5f} K < lower limit {self.radiometer_limits[0]:.5f} K! @ rank {self.rank} \033[00m"
-            )
+            if self.params.verbose:
+                print(
+                    f"\033[95m WARNING: Scan: {l2data.id} lowest non-zero sigma_wn  {np.nanmin(sigma0[sigma0 > 0]):.5f} K < lower limit {self.radiometer_limits[0]:.5f} K! @ rank {self.rank} \033[00m"
+                )
 
         # freqs = l2data["nu"][0, ...]
 
