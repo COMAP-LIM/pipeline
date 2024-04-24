@@ -2082,7 +2082,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
 
     elif string == 'obhf':
         # obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
-        scanid = np.array([int(str(scanid)) for scanid in scan_list])
+        scanid = np.array([int(str(scanid)[-2:]) for scanid in scan_list])
         scanid_recast = np.zeros(scan_data.shape[:-1]) + scanid[:,None,None]
         scanid_recast += np.random.normal(0, 1e-6, scanid_recast.shape)
         for ifeed in range(scan_data.shape[1]):
