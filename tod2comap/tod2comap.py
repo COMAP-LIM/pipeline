@@ -78,6 +78,21 @@ class Mapmaker:
 
         # Use unfiltered signal instead of data/data with signal
         self.use_signal_tod = False
+        
+        # To generate cosmological map read in standard cosmology from file
+        if self.params.cosmo_map:
+            self.read_cosmology()
+
+    def read_cosmology(self):
+        """
+        Method that reads in the standard cosmology to use form pickled astropy object.
+        """
+        import pickle
+        
+        cosmology_path = os.path.join(self.params.phy_cosmology_dir, self.params.phy_cosmology_name)
+
+        with open(cosmology_path, mode="rb") as file:
+            self.cosmology = pickle.load(file)
 
     def read_params(self):
         from l2gen_argparser import parser

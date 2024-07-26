@@ -535,6 +535,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--cosmo_map",
+    type=str2bool,
+    default=True,
+    help="(tod2comap) If True, maps are binned so the voxels are evenly spaced in cosmological units.",
+)
+
+parser.add_argument(
     "--split",
     type=str2bool,
     default=True,
