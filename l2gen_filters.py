@@ -653,18 +653,18 @@ class Frequency_filter(Filter):
         # Returns the log-binned frequencies and power spectrum of the data along the last axis.
         freqs = rfftfreq(data.shape[-1], 1.0/samprate)[1:]
         log_freqs = np.log10(freqs)
-        PS = rfft(data).real[:,:,:,1:]**2
+        PS = rfft(data).real[...,1:]**2
         freq_bins = np.linspace(np.log10(freqs[0])-1e-6, np.log10(freqs[-1])+1e-6, Nbins)
         indices = np.digitize(log_freqs, freq_bins)
-        PS_binned = np.zeros((PS.shape[0], PS.shape[1], PS.shape[2], Nbins))
+        PS_binned = np.zeros((*PS.shape[:-1], Nbins))
         PS_binned_freqs = np.zeros((Nbins))
         for i in range(Nbins):
             bin_indices = np.argwhere(indices==i)
             if len(bin_indices) > 0:
                 bin_indices = bin_indices.T[0]
                 PS_binned_freqs[i] = np.mean(freqs[bin_indices])
-                PS_binned[:,:,:,i] = np.mean(PS[:,:,:,bin_indices],axis=-1)
-        PS_binned = PS_binned[:,:,:,PS_binned_freqs != 0]
+                PS_binned[...,i] = np.mean(PS[...,bin_indices],axis=-1)
+        PS_binned = PS_binned[...,PS_binned_freqs != 0]
         PS_binned_freqs = PS_binned_freqs[PS_binned_freqs != 0]
         return PS_binned_freqs, PS_binned
 
@@ -705,6 +705,7 @@ class Frequency_filter(Filter):
             l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 1))
             l2.tofile_dict["freqfilter_m"] = np.zeros((l2.Nfeeds, 2, l2.Ntod))
             l2.tofile_dict["freqfilter_a"] = np.zeros((l2.Nfeeds, 1, l2.Ntod))
+            l2.tofile_dict["freqfilter_a_m_corr"] = np.zeros((l2.Nfeeds, 2))
             # sb_freqs = np.linspace(-1, 1, l2.Nfreqs*l2.Nsb)
             # sb_freqs = sb_freqs.reshape((l2.Nsb, l2.Nfreqs))
             # sb_freqs[(0, 2), :] = sb_freqs[(0, 2), ::-1]
@@ -759,6 +760,7 @@ class Frequency_filter(Filter):
                 l2.tofile_dict["freqfilter_F"][feed] = F
                 l2.tofile_dict["freqfilter_m"][feed] = m
                 l2.tofile_dict["freqfilter_a"][feed] = a
+                l2.tofile_dict["freqfilter_a_m_corr"][feed] = np.sum((a - np.mean(a, axis=-1)[:,None])*(m - np.mean(m, axis=-1)[:,None]), axis=-1)/(m.shape[-1]*np.std(a, axis=-1)*np.std(m, axis=-1))
 
                 if masking_run:
                     def var_est(fourier_func):
@@ -798,8 +800,11 @@ class Frequency_filter(Filter):
                             template[i,i+1] = 0
                     
                     l2.corr_template[feed,:,:] += template
-
-
+            PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"], l2.samprate)
+            PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"], l2.samprate)
+            l2.tofile_dict["freqfilter_PS_freqs"] = PS_freqs
+            l2.tofile_dict["freqfilter_PS_m"] = PS_m
+            l2.tofile_dict["freqfilter_PS_a"] = PS_a
 
 
         else:
@@ -835,18 +840,19 @@ class Frequency_filter(Filter):
                     # Some cuts Håvard included:
                     P_reduced = P.copy()
                     F_reduced = F.copy()
-                    end_cut = 100
-                    y[:4] = 0
-                    y[-end_cut:] = 0
-                    P_reduced[:4] = 0
-                    P_reduced[-end_cut:] = 0
-                    F_reduced[:4] = 0
-                    F_reduced[-end_cut:] = 0
+                    if self.params.freqfilter_exclude_ends:
+                        end_cut = 100
+                        y[:4] = 0
+                        y[-end_cut:] = 0
+                        P_reduced[:4] = 0
+                        P_reduced[-end_cut:] = 0
+                        F_reduced[:4] = 0
+                        F_reduced[-end_cut:] = 0
 
 
                     if np.sum(P_reduced != 0) > 0 and np.sum(F_reduced != 0) > 0:
                         if self.use_prior:
-                            a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
+                            a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, l2.samprate, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
                         else:
                             a, m = self.gain_temp_sep(y, P_reduced, F_reduced, l2.samprate)
                     else:
