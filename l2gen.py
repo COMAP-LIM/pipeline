@@ -318,8 +318,8 @@ class l2gen_runner:
                         "freqmask_full" : np.zeros((Nscans, 19, 4, 1024), dtype=bool),
                         "freqmask_reason" : np.zeros((Nscans, 19, 4, 1024), dtype=np.uint64),
                         "n_nan" : np.zeros((Nscans, 19, 4, 1024), dtype=np.uint32),
-                        "sigma0" : np.zeros((Nscans, 19, 4, 64)) + np.nan,
-                        "chi2" : np.zeros((Nscans, 19, 4, 64)) + np.nan,
+                        "sigma0" : np.zeros((Nscans, 19, 4, self.params.decimation_freqs)) + np.nan,
+                        "chi2" : np.zeros((Nscans, 19, 4, self.params.decimation_freqs)) + np.nan,
                         "Tsys" : np.zeros((Nscans, 19, 4, 1024)) + np.nan,
                         "Gain" : np.zeros((Nscans, 19, 4, 1024)) + np.nan,
                         "n_pca_comp" : np.zeros((Nscans)) + np.nan,
@@ -346,8 +346,11 @@ class l2gen_runner:
                             database_dict["chi2"][iscan,feeds-1] = f["chi2"][()]
                             database_dict["Tsys"][iscan,feeds-1] = f["Tsys"][()]
                             database_dict["Gain"][iscan,feeds-1] = f["Gain"][()]
-                            database_dict["n_pca_comp"][iscan] = f["n_pca_comp"][()]
-                            database_dict["n_pca_feed_comp"][iscan,feeds-1] = f["n_pca_feed_comp"][()]
+                            try:  # These might not exist, depending on what filters are included in the run.
+                                database_dict["n_pca_comp"][iscan] = f["n_pca_comp"][()]
+                                database_dict["n_pca_feed_comp"][iscan,feeds-1] = f["n_pca_feed_comp"][()]
+                            except:
+                                pass
 
                     with h5py.File(os.path.join(self.params.level2_dir, field + "_database.hd5"), "w") as f:
                         for key in database_dict.keys():
