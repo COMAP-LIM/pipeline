@@ -31,6 +31,8 @@ class level2_file:
             self.scantype = "liss"
         elif scantype&2**7:
             self.scantype = "stationary"
+        else:
+            self.scantype = "unknown"
 
     def load_level1_data(self):
         with h5py.File(self.l1_filename, "r") as f:
@@ -119,6 +121,8 @@ class level2_file:
                 if feed == 4 or feed == 10:   # These should be changed (some are backwards, look at git blame for correct version), but it seemed to fuck stuff up...
                     self.freqmask[i,2,952:] = False
                     self.freqmask[i,3,:72] = False
+                    self.freqmask_reason[i,2,952:] += 2**self.freqmask_reason_num_dict["Marked channels"]
+                    self.freqmask_reason[i,3,:72] += 2**self.freqmask_reason_num_dict["Marked channels"]
                 elif feed == 16:
                     self.freqmask[i,0,550:900] = False
                 elif feed == 17:
