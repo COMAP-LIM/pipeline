@@ -16,6 +16,7 @@ from mpi4py import MPI
 from tqdm import tqdm, trange
 import sys
 import h5py
+from copy import copy
 from l2gen_l2class import level2_file
 import l2gen_filters
 from tools.read_runlist import read_runlist
@@ -170,7 +171,7 @@ class l2gen_runner:
         self.read_params()
         self.configure_logging()
         self.configure_filters()
-        self.read_runlist()
+        self.read_runlist(self.params)
         if self.rank == 0:
             print("######## Done initializing l2gen ########\n")
 
@@ -277,7 +278,10 @@ class l2gen_runner:
         # Function called when all scans are finished processing. Creates a database and ensures all files were successfully created.
         if self.rank == 0:
             print(f"Finished all scans. Starting cleanup...")
-        self.read_runlist(ignore_existing=False)  # Creating runlist of ALL scans, including processed ones.
+        params_temp = copy(self.params)
+        params_temp.obsid_start = 0
+        params_temp.obsid_stop = 99999999
+        self.read_runlist(params_temp, ignore_existing=False, only_existing=True)  # Creating runlist of all existing scans.
 
         if self.rank == 0:
             print(f"Checking that all l2 files exist...")
@@ -398,10 +402,10 @@ class l2gen_runner:
 
 
 
-    def read_runlist(self, ignore_existing=True):
+    def read_runlist(self, params, ignore_existing=True, only_existing=False):
         self.runlist = []
         if self.rank == 0:
-            self.runlist = read_runlist(self.params, ignore_existing=ignore_existing)
+            self.runlist = read_runlist(params, ignore_existing=ignore_existing, only_existing=only_existing)
 
         self.runlist = self.comm.bcast(self.runlist, root=0)
 

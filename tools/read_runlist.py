@@ -8,15 +8,18 @@ runlist = self.comm.bcast(runlist, root=0)
 import os
 import time
 import random
+from copy import copy
 
-def read_runlist(params, ignore_existing):
+def read_runlist(params, ignore_existing, only_existing=False):
     """ Given a argparse parameter file object, returns the runlist specified (in the object), within the cut parameters set.
-        The relevant cut parameters from the parameter object are:
+    Arguments:
+        params - an argparse object containing at least the following fields:
             * obsid_start
             * obsid_stop
             * time_start_cut
             * time_stop_cut
-
+        ignore_existing - Whether to not include scans that already have existing level 2 files.
+        only_existing - Whether to ignore files that do NOT already have axisting level 2 files. Can (obviously) not be set to True while ignore_existing is also True.
     Returns:
         list: A 2D nested list, with the first dimension being each scan in the runlist, and the second being info about that scan:
                 0. scanid (int) - The scanID of the respective scan.
@@ -33,20 +36,22 @@ def read_runlist(params, ignore_existing):
     if len(params.allowed_scantypes) > 1 or 32 not in params.allowed_scantypes:
         print("######### WARNING #########")
         print("RUNNING WITH NON-CES SCANS!")
+    if ignore_existing and only_existing:
+        raise ValueError("Arguments 'ignore_existing' and 'only_existing' cannot both be True.")
 
     # Create list of already processed scanids.
     existing_scans = []
-    if ignore_existing:
-        for dir in os.listdir(params.level2_dir):
-            if dir[-3:] in ["co2", "co6", "co7", "ncp"]:
-                if os.path.isdir(os.path.join(params.level2_dir, dir)):
-                    for file in os.listdir(os.path.join(params.level2_dir, dir)):
-                        if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
-                            if os.path.exists(os.path.join(os.path.join(params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old (margin to not accidentally delete files in the middle of writing).
-                                os.remove(os.path.join(os.path.join(params.level2_dir, dir), file))
-                        elif file[-3:] == ".h5" or file[-4:] == ".hd5":
-                            if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
-                                existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
+    # if ignore_existing:
+    for dir in os.listdir(params.level2_dir):
+        if dir[-3:] in ["co2", "co6", "co7", "ncp"]:
+            if os.path.isdir(os.path.join(params.level2_dir, dir)):
+                for file in os.listdir(os.path.join(params.level2_dir, dir)):
+                    if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
+                        if os.path.exists(os.path.join(os.path.join(params.level2_dir, dir), file)) and time.time() - os.stat(os.path.join(os.path.join(params.level2_dir, dir), file)).st_mtime > 60:  # If file still exists, and is more than 60 seconds old (margin to not accidentally delete files in the middle of writing).
+                            os.remove(os.path.join(os.path.join(params.level2_dir, dir), file))
+                    elif file[-3:] == ".h5" or file[-4:] == ".hd5":
+                        if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
+                            existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
 
     with open(params.runlist) as my_file:
         lines = [line.split() for line in my_file]
@@ -109,8 +114,12 @@ def read_runlist(params, ignore_existing):
 
     random.seed(42)
     random.shuffle(runlist_all)  # Shuffling the runlist helps with load distribution, as some (especially early) scans are larger than others.
-    runlist = [scan for scan in runlist_all if scan[0] not in existing_scans]
-
+    if ignore_existing:
+        runlist = [scan for scan in runlist_all if scan[0] not in existing_scans]
+    elif only_existing:
+        runlist = [scan for scan in runlist_all if scan[0] in existing_scans]
+    else:
+        runlist = copy(runlist_all)
 
     ### Runlist splitting options ###
     if params.runlist_split_num_i >= params.runlist_split_in_n:

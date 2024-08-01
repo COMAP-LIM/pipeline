@@ -123,10 +123,10 @@ class level2_file:
                     self.freqmask[i,3,:72] = False
                     self.freqmask_reason[i,2,952:] += 2**self.freqmask_reason_num_dict["Marked channels"]
                     self.freqmask_reason[i,3,:72] += 2**self.freqmask_reason_num_dict["Marked channels"]
-                elif feed == 16:
-                    self.freqmask[i,0,550:900] = False
-                elif feed == 17:
-                    self.freqmask[i,1,276:526] = False
+                # elif feed == 16:
+                    # self.freqmask[i,0,550:900] = False
+                # elif feed == 17:
+                #     self.freqmask[i,1,276:526] = False
             self.tod[~self.freqmask] = np.nan
             self.acceptrate = np.mean(self.freqmask, axis=-1)
 
