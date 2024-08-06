@@ -127,7 +127,7 @@ class level2_file:
                     # self.freqmask[i,0,550:900] = False
                 # elif feed == 17:
                 #     self.freqmask[i,1,276:526] = False
-            self.tod[~self.freqmask] = np.nan
+            # self.tod[~self.freqmask] = np.nan
             self.acceptrate = np.mean(self.freqmask, axis=-1)
 
             ### Frequency bins ###

@@ -347,7 +347,7 @@ class Decimation(Filter):
             for ifreq in range(self.Nfreqs_lowres):
                 tsys_decimated[:,isb,ifreq] = np.sqrt(self.dnu/np.nansum(l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]]/l2.Tsys[:,isb,freq_idxs_included[isb,ifreq]]**2, axis=-1))
 
-        tsys_decimated[~l2.freqmask_decimated] = np.nan
+        # tsys_decimated[~l2.freqmask_decimated] = np.nan
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = self.dnu
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
@@ -382,7 +382,7 @@ class DecimationOld(Filter):
         for ifreq in range(self.Nfreqs):
             tsys_decimated[:,:,ifreq] = np.sqrt(self.dnu/np.nansum(l2.freqmask[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]/l2.Tsys[:,:,self.dnu*ifreq:self.dnu*(ifreq+1)]**2, axis=-1))
 
-        tsys_decimated[~l2.freqmask_decimated] = np.nan
+        # tsys_decimated[~l2.freqmask_decimated] = np.nan
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = self.dnu
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
@@ -1669,10 +1669,10 @@ class Masking(Filter):
                 plt.savefig(os.path.join(outpath, f"corr_plot_{l2.scanid_str}.png"))
 
             
-        l2.tod[~l2.freqmask] = np.nan
+        # l2.tod[~l2.freqmask] = np.nan
 
-        if l2.is_sim:
-            l2.signal_tod[~l2.freqmask] = np.nan
+        # if l2.is_sim:
+            # l2.signal_tod[~l2.freqmask] = np.nan
 
         l2.acceptrate = np.mean(l2.freqmask, axis=(-1))
 
