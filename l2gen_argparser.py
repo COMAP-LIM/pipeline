@@ -441,6 +441,14 @@ parser.add_argument(
     help="(dec) Number of frequencies to decimate each sideband into, from the original 1024.",
 )
 
+parser.add_argument(
+    "--decimation_cosmo_los_width",
+    type=int,
+    default=0.35,
+    help="(dec) Width of spectral channel in cosmological units. Default set to 0.35 (comoving) Mpc for now.",
+)
+
+
 ### Tsys/Calibration
 parser.add_argument(
     "--max_tsys", type=float, default=75.0, help="(cal) Max tsys. Mask above this."
@@ -885,6 +893,28 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--phy_nu_stop",
+    type=float,
+    default=34,
+    help="(physics) Final frequency bin edge in Pathfinder band GHz.",
+)
+
+parser.add_argument(
+    "--phy_nu_start",
+    type=float,
+    default=26,
+    help="(physics) Initial frequency bin edge in Pathfinder band in GHz.",
+)
+
+parser.add_argument(
+    "--phy_sb_width",
+    type=float,
+    default=2,
+    help="(physics) Width of Pathfinder sideband in GHz.",
+)
+
+
+parser.add_argument(
     "--phy_cosmology_dir",
     type=str,
     default="./cosmologies/",
@@ -897,6 +927,28 @@ parser.add_argument(
     default="default_comap_cosmology.pkl",
     help="(physics) Pickled astopy cosmology to be used. Defaults to cosmology used in Li et al. 2016 and Ihle et al. 2019.",
 )
+
+parser.add_argument(
+    "--phy_Om0",
+    type=float,
+    default=0.286,
+    help="(physics) Omega matter, i.e. density fraction, at present day. Default 0.286 corresponds to Li et al. 2016 and Ihle et al. 2019 fiducial value.",
+)
+
+parser.add_argument(
+    "--phy_Ob0",
+    type=float,
+    default=0.047,
+    help="(physics) Omega baryon, i.e. density fraction, at present day. Default 0.047 corresponds to Li et al. 2016 and Ihle et al. 2019 fiducial value.",
+)
+
+parser.add_argument(
+    "--phy_littleh",
+    type=float,
+    default=0.7,
+    help="(physics) Little h cosmological parameter. Default 0.7 corresponds to Li et al. 2016 and Ihle et al. 2019 fiducial value.",
+)
+
 
 ###### Make Signal Cube ######
 parser.add_argument(

@@ -93,6 +93,8 @@ class Mapmaker:
 
         with open(cosmology_path, mode="rb") as file:
             self.cosmology = pickle.load(file)
+        
+        self.params.cosmology = self.cosmology
 
     def read_params(self):
         from l2gen_argparser import parser
@@ -354,14 +356,24 @@ class Mapmaker:
 
         # Define and initialize empty map object to acumulate data
         full_map = COmap(full_map_name)
-        full_map.init_emtpy_map(
-            self.fieldname,
-            self.params.decimation_freqs,
-            self.params.res_factor,
-            self.params.make_nhit,
-            self.maps_to_bin,
-            self.params.horizontal,
-        )
+        
+        if self.params.cosmo_map:
+            full_map.init_emtpy_cosmo_map(
+                self.params,
+                self.fieldname,
+                self.params.decimation_freqs,
+                self.params.res_factor,
+                self.maps_to_bin,
+            )
+        else:
+            full_map.init_emtpy_map(
+                self.fieldname,
+                self.params.decimation_freqs,
+                self.params.res_factor,
+                self.params.make_nhit,
+                self.maps_to_bin,
+                self.params.horizontal,
+            )
 
         self.RA_min = full_map.ra_min
         self.DEC_min = full_map.dec_min
