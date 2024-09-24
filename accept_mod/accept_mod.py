@@ -160,14 +160,15 @@ def compute_power_spec1d_2d(x, k_bin_edges, dx=1, dy=1, dz=1):
 
 def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10, is_slow=False):
     if is_slow:
-        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_slow_scans.h5", "r") as f:
+        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/dummy_pipeline/power_spectrum/transfer_functions/tf_all_ones.h5", "r") as f:
+        #with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_slow_scans.h5", "r") as f:
             tf = f["/spherically_averaged/transfer_function"][2:]
             k_tf = f["/spherically_averaged/k_bin_centers"][2:]
     else:
-        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_fast_scans.h5", "r") as f:
+        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/dummy_pipeline/power_spectrum/transfer_functions/tf_all_ones.h5", "r") as f:
+        #with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_fast_scans.h5", "r") as f:
             tf = f["/spherically_averaged/transfer_function"][2:]
             k_tf = f["/spherically_averaged/k_bin_centers"][2:]
-
     tf_interp_log = CubicSpline(np.log10(k_tf), np.log10(tf))
     def tf_interp(k_tf):
         return 10**tf_interp_log(np.log10(k_tf))

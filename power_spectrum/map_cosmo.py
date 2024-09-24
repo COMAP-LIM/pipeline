@@ -46,6 +46,7 @@ class MapCosmo:
             ValueError: If no feed is specified and split key is provided.
             ValueError: If split key does not contain 'map'.
         """
+        
         self.params = params
         if feed is not None:
             self.feed = feed + 1
@@ -181,7 +182,7 @@ class MapCosmo:
             self.white_noise_seed = seed
 
             self.map = np.random.randn(*self.rms.shape) * self.rms 
-            
+        
         NSIDEBAND, NCHANNEL, NDEC, NRA = self.map.shape
 
         Z_MID = params.phy_center_redshift  # Middle of the redshift range of map
