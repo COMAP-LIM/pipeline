@@ -2190,6 +2190,13 @@ if __name__ == "__main__":
             with h5py.File(filepath, mode="r") as my_file:
                 scan_list = my_file['scan_list'][()]
                 scan_data = my_file['scan_data'][()]
+            print(scan_list.shape)
+            scan_start = params.obsid_start * 100
+            scan_stop = params.obsid_stop * 100
+            scans_in_range = (scan_list <= scan_stop)*(scan_list >= scan_start)
+            scan_list = scan_list[scans_in_range]
+            scan_data = scan_data[scans_in_range]
+            print(scan_list.shape)
         else:
             scan_list, scan_data = get_scan_data(params, fields, fieldname)
 
@@ -2291,6 +2298,7 @@ if __name__ == "__main__":
                     "scan_length" : [0, 20],
                     "saddlebag" : [-0.1, 5.1],
                     "acceptmod_error" : [-0.1, 5.1],
+                    "blacklisted" : [-0.1, 1.1],
                     "sigma_poly0" : [0, 0.0025],
                     "fknee_poly0" : [0, 31],
                     "alpha_poly0" : [-4, 2],
