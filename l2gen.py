@@ -71,6 +71,7 @@ class Terminal_print:
         self.accumulated_filter_runtime["l2_write"] = 0
         self.total_filter_runtime = 1e-10
         self.rank_progress = ["x"]*Nranks
+        self.rank_progress[0] = "M"
         self.t0 = time.time()
         self.pt0 = time.process_time()
         self.rewrite_lines = 0
@@ -145,6 +146,7 @@ class Terminal_print:
                 printstring += "\n"
             else:
                 break
+        printstring += f"{'(M = Master, W = Waiting, r = reading, 0-9 = filters, w = writing)':<105s}\n"
 
         printstring = printstring.replace("\n", " |\n| ")
         printstring = printstring.replace("|", "", 1)
@@ -201,14 +203,16 @@ class l2gen_runner:
             self.tasks_done = 0
             self.tasks_started = 0
             for irank in range(self.Nranks-1):
-                self.comm.send(self.tasks_started, dest=proc_order[irank], tag=WORK_TAG)
+                if self.params.distributed_starting:
+                    wait_time = min(irank*600.0/self.Nranks, irank*15.0)  # Spawn ranks randomly over 10 minutes, or 15 seconds per rank, whichever is faster.
+                else:
+                    wait_time = 0
+                self.comm.send([self.tasks_started, wait_time], dest=proc_order[irank], tag=WORK_TAG)
                 self.tasks_started += 1
                 if self.tasks_started == Nscans:  # If we have more processes than tasks, kill the rest, and break the task-assigment loop.
                     for iirank in range(irank, self.Nranks-1):
                         self.comm.send(-1, dest=proc_order[iirank], tag=DIE_TAG)
                     break
-                if self.params.distributed_starting:
-                    time.sleep(min(600/self.Nranks, 15))  # Spawn ranks randomly over 10 minutes, or 15 seconds per rank, whichever is faster.
                 time.sleep(0.01)
 
             while self.tasks_started < Nscans:
@@ -220,7 +224,8 @@ class l2gen_runner:
                         term.rewrite_terminal()
                     self.tasks_done += 1
                     workerID = status.Get_source()
-                    self.comm.send(self.tasks_started, dest=workerID, tag=WORK_TAG)
+                    wait_time = 0
+                    self.comm.send([self.tasks_started, wait_time], dest=workerID, tag=WORK_TAG)
                     self.tasks_started += 1
                     time.sleep(0.01)
                 elif status.Get_tag() == PROGRESS_TAG:
@@ -239,7 +244,7 @@ class l2gen_runner:
                         term.rewrite_terminal()
                     self.tasks_done += 1
                     workerID = status.Get_source()
-                    self.comm.send(-1, dest=workerID, tag=DIE_TAG)
+                    self.comm.send([-1,0], dest=workerID, tag=DIE_TAG)
                     time.sleep(0.01)
                 elif status.Get_tag() == PROGRESS_TAG:
                     if not self.params.verbose:
@@ -252,9 +257,16 @@ class l2gen_runner:
         else:
             while True:
                 status = MPI.Status()
-                iscan = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
+                iscan, wait_time = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
                 if status.Get_tag() == DIE_TAG:
                     break
+                if wait_time > 0:
+                    logging.info(f"[{self.rank}] >>> Asked to wait for {wait_time} seconds before starting (memory load balancing).")
+                    info = {}
+                    info["rank"] = self.rank
+                    info["status"] = "W"
+                    self.comm.send(info, dest=0, tag=8)
+                    time.sleep(wait_time)
                 # print(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})...")
                 logging.info(f"[{self.rank}] >>> Starting scan {self.runlist[iscan][0]} ({iscan+1}/{Nscans})..."); t0 = time.time(); pt0 = time.process_time()
                 if self.params.verbose:
@@ -372,7 +384,9 @@ class l2gen_runner:
             self.params = parser.parse_args()
             if not self.params.runlist:
                 raise ValueError("A runlist must be specified in parameter file or terminal.")
-            print(f"Filters included: {self.params.filters}")
+            print(f"Filters included:")
+            for i in range(len(self.params.filters)):
+                print(f"{i}. {self.params.filters[i]}")
         self.params = self.comm.bcast(self.params, root=0)
 
 
@@ -450,7 +464,7 @@ class l2gen:
             if not self.params.verbose:
                 info = {}
                 info["rank"] = self.rank
-                info["status"] = filter.name[0]
+                info["status"] = str(i)[0]
                 self.comm.send(info, dest=0, tag=8)
             self.printer.debug_print(f"[{self.rank}] [{filter.name}] Starting {filter.name_long}...")
             t0 = time.time(); pt0 = time.process_time()
@@ -467,6 +481,10 @@ class l2gen:
 
 
         self.printer.debug_print(f"[{self.rank}] Writing level2 file...")
+        info = {}
+        info["rank"] = self.rank
+        info["status"] = "w"
+        self.comm.send(info, dest=0, tag=8)
         t0 = time.time()
         self.l2file.write_level2_data()
         t1 = time.time()
