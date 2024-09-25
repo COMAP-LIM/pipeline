@@ -77,6 +77,7 @@ class PCA_SubTractor_Experimental:
         self,
         map: COmap,
         ncomps: int,
+        mpca_freq_downsample_facs: list,
         clean: bool = True,
         maskrms: Optional[float] = None,
         verbose: bool = False,
@@ -91,6 +92,7 @@ class PCA_SubTractor_Experimental:
         self.maskrms = maskrms
         self.subtract_mean = subtract_mean
         self.approx_noise = approx_noise
+        self.mpca_freq_downsample_facs = mpca_freq_downsample_facs
 
         # List of keys to perform PCA on (only per feed hence remove "map" and "sigma_wn")
         self.keys_to_pca = [
@@ -99,6 +101,8 @@ class PCA_SubTractor_Experimental:
 
 
     def compute_pca(self, norm: str = "sigma_wn") -> COmap:
+        if self.verbose:
+            print(f"mPCA to be performed on keys: {self.keys_to_pca}")
         for key in self.keys_to_pca:
             if self.verbose:
                 print(" " * 4 + "Dataset: " + f"{key}")
@@ -117,8 +121,20 @@ class PCA_SubTractor_Experimental:
 
             for ifeed in trange(20):
                 for icomp in range(self.ncomps):
-                    # ai, ci = PCA_newer(signal_map[ifeed], rms_map[ifeed])
-                    ai, ci = PCA_experimental_ctypes(signal_map[ifeed], rms_map[ifeed], nsb * nfreq, ndec * nra)
+                    freq_down = int(self.mpca_freq_downsample_facs[icomp])
+                    local_signal_map = np.zeros(((nsb*nfreq)//freq_down, ndec*nra), dtype=np.float32)
+                    local_rms_map = np.zeros(((nsb*nfreq)//freq_down, ndec*nra), dtype=np.float32)
+                    if freq_down == 1:
+                        local_signal_map[:] = signal_map[ifeed].reshape((nsb*nfreq, ndec*nra))
+                        local_rms_map[:] = rms_map[ifeed].reshape((nsb*nfreq, ndec*nra))
+                    else:
+                        local_rms_map = 1.0/np.sqrt(np.sum(1.0/rms_map[ifeed].reshape((nsb*nfreq//freq_down, freq_down, ndec*nra))**2, axis=1))
+                        local_signal_map = np.sum((signal_map[ifeed]/rms_map[ifeed]**2).reshape((nsb*nfreq//freq_down, freq_down, ndec*nra)), axis=1)
+                        local_signal_map *= local_rms_map
+                    ai, ci = PCA_experimental_ctypes(local_signal_map, local_rms_map, (nsb * nfreq)//freq_down, ndec * nra)
+                    ai /= np.linalg.norm(ai, axis=-1)
+                    ci = np.nansum(ai*signal_map[ifeed].reshape((nsb*nfreq, ndec*nra))/rms_map[ifeed].reshape((nsb*nfreq, ndec*nra))**2, axis=-1)
+                    ci /= np.nansum(ai**2/rms_map[ifeed].reshape((nsb*nfreq, ndec*nra))**2, axis=-1)
                     angvec[icomp, ifeed] = ai
                     freqvec[icomp, ifeed] = ci
                     reconstruction = (ci[:,None]*ai[None,:]).reshape(nsb*nfreq, ndec, nra)

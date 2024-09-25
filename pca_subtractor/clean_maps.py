@@ -74,6 +74,7 @@ def main():
         pca_sub = PCA_SubTractor_Experimental(
             map=mymap,
             ncomps=ncomps,
+            mpca_freq_downsample_facs=args.mpca_freq_downsample_facs,
             maskrms=maskrms,
             verbose=is_verbose,
             subtract_mean=subtract_mean,

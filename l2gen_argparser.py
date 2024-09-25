@@ -1295,6 +1295,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--mpca_freq_downsample_facs",
+    help="""A list of factors (of length equal to number of components) to downsample the map in the frequency direction.""",
+    default = [1,1,1,1,1],
+    nargs="+",
+)
+
+parser.add_argument(
     "--mpca_highpass",
     help="""Whether to highpass maps.""",
     action="store_true",
