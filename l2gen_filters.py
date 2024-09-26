@@ -1009,8 +1009,7 @@ class PCA_filter(Filter):
             empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices = 1.00476 - 3.957e-03*np.log10(P)*np.log10(N_effective) + 8.757e-05*(np.log10(P)*np.log10(N_effective))**2
             lambda_threshold = self.params.pca_lambda_threshold*empirical_correction_factor_for_singular_values_of_large_gaussian_noise_matrices*(np.sqrt(N_effective) + np.sqrt(P))*sigma0
             self.n_pca_comp = np.sum(singular_values > lambda_threshold)
-            if self.params.verbose:
-                print(f"PCA scan {l2.scanid} num of modes: {self.n_pca_comp}")
+            l2.printer.debug_print(f"PCA scan {l2.scanid} num of modes: {self.n_pca_comp}")
             self.n_pca_comp = max(self.n_pca_comp, self.params.min_pca_comp)
             del(M)
 
@@ -1232,8 +1231,7 @@ class PCA_feed_filter(Filter):
                 l2.tofile_dict["pca_feed_comp"][:,ifeed] = np.transpose(comps, (1,0))
                 l2.tofile_dict["n_pca_feed_comp"][ifeed] = self.n_pca_comp
                 l2.tofile_dict["pca_feed_eigvals"][ifeed, :] = singular_values[:]**2
-            if self.params.verbose:
-                print(f"fPCA scan {l2.scanid} num of modes: {l2.tofile_dict['n_pca_feed_comp']}")
+            l2.printer.debug_print(f"fPCA scan {l2.scanid} num of modes: {l2.tofile_dict['n_pca_feed_comp']}")
         else:
             raise ValueError("Depricated.")
 
@@ -1355,7 +1353,6 @@ class Masking(Filter):
         self.Nsigma_prod_stripes = params.n_sigma_prod_stripe
         self.prod_offset = params.prod_offset
         self.params = params
-        self.verbose = self.params.verbose
 
 
     def run(self, l2):
