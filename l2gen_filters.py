@@ -1487,8 +1487,8 @@ class Masking(Filter):
                     C -= corr_template
 
                     if l2.params.write_C_matrix:  # For debuging purposes only.
-                        l2.tofile_dict["C"][ifeed,ihalf] = C
-                        l2.tofile_dict["C_template"][ifeed,ihalf] = corr_template
+                        l2.tofile_dict["C"][ifeed,ihalf] = C.copy()
+                        l2.tofile_dict["C_template"][ifeed,ihalf] = corr_template.copy()
 
                     # print("3:", C[:5,:5])
 
@@ -1500,8 +1500,11 @@ class Masking(Filter):
                             max_corr[ifeed, ihalf*2+isb, ifreq] = np.nanmax(np.abs(C[isb*l2.Nfreqs+ifreq]), axis=-1)
 
 
-                    # chi2_matrix = np.zeros((2, 3, 2048, 2048))
-                    for ibox in range(len(self.box_sizes)):
+                    assert len(self.box_sizes) == len(self.stripe_sizes), "Number of stripes and boxes to be performed must (unfortunately) be the same."
+
+                    for isize in range(len(self.box_sizes)):
+                        ibox = isize
+                        istripe = isize
                         box_size = self.box_sizes[ibox]
                         Nsigma_chi2_box = self.Nsigma_chi2_boxes[ibox]
                         Nsigma_prod_box = self.Nsigma_prod_boxes[ibox]
@@ -1519,7 +1522,6 @@ class Masking(Filter):
                                     # CHI2 MASKING
                                     corr = np.sum(box**2)*Ntod
                                     chi2 = (corr - dof)/np.sqrt(2*dof)
-                                    # chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = chi2
                                     if chi2 > Nsigma_chi2_box:
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1558,8 +1560,11 @@ class Masking(Filter):
                                                 freqmask_reason[x] += 2**l2.freqmask_reason_num_dict[f"Box {box_size} sum"]
                                 # else:
                                     # chi2_matrix[0, ibox, i*box_size:(i+1)*box_size, j*box_size:(j+1)*box_size] = np.nan
+                        # We re-apply the new freq-mask, such that a high-correlation region masked by a smaller box or stripe is not 
+                        # also picked up by the larger boxes and stripes, masking a larger region that necessary.
+                        C[~freqmask,:] = 0
+                        C[:,~freqmask] = 0
 
-                    for istripe in range(len(self.stripe_sizes)):
                         stripe_size = self.stripe_sizes[istripe]
 
                         Nsigma_chi2_stripe = self.Nsigma_chi2_stripes[istripe]
@@ -1575,14 +1580,13 @@ class Masking(Filter):
                             # CHI2 MASKING
                             corr = np.sum(stripe**2)*Ntod
                             chi2 = (corr - dof)/np.sqrt(2*dof)
-                            # chi2_matrix[1, istripe, :, i*stripe_size:(i+1)*stripe_size] = chi2
                             if chi2 > Nsigma_chi2_stripe:
                                 freqmask[i*stripe_size:(i+1)*stripe_size] = False
                                 for x in range(i*stripe_size, (i+1)*stripe_size):
                                     if freqmask_reason[x] & 2**l2.freqmask_reason_num_dict[f"Stripe {stripe_size} chi2"] == 0:
                                         freqmask_reason[x] += 2**l2.freqmask_reason_num_dict[f"Stripe {stripe_size} chi2"]
                             # PROD MASKING
-                            prod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2])
+                            prod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2])*Ntod
                             nprod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2] != 0)
                             if nprod == 0:
                                 nprod = 1
@@ -1592,9 +1596,13 @@ class Masking(Filter):
                                     if freqmask_reason[x] & 2**l2.freqmask_reason_num_dict[f"Stripe {stripe_size} prod"] == 0:
                                         freqmask_reason[x] += 2**l2.freqmask_reason_num_dict[f"Stripe {stripe_size} prod"]
 
+                        # We re-apply the new freq-mask, such that a high-correlation region masked by a smaller box or stripe is not 
+                        # also picked up by the larger boxes and stripes, masking a larger region that necessary.
+                        C[~freqmask,:] = 0
+                        C[:,~freqmask] = 0
                     l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                     l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
-            
+
 
 
             ### Radiometer cut ###
