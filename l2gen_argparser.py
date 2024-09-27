@@ -388,35 +388,35 @@ parser.add_argument(
 parser.add_argument(
     "--n_sigma_chi2_box",
     type=float,
-    default=[7.0, 4.5, 5.0],
+    default=[16.0, 4.8, 5.2],
     nargs="+",
     help="(mask) Sigma tolerance of chi2 box cuts.",
 )
 parser.add_argument(
     "--n_sigma_chi2_stripe",
     type=float,
-    default=[5.0, 5.0, 7.0],
+    default=[9.0, 6.0, 7.0],
     nargs="+",
     help="(mask) Sigma tolerance of chi2 stripe cuts.",
 )
 parser.add_argument(
     "--n_sigma_mean_box",
     type=float,
-    default=[8.5, 8.0, 3.5],
+    default=[9.0, 8.0, 3.8],
     nargs="+",
     help="(mask) Sigma tolerance of mean box cuts.",
 )
 parser.add_argument(
     "--n_sigma_prod_box",
     type=float,
-    default=[4.0, 4.5, 3.0],
+    default=[5.0, 4.2, 3.1],
     nargs="+",
     help="(mask) Sigma tolerance of product box cuts.",
 )
 parser.add_argument(
     "--n_sigma_prod_stripe",
     type=float,
-    default=[3.5, 3.0, 2.8],
+    default=[3.5, 3.0, 2.5],
     nargs="+",
     help="(mask) Sigma tolerance of product stripe cuts.",
 )
