@@ -388,7 +388,7 @@ parser.add_argument(
 parser.add_argument(
     "--n_sigma_chi2_box",
     type=float,
-    default=[5.0, 4.5, 5.0],
+    default=[7.0, 4.5, 5.0],
     nargs="+",
     help="(mask) Sigma tolerance of chi2 box cuts.",
 )
@@ -402,21 +402,21 @@ parser.add_argument(
 parser.add_argument(
     "--n_sigma_mean_box",
     type=float,
-    default=[5.5, 7.0, 4.0],
+    default=[8.5, 8.0, 3.5],
     nargs="+",
     help="(mask) Sigma tolerance of mean box cuts.",
 )
 parser.add_argument(
     "--n_sigma_prod_box",
     type=float,
-    default=[4.0, 3.8, 3.0],
+    default=[4.0, 4.5, 3.0],
     nargs="+",
     help="(mask) Sigma tolerance of product box cuts.",
 )
 parser.add_argument(
     "--n_sigma_prod_stripe",
     type=float,
-    default=[3.5, 3.0, 3.0],
+    default=[3.5, 3.0, 2.8],
     nargs="+",
     help="(mask) Sigma tolerance of product stripe cuts.",
 )
