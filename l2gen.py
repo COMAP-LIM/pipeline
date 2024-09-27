@@ -211,7 +211,7 @@ class l2gen_runner:
                 self.tasks_started += 1
                 if self.tasks_started == Nscans:  # If we have more processes than tasks, kill the rest, and break the task-assigment loop.
                     for iirank in range(irank, self.Nranks-1):
-                        self.comm.send(-1, dest=proc_order[iirank], tag=DIE_TAG)
+                        self.comm.send([-1,0], dest=proc_order[iirank], tag=DIE_TAG)
                     break
                 time.sleep(0.01)
 
@@ -451,7 +451,7 @@ class l2gen:
         t0 = time.time(); pt0 = time.process_time()
         self.l2file.load_level1_data()
         self.l2file.printer = self.printer
-        t1 = time.time(); pt1 = time.time()
+        t1 = time.time(); pt1 = time.process_time()
         self.filter_runtimes["l1_read"] = t1 - t0
         self.filter_processtimes["l1_read"] = pt1 - pt0
         self.printer.debug_print(f"[{self.rank}] Finished l1 file read in {t1-t0:.1f} s. Process time: {pt1-pt0:.1f} s.")
