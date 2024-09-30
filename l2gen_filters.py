@@ -993,7 +993,7 @@ class PCA_filter(Filter):
             #M = M[np.sum(M != 0, axis=-1) != 0]
             N_effective = M.shape[0]
             if N_effective > 20:
-                pca = PCA(n_components=self.max_pca_comp, random_state=49)
+                pca = PCA(n_components=self.max_pca_comp, random_state=49, svd_solver="randomized")
                 comps = np.array(pca.fit_transform(M.T), dtype=np.float64)
                 singular_values = pca.singular_values_
                 del(pca)
@@ -1210,7 +1210,7 @@ class PCA_feed_filter(Filter):
                 M = M[(M != 0).any(axis=1)]
                 if M.shape[0] < 15:  # Very few channels remaining
                     continue
-                pca = PCA(n_components=self.max_pca_comp, random_state=21)
+                pca = PCA(n_components=self.max_pca_comp, random_state=21, svd_solver="randomized")
                 comps = pca.fit_transform(M.T)
                 singular_values = pca.singular_values_
                 for i in range(self.max_pca_comp):
@@ -1426,6 +1426,8 @@ class Masking(Filter):
                 l2.tofile_dict["C_template"] = np.zeros((l2.Nfeeds, 2, l2.Nfreqs*2, l2.Nfreqs*2))
             max_corr = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs))
             for ifeed in range(l2.tod.shape[0]):
+                # box_matrix = np.zeros((3, 3, 2, 2048))
+                # stripe_matrix = np.zeros((2, 3, 2, 2048))
                 for ihalf in range(2):  # Perform seperate analysis on each half of of the frequency band.
                     tod = l2_local.tod[ifeed,ihalf*2:(ihalf+1)*2,:,:].copy()
                     tod = tod.reshape((2*tod.shape[1], tod.shape[2]))  # Merge sb dim and freq dim.
@@ -1522,6 +1524,8 @@ class Masking(Filter):
                                     # CHI2 MASKING
                                     corr = np.sum(box**2)*Ntod
                                     chi2 = (corr - dof)/np.sqrt(2*dof)
+                                    # box_matrix[0,isize,ihalf,i*box_size:(i+1)*box_size] = np.maximum(box_matrix[0,isize,ihalf,i*box_size:(i+1)*box_size], chi2*np.ones(box_size))
+                                    # box_matrix[0,isize,ihalf,j*box_size:(j+1)*box_size] = np.maximum(box_matrix[0,isize,ihalf,j*box_size:(j+1)*box_size], chi2*np.ones(box_size))
                                     if chi2 > Nsigma_chi2_box:
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1537,6 +1541,8 @@ class Masking(Filter):
                                     nprod = np.sum((box[:-jump:2]*box[jump::2]) != 0)
                                     if nprod == 0:
                                         nprod = 1
+                                    # box_matrix[1,isize,ihalf,i*box_size:(i+1)*box_size] = np.maximum(box_matrix[1,isize,ihalf,i*box_size:(i+1)*box_size], prod/np.sqrt(nprod)*np.ones(box_size))
+                                    # box_matrix[1,isize,ihalf,j*box_size:(j+1)*box_size] = np.maximum(box_matrix[1,isize,ihalf,j*box_size:(j+1)*box_size], prod/np.sqrt(nprod)*np.ones(box_size))
                                     if prod/nprod > Nsigma_prod_box*np.sqrt(1.0/nprod):
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1549,6 +1555,8 @@ class Masking(Filter):
 
                                     # SUM MASKING
                                     box_sum = np.sum(box)*np.sqrt(Ntod)
+                                    # box_matrix[2,isize,ihalf,i*box_size:(i+1)*box_size] = np.maximum(box_matrix[2,isize,ihalf,i*box_size:(i+1)*box_size], np.abs(box_sum)/np.sqrt(dof)*np.ones(box_size))
+                                    # box_matrix[2,isize,ihalf,j*box_size:(j+1)*box_size] = np.maximum(box_matrix[2,isize,ihalf,j*box_size:(j+1)*box_size], np.abs(box_sum)/np.sqrt(dof)*np.ones(box_size))
                                     if np.abs(box_sum)/dof > Nsigma_mean_box*np.sqrt(1.0/dof):
                                         freqmask[i*box_size:(i+1)*box_size] = False
                                         for x in range(i*box_size, (i+1)*box_size):
@@ -1580,6 +1588,7 @@ class Masking(Filter):
                             # CHI2 MASKING
                             corr = np.sum(stripe**2)*Ntod
                             chi2 = (corr - dof)/np.sqrt(2*dof)
+                            # stripe_matrix[0,isize,ihalf,i*stripe_size:(i+1)*stripe_size] = np.maximum(stripe_matrix[0,isize,ihalf,i*stripe_size:(i+1)*stripe_size], chi2*np.ones(stripe_size))
                             if chi2 > Nsigma_chi2_stripe:
                                 freqmask[i*stripe_size:(i+1)*stripe_size] = False
                                 for x in range(i*stripe_size, (i+1)*stripe_size):
@@ -1590,6 +1599,7 @@ class Masking(Filter):
                             nprod = np.sum(stripe[:,:-jump:2]*stripe[:,jump::2] != 0)
                             if nprod == 0:
                                 nprod = 1
+                            # stripe_matrix[1,isize,ihalf,i*stripe_size:(i+1)*stripe_size] = np.maximum(stripe_matrix[1,isize,ihalf,i*stripe_size:(i+1)*stripe_size], prod/np.sqrt(nprod)*np.ones(stripe_size))
                             if prod/nprod > Nsigma_prod_stripe*np.sqrt(1.0/nprod):
                                 freqmask[i*stripe_size:(i+1)*stripe_size] = False
                                 for x in range(i*stripe_size, (i+1)*stripe_size):
@@ -1603,6 +1613,8 @@ class Masking(Filter):
                     l2.freqmask[ifeed,ihalf*2:(ihalf+1)*2] = freqmask.reshape((2,Nfreqs))
                     l2.freqmask_reason[ifeed,ihalf*2:(ihalf+1)*2] = freqmask_reason.reshape((2,Nfreqs))
 
+                    # np.save(f"/mn/stornext/d16/cmbco/comap/jonas/analysis/l2gen_freqmask_reason_analysis/corr_matrix_data_newer/box_matrix_{l2.scanid}_feed{ifeed}.npy", box_matrix)
+                    # np.save(f"/mn/stornext/d16/cmbco/comap/jonas/analysis/l2gen_freqmask_reason_analysis/corr_matrix_data_newer/stripe_matrix_{l2.scanid}_feed{ifeed}.npy", stripe_matrix)
 
 
             ### Radiometer cut ###
