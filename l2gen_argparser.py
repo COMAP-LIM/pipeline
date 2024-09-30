@@ -628,13 +628,6 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--psx_tf_cutoff",
-    type=float,
-    default=0.2,
-    help="(comap2fpxs) Value of transfer function above which to compute chi2 in feed-feed pseudo cross-spectra.",
-)
-
-parser.add_argument(
     "--psx_noise_map_path",
     type=str,
     help="(comap2fpxs) The path to the binned white noise (no filtering) map, used to generate error bars in power spectra.",
@@ -844,27 +837,77 @@ parser.add_argument(
     "--psx_k_angular_bin_min",
     type = float,
     default = 0.02,
-    help="(comap2fpxs) Bin edges of minimum wavenumber k in Mpc for the angular dimensions.",
+    help="(comap2fpxs) Bin edges of minimum wavenumber k in 1/Mpc for the angular dimensions.",
 )
 
 parser.add_argument(
     "--psx_k_angular_bin_max",
     type = float,
     default = 1.5,
-    help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral dimensions.",
+    help="(comap2fpxs) Bin edges of maximum wavenumber k in 1/Mpc for the spectral dimensions.",
 )
 parser.add_argument(
     "--psx_k_spectral_bin_min",
     type = float,
     default = 0.01,
-    help="(comap2fpxs) Bin edges of minimum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
+    help="(comap2fpxs) Bin edges of minimum wavenumber k in 1/Mpc for the spectral line-of-sight dimensions.",
 )
 
 parser.add_argument(
     "--psx_k_spectral_bin_max",
     type = float,
     default = 1.0,
-    help="(comap2fpxs) Bin edges of maximum wavenumber k in Mpc for the spectral line-of-sight dimensions.",
+    help="(comap2fpxs) Bin edges of maximum wavenumber k in 1/Mpc for the spectral line-of-sight dimensions.",
+)
+
+
+parser.add_argument(
+    "--psx_mask_k_perp_min",
+    type = float,
+    default = 0.11,
+    help="(comap2fpxs) Bin center of minimum wavenumber k in 1/Mpc along perpendicular dimension to be used in mask.",
+)
+
+parser.add_argument(
+    "--psx_mask_k_perp_max",
+    type = float,
+    default = 0.96,
+    help="(comap2fpxs) Bin center of maximum wavenumber k in 1/Mpc along perpendicular dimension to be used in mask.",
+)
+
+parser.add_argument(
+    "--psx_mask_k_par_min",
+    type = float,
+    default = 0.0,
+    help="(comap2fpxs) Bin center of minimum wavenumber k in 1/Mpc along parallel dimension to be used in mask.",
+)
+
+parser.add_argument(
+    "--psx_mask_k_par_max",
+    type = float,
+    default = 0.62,
+    help="(comap2fpxs) Bin center of maximum wavenumber k in 1/Mpc along parallel dimension to be used in mask.",
+)
+
+parser.add_argument(
+    "--psx_mask_k_min",
+    type = float,
+    default = 0.0,
+    help="(comap2fpxs) Bin center of minimum wavenumber k in 1/Mpc along a k-shell to be used in mask.",
+)
+
+parser.add_argument(
+    "--psx_mask_k_max",
+    type = float,
+    default = 2.0,
+    help="(comap2fpxs) Bin center of maximum wavenumber k in 1/Mpc along a k-shell to be used in mask.",
+)
+
+parser.add_argument(
+    "--psx_tf_cutoff",
+    type=float,
+    default=0.0,
+    help="(comap2fpxs) Value of transfer function above which to compute chi2 in feed-feed pseudo cross-spectra.",
 )
 
 
