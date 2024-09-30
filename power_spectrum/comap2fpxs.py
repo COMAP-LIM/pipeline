@@ -619,6 +619,15 @@ class COMAP2FPXS():
                         
                         k_PAR, k_PERP = np.meshgrid(k_bin_centers_par, k_bin_centers_perp)
                         
+                        # Only edges of k-space to be masked
+                        if self.params.psx_mask_k_perp_max < self.params.psx_mask_k_perp_min:
+                            raise ValueError("Value self.params.psx_mask_k_perp_max smaller than self.params.psx_mask_k_perp_min")
+                        if self.params.psx_mask_k_par_max < self.params.psx_mask_k_par_min:
+                            raise ValueError("Value self.params.psx_mask_k_par_max smaller than self.params.psx_mask_k_par_min")
+                        if self.params.psx_mask_k_max < self.params.psx_mask_k_min:
+                            raise ValueError("Value self.params.psx_mask_k_max smaller than self.params.psx_mask_k_min")
+                        
+                        
                         # Mask bins at edges of k-space
                         k_edge_mask = np.ones_like(transfer_function_mask, dtype = bool)
                         k_edge_mask[k_PERP > self.params.psx_mask_k_perp_max] = False
@@ -635,7 +644,7 @@ class COMAP2FPXS():
                         k_space_mask = np.logical_and(k_edge_mask, k_ring_mask)
                         
                         transfer_function_mask = np.logical_and(transfer_function_mask, k_space_mask)
-
+                        
                         chi3 = np.nansum(
                         (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
                         )
