@@ -372,7 +372,7 @@ class COMAP2FPXS():
                 rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
                 rndpath = os.path.join(rndpath, f"{self.params.fields[0]}_{self.params.map_name}_rnd{self.params.jk_rnd_split_seed}{self.params.psx_map_name_postfix}")
                 if not os.path.exists(rndpath):
-                    print("hei", f"rnd{self.params.jk_rnd_split_seed}", rndpath)
+                    # print("hei", f"rnd{self.params.jk_rnd_split_seed}", rndpath)
                     os.makedirs(rndpath, exist_ok = True)
                 
                 rndfile = os.path.join(rndpath, f"rndfile_seed{self.params.jk_rnd_split_seed}.h5")
@@ -444,14 +444,16 @@ class COMAP2FPXS():
                 
             all_rnd_overlap = np.nanmedian(all_rnd_overlap, axis = 0)
             
+            if np.all(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
+                raise ValueError("All loaded RND spectra are either zero or infinite/NaN!")
+            
             ### all in one ###
             # all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
             
             ### 60-120 ###
             all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
             all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 4:]
-            print(np.all(all_rnd_spectra == 0))
-            
+                        
             ### 90-90 ###
             # all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 2], axis = 0, ddof = 1)
             # all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 2:]
@@ -459,7 +461,6 @@ class COMAP2FPXS():
             ### 120-60 ###
             # all_rnd_std = np.nanstd(all_rnd_spectra[all_rnd_spectra.shape[0] // 3:], axis = 0, ddof = 1)
             # all_rnd_spectra = all_rnd_spectra[:all_rnd_spectra.shape[0] // 2]
-            
             
             self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
             
@@ -527,6 +528,7 @@ class COMAP2FPXS():
             
             cross_variable_names = [] 
 
+            
             if self.params.psx_null_diffmap:
                 if self.params.psx_mode == "saddlebag":
                     self.params.psx_chi2_import_path = re.sub(r"average_spectra", "average_spectra_saddlebag", self.params.psx_chi2_import_path)
@@ -537,6 +539,7 @@ class COMAP2FPXS():
                 with h5py.File(self.params.psx_chi2_import_path, "r") as infile:
                     loaded_names = infile["cross_variable_names"][()].astype(str)
                     loaded_chi2_grid = infile["chi2_grid"][()]
+                    
 
             for i, splits in enumerate(self.split_map_combinations):
                 if not self.params.psx_null_diffmap:
@@ -582,7 +585,6 @@ class COMAP2FPXS():
                         if len(self.params.psx_rnd_file_list) > 0:
                             xs_wn = all_rnd_spectra[:, feed1, feed2, ...]
                             xs_sigma = all_rnd_std[feed1, feed2, ...]
-                            
                         else:
                             xs_wn = cross_spectrum.white_noise_simulation
                             xs_sigma = cross_spectrum.rms_xs_std_2D
@@ -602,46 +604,37 @@ class COMAP2FPXS():
 
                         kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(k_bin_centers_perp, k_bin_centers_par, indexing="ij")))
 
+                        # Filter transfer function
+                        transfer_function = np.abs(self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par))
                         
-                        transfer_function = self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par)
-                        
+                        # Beam and voxel window transfer functions
                         px_window = self.pix_window(k_bin_centers_perp, cross_spectrum.dx)
                         freq_window = self.pix_window(k_bin_centers_par, cross_spectrum.dz)
                         transfer_function *= beam_tf(k_bin_centers_perp)[:, None] * px_window[:, None] 
                         transfer_function *= freq_window[None, :] 
                         
-
-                        # print(feed1, feed2, cross_spectrum.dx, cross_spectrum.dy, cross_spectrum.dz)
-                        # print(beam_tf(k_bin_centers_perp))
-                        
-                        # fig, ax = plt.subplots(1, 1, figsize = (15, 4))
-                        # ax.plot(k_bin_centers_par, freq_window, label = "freq")
-                        # ax.plot(k_bin_centers_perp, px_window, label = "px")
-                        # ax.plot(k_bin_centers_perp, beam_tf(k_bin_centers_perp), label = "beam")
-                        
-                        # # ax.set_yscale("log")
-                        # # ax.set_xscale("log")
-                        # ax.legend()
-                        # fig.savefig("dummy.png")
-
+                        # Transfer function mask
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
-
-                        # transfer_function_mask = np.logical_and(transfer_function > tf_cutoff, np.sign(transfer_function) >= 0) 
-                        # transfer_function_mask = np.logical_and(kgrid > 0.2, np.sign(transfer_function) >= 0) 
-                        transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
+                        transfer_function_mask = transfer_function > tf_cutoff 
                         
-                        _transfer_function_mask = np.ones_like(transfer_function, dtype = bool)
-                        _transfer_function_mask[:5, :] = False
-                        # _transfer_function_mask[-2:, :] = False
-
-                        # _transfer_function_mask[2 * np.pi / (np.array(k_bin_centers_perp) * self.angle2Mpc.value) > 50, :] = False # Mask all perp scales above a degree (effective overlap lacks)
+                        k_PAR, k_PERP = np.meshgrid(k_bin_centers_par, k_bin_centers_perp)
                         
-                        _transfer_function_mask[-1, :] = False
-                        _transfer_function_mask[:, -1:] = False
+                        # Mask bins at edges of k-space
+                        k_edge_mask = np.ones_like(transfer_function_mask, dtype = bool)
+                        k_edge_mask[k_PERP > self.params.psx_mask_k_perp_max] = False
+                        k_edge_mask[k_PERP < self.params.psx_mask_k_perp_min] = False
+                        k_edge_mask[k_PAR > self.params.psx_mask_k_par_max] = False
+                        k_edge_mask[k_PAR < self.params.psx_mask_k_par_min] = False
                         
-    
-                        transfer_function_mask = np.logical_and(transfer_function_mask, _transfer_function_mask)
-
+                        # Mask k-rings in k-space
+                        k_ring_mask = np.ones_like(k_edge_mask, dtype = bool)
+                        k_ring_mask[kgrid < self.params.psx_mask_k_min] = False
+                        k_ring_mask[kgrid > self.params.psx_mask_k_max] = False
+                        
+                        # Merge edge and ring masks
+                        k_space_mask = np.logical_and(k_edge_mask, k_ring_mask)
+                        
+                        transfer_function_mask = np.logical_and(transfer_function_mask, k_space_mask)
 
                         chi3 = np.nansum(
                         (xs[transfer_function_mask] / xs_sigma[transfer_function_mask]) ** 3
@@ -653,6 +646,7 @@ class COMAP2FPXS():
                             chi2[feed1, feed2] = np.nan
                             continue
                         else:
+                            
                             chi2[feed1, feed2] = np.sign(chi3) * abs(
                                 (np.nansum((xs[transfer_function_mask]  / xs_sigma[transfer_function_mask] ) ** 2) - number_of_samples)
                                 / np.sqrt(2 * number_of_samples)
@@ -667,6 +661,7 @@ class COMAP2FPXS():
                         else:
                             accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
                         
+
                         accepted_chi2[feed1, feed2] = accept_chi2
                         mean_weighted_overlaps[feed1, feed2] = cross_spectrum.weighted_overlap
                         mean_IoUs[feed1, feed2] = cross_spectrum.IoU
@@ -780,6 +775,7 @@ class COMAP2FPXS():
                 print("2D PTE:", PTE_data_coadd[i], "2D PTE numeric:", PTE_data_coadd_numeric[i], "2D chi2: ", chi2_data_coadd[i])
                                     
                 if np.all(~np.isfinite(chi2)) or np.all(chi2 == 0):
+                    print("All chi2 == NaN or chi2 == 0. Continuing loop!")
                     continue
 
                 weights = 1 / (xs_error[i, ...] / transfer_function) ** 2
@@ -824,7 +820,7 @@ class COMAP2FPXS():
 
                 # Ck = Ck_nmodes / nmodes
                 k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
-                
+
                 Ck_1d = np.zeros_like(k_1d)
                 Ck_wn_1d = np.zeros((self.params.psx_noise_sim_number, k_1d.size))
                 rms_1d = np.zeros_like(k_1d)
