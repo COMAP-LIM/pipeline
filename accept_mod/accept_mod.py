@@ -605,7 +605,10 @@ def get_scan_stats(filepath, map_grid=None):
     insert_data_in_array(data, mean_el, 'el')
 
     # chi2 
-    chi2_sb = np.nansum(chi2, axis=2)
+    chi2_sb = np.zeros((*chi2.shape[:2],))
+    for ifeed in range(chi2.shape[0]):
+        for isb in range(chi2.shape[1]):
+            chi2_sb[ifeed,isb] = np.nansum(chi2[ifeed,isb, mask[ifeed,isb] != 0])
     n_freq_sb = np.nansum(mask, axis=2)
     wh = np.where(n_freq_sb != 0.0)
     chi2_sb[wh] = chi2_sb[wh] / np.sqrt(n_freq_sb[wh])
