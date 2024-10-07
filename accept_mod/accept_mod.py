@@ -2091,9 +2091,11 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         scanid_recast += np.random.normal(0, 1e-6, scanid_recast.shape)
         for ifeed in range(scan_data.shape[1]):
             for isb in range(scan_data.shape[2]):
+                if np.all(~accept_list[:,ifeed,isb]):
+                    continue
                 scanid_idxsort = np.argsort(scanid_recast[:,ifeed,isb])
                 scanid_idxsort = scanid_idxsort[accept_list[:,ifeed,isb]]
-                cutoff_idx = (np.nanmin(scanid_idxsort) + np.nanmax(scanid_idxsort))/2.0
+                cutoff_idx = int((np.nanmin(scanid_idxsort) + np.nanmax(scanid_idxsort)) / 2.0)
                 jk_list[scanid_idxsort[:cutoff_idx],ifeed,isb] += int(2 ** n)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
 
@@ -2194,13 +2196,11 @@ if __name__ == "__main__":
             with h5py.File(filepath, mode="r") as my_file:
                 scan_list = my_file['scan_list'][()]
                 scan_data = my_file['scan_data'][()]
-            print(scan_list.shape)
             scan_start = params.obsid_start * 100
             scan_stop = params.obsid_stop * 100
             scans_in_range = (scan_list <= scan_stop)*(scan_list >= scan_start)
             scan_list = scan_list[scans_in_range]
             scan_data = scan_data[scans_in_range]
-            print(scan_list.shape)
         else:
             scan_list, scan_data = get_scan_data(params, fields, fieldname)
 
