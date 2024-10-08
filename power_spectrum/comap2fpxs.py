@@ -1396,9 +1396,9 @@ class COMAP2FPXS():
         X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)
 
         img1 = ax[0, 0].pcolormesh(
-            X_par,
             X_perp, 
-            xs_mean.T,
+            X_par,
+            xs_mean,
             cmap="RdBu_r",
             norm=norm,
             rasterized=True,
@@ -1417,9 +1417,9 @@ class COMAP2FPXS():
 
         xs_mean_masked = np.ma.masked_where(~transfer_function_mask, xs_mean)
         ax[0, 0].pcolormesh(
-            X_par,
             X_perp,
-            xs_mean_masked.T,
+            X_par,
+            xs_mean_masked,
             cmap="RdBu_r",
             norm=norm,
             rasterized=True,
@@ -1436,9 +1436,9 @@ class COMAP2FPXS():
         ###############################
 
         img2 = ax[0, 1].pcolormesh(
-            X_par,
             X_perp, 
-            xs_sigma.T,
+            X_par,
+            xs_sigma,
             cmap = "CMRmap",
             norm=lim_error,
             rasterized=True,
@@ -1457,9 +1457,9 @@ class COMAP2FPXS():
 
         xs_sigma_masked = np.ma.masked_where(~transfer_function_mask, xs_sigma)
         ax[0, 1].pcolormesh(
-            X_par,
             X_perp,
-            xs_sigma_masked.T,
+            X_par,
+            xs_sigma_masked,
             cmap = "CMRmap",
             norm=lim_error,
             rasterized=True,
@@ -1476,9 +1476,9 @@ class COMAP2FPXS():
         ###############################
 
         img3 = ax[0, 2].pcolormesh(
-            X_par,
             X_perp, 
-            (xs_mean / xs_sigma).T,
+            X_par,
+            (xs_mean / xs_sigma),
             cmap="RdBu_r",
             norm=lim_significance,
             rasterized=True,
@@ -1496,9 +1496,9 @@ class COMAP2FPXS():
         )
 
         ax[0, 2].pcolormesh(
-            X_par,
             X_perp,
-            (xs_mean_masked / xs_sigma_masked).T,
+            X_par,
+            (xs_mean_masked / xs_sigma_masked),
             cmap="RdBu_r",
             norm=lim_significance,
             rasterized=True,
