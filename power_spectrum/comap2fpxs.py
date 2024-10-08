@@ -406,12 +406,19 @@ class COMAP2FPXS():
 
             if not os.path.exists(os.path.join(fig_dir, "average_spectra_saddlebag")):
                 os.mkdir(os.path.join(fig_dir, "average_spectra_saddlebag"))
+            if self.params.psx_null_diffmap:
+                if not os.path.exists(os.path.join(fig_dir, "null_pte_saddlebag")):
+                    os.mkdir(os.path.join(fig_dir, "null_pte_saddlebag"))
         else:
             if not os.path.exists(os.path.join(fig_dir, "chi2_grid")):
                 os.mkdir(os.path.join(fig_dir, "chi2_grid"))
 
             if not os.path.exists(os.path.join(fig_dir, "average_spectra")):
                 os.mkdir(os.path.join(fig_dir, "average_spectra"))
+                
+            if self.params.psx_null_diffmap:
+                if not os.path.exists(os.path.join(fig_dir, "null_pte")):
+                    os.mkdir(os.path.join(fig_dir, "null_pte"))
         
         N_feed = len(self.included_feeds)
         N_splits = len(self.split_map_combinations)
@@ -519,8 +526,7 @@ class COMAP2FPXS():
             PTE_data_cov_1d = np.zeros(N_splits)
             PTE_data_coadd_1d = np.zeros(N_splits)
             PTE_data_coadd_numeric_1d = np.zeros(N_splits)
-
-
+            
             chi2_grids = np.zeros((N_splits, N_feed, N_feed))
             
             if self.params.psx_null_diffmap:
@@ -1028,6 +1034,8 @@ class COMAP2FPXS():
 
             if not os.path.exists(os.path.join(outdir, self.params.psx_subdir)):
                 os.mkdir(os.path.join(outdir, self.params.psx_subdir))
+            
+            
                 
             with h5py.File(os.path.join(os.path.join(outdir, self.params.psx_subdir), mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)      
@@ -1081,7 +1089,27 @@ class COMAP2FPXS():
                     outfile.create_dataset("null_variable_names", data = self.primary_variables)
                     outfile.create_dataset("num_chi2_below_cutoff", data = np.sum(np.abs(loaded_chi2_grids) < self.params.psx_chi2_cut_limit, axis = (1, 2)))
                     outfile.create_dataset("loaded_chi2_grid", data = loaded_chi2_grids)
-                
+
+                    if self.params.psx_mode == "saddlebag":
+                        null_pte_name = os.path.join(fig_dir, "null_pte_saddlebag")
+                    else:
+                        null_pte_name = os.path.join(fig_dir, "null_pte")
+
+                    null_pte_name = os.path.join(null_pte_name, indir)
+                    null_pte_name = null_pte_name + f"_{self.params.psx_plot_name_suffix}"
+                    null_pte_name = os.path.join(null_pte_name, self.params.psx_subdir)
+                    
+                    if not os.path.exists(null_pte_name):
+                        os.makedirs(null_pte_name, exists_ok = True)
+                    
+                    
+                    self.tabulate_null_PTEs(
+                        PTE_data_coadd_numeric_1d, 
+                        PTE_data_coadd_numeric,
+                        PTE_data_coadd_1d, 
+                        PTE_data_coadd,
+                        null_pte_name,
+                    )
 
                 outfile.create_dataset("angle2Mpc", data = self.angle2Mpc)
                 outfile.create_dataset("dx", data = self.map_dx)
@@ -1105,8 +1133,175 @@ class COMAP2FPXS():
                         outfile[f"params/{key}"] = "None"
                     else:
                         outfile[f"params/{key}"] = getattr(self.params, key)
-                
+    
+    def tabulate_null_PTEs(self, 
+                    PTE_numeric_1d: npt.NDArray,
+                    PTE_numeric_2d: npt.NDArray,
+                    PTE_fit_1d: npt.NDArray,
+                    PTE_fit_2d: npt.NDArray,
+                    filename: str,
+                    ):
+        
+        from astropy.table import Table
+        from astropy.io import ascii
+        import shutil
+        
+        names = [
+            r"Null variables", 
+            r"1D numeric", 
+            r"1D from fit", 
+            r"2D numeric", 
+            r"2D from fit",
+            ]
 
+        null_names = np.array(self.primary_variables).astype(bytes)
+        cross_variable = self.secondary_variables[0]
+        
+        outname = os.path.join(
+            filename, 
+            f"null_pte"
+        )
+
+                
+        table = Table(
+            [
+                null_names,
+                np.round(100 * PTE_numeric_1d, 2).astype(str),
+                (100 * PTE_fit_1d).astype(str),
+                np.round(100 * PTE_numeric_2d, 2).astype(str),
+                (100 * PTE_fit_2d).astype(str),
+
+            ],
+            names = names
+        )
+        
+        # table.pprint_all()
+        
+        with open(f"{outname}_table.tex", mode = "w") as outfile:
+            outfile.write("PTEs:\n")
+            outfile.write(f"cross_variable: {cross_variable}\n")
+            
+            outfile.write(f"\n")
+            table.write(outfile, overwrite = True, format = "latex", col_align='c|cccc', latexdict=ascii.latex.latexdicts['AA'], formats = {})
+            string = f"KS PTE & {np.round(100 * scipy.stats.ks_1samp(PTE_numeric_1d[np.isfinite(PTE_numeric_1d)], scipy.stats.uniform.cdf).pvalue, 1)} & & {np.round(100 * scipy.stats.ks_1samp(PTE_numeric_2d[np.isfinite(PTE_numeric_2d)], scipy.stats.uniform.cdf).pvalue, 1)} & \n"
+            outfile.write(string)
+            
+            
+            
+            
+        html_table = table.copy() 
+        html_base = """
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <style>
+                    red {
+                    color: red;
+                    font-size: 100%;
+                    }
+                    orange {
+                    color: orange;
+                    font-size: 100%;
+                    }
+                </style>
+                <meta charset="utf-8"/>
+                <meta content="text/html;charset=UTF-8" http-equiv="Content-type"/>
+            </head>
+            <body>
+        """
+
+        html_base_end = """
+                </table>
+            </body>
+        </html>
+        """
+        html_base += "PTEs:\n" + f"cross_variable: {cross_variable}\n"
+        html_base += "<table><thead><tr><th>" + "</th><th>".join(names) + "</th></tr></thead>\n"
+        for j, row in enumerate(html_table):
+            html_base += "<tr>"
+            for i, _ in enumerate(row):
+                val = html_table[j][i]
+                if np.any([s.isalpha() for s in val]):
+                    html_base += fr'<td><b>{val}</b></td>'
+                elif float(val) <= 1.0:
+                    html_base += fr'<td><red>{float(val):.5g}</red></td>'
+                elif float(val) >= 99.5:
+                    html_base += fr'<td><orange>{float(val):.5g}</orange></td>'
+                else:
+                    html_base += fr'<td>{val}</td>'
+                    
+            html_base += "</tr>\n"
+
+        ks_1d = np.round(100 * scipy.stats.ks_1samp(PTE_numeric_1d[np.isfinite(PTE_numeric_1d)], scipy.stats.uniform.cdf).pvalue, 1)
+        ks_2d = np.round(100 * scipy.stats.ks_1samp(PTE_numeric_2d[np.isfinite(PTE_numeric_2d)], scipy.stats.uniform.cdf).pvalue, 1)
+        
+        if float(ks_1d) <= 1.0:
+            ks_1d = fr'<td><red>{float(ks_1d):.5g}</red></td>'
+        elif float(ks_1d) >= 99.5:
+            ks_1d = fr'<td><orange>{float(ks_1d):.5g}</orange></td>'
+        else:
+            ks_1d = fr'<td>{ks_1d}</td>'
+        
+        if float(ks_2d) <= 1.0:
+            ks_2d = fr'<td><red>{float(ks_2d):.5g}</red></td>'
+        elif float(ks_2d) >= 99.5:
+            ks_2d = fr'<td><orange>{float(ks_2d):.5g}</orange></td>'
+        else:
+            ks_2d = fr'<td>{ks_2d}</td>'
+        
+        html_base += ("<tr>"  
+                    + f"<td>KS PTE</td>"
+                    + f"{ks_1d}"  
+                    + f"<td>N/A</td>"
+                    + f"{ks_2d}"
+                    + f"<td>N/A</td>"
+                    + "</tr>")
+        
+        html_base += html_base_end
+        html_name = f"{outname}_table.html"
+        with open(html_name, mode = "w") as outfile:
+            outfile.write(html_base)
+        
+        www_tsih3_path = "/mn/stornext/d16/www_cmb/comap/power_spectrum"
+        move_to = os.path.join(www_tsih3_path, html_name.split(os.path.join(self.power_spectrum_dir, "figs/"))[-1])
+        move_to_dir = os.path.dirname(move_to) 
+
+        if not os.path.exists(move_to_dir):
+            os.makedirs(move_to_dir, exist_ok = True)
+            
+        shutil.copyfile(
+            html_name, 
+            move_to
+        )
+
+        
+        #######################
+        #### PLOT PTE HIST ####
+        #######################
+        fig, ax = plt.subplots(figsize = (9, 5))
+
+        bins = np.linspace(0, 1, 7)
+        offset = np.linspace(-0.01, 0.01, 4)
+
+        ax.hist(PTE_numeric_1d, bins = bins + offset[0], histtype = "step", density = True, label = "1D", lw = 3, alpha = 1, color = "k")
+        ax.hist(PTE_numeric_2d, bins = bins + offset[1], histtype = "step", density = True, label = "2D", lw = 3, alpha = 1, color = "r")
+
+        ax.set_ylabel(r"$P(\mathrm{PTE})$", fontsize = 14)
+        ax.set_xlabel(r"$\mathrm{PTE}$", fontsize = 14)
+
+        ax.set_xticks(np.round(np.linspace(0, 1.0, 6), 1))
+        ax.set_xticklabels(ax.get_xticks(), fontsize = 14, rotation = 0)
+
+
+        ax.legend(frameon = False, ncols = 2, fontsize = 14, loc = "upper right")#, bbox_to_anchor = (0.65, -0.01))
+        ax.set_xlim(-0.015, 1.015)
+
+            
+        #plt.figlegend(lns[:4], labs[:4], loc = 'lower center', ncol=2, fontsize = 14, bbox_to_anchor = (0.51, 0.615), bbox_transform = fig.transFigure, frameon = False)
+        #plt.figlegend(lns[4:-1], labs[4:-1], loc = 'lower center', ncol=2, fontsize = 14, bbox_to_anchor = (0.51, 0.365), bbox_transform = fig.transFigure, frameon = False)
+        fig.savefig(f"{outname}_histogram.pdf", facecolor = "white", bbox_inches = "tight")
+
+    
     def plot_2D_mean(self,
                     k_bin_edges_par: npt.NDArray,
                     k_bin_edges_perp: npt.NDArray,
