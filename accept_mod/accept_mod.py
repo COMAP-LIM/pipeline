@@ -720,7 +720,7 @@ def get_scan_stats(filepath, map_grid=None):
         # no weather data for this obsid
         # print('no weather data for obsid:', obsid)
         forecast = np.nan
-        insert_data_in_array(data, 1, 'acceptmod_error')
+        # insert_data_in_array(data, 1, 'acceptmod_error')
     insert_data_in_array(data, forecast, 'weather')
 
     # add kurtosis etc of data histogram
