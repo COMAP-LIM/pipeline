@@ -2179,7 +2179,6 @@ if __name__ == "__main__":
         jk_string = ''
     data_from_file = params.scan_stats_from_file # False #True
     jk_param_list_file = params.jk_def_file
-    show_plot = params.show_accept_plot
 
     scan_data_data_name_list = []
     jk_data_name_list   = []
@@ -2218,18 +2217,8 @@ if __name__ == "__main__":
             jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
             jk_data_name_list.append(jk_data_name)
 
-            if show_plot:
-                labels = ['freq'] + stats_list 
-                ind = np.arange(len(acc))
-                plt.bar(ind, acc * 19, alpha=0.5, label=fieldname)
-                plt.xticks(ind, labels, rotation='vertical')
+
         if rank == 0:
-            if show_plot:
-                plt.ylabel('effective # of feeds')
-                plt.grid()
-                plt.legend()
-                plt.tight_layout()
-                plt.show()
 
             accept_params_name = os.path.join(current, params.accept_mod_params)
             stats_list_name = os.path.join(current, params.stats_list)
