@@ -1398,7 +1398,7 @@ class COMAP2FPXS():
         img1 = ax[0, 0].pcolormesh(
             X_perp, 
             X_par,
-            xs_mean,
+            xs_mean.T,
             cmap="RdBu_r",
             norm=norm,
             rasterized=True,
@@ -1419,7 +1419,7 @@ class COMAP2FPXS():
         ax[0, 0].pcolormesh(
             X_perp,
             X_par,
-            xs_mean_masked,
+            xs_mean_masked.T,
             cmap="RdBu_r",
             norm=norm,
             rasterized=True,
@@ -1438,7 +1438,7 @@ class COMAP2FPXS():
         img2 = ax[0, 1].pcolormesh(
             X_perp, 
             X_par,
-            xs_sigma,
+            xs_sigma.T,
             cmap = "CMRmap",
             norm=lim_error,
             rasterized=True,
@@ -1459,7 +1459,7 @@ class COMAP2FPXS():
         ax[0, 1].pcolormesh(
             X_perp,
             X_par,
-            xs_sigma_masked,
+            xs_sigma_masked.T,
             cmap = "CMRmap",
             norm=lim_error,
             rasterized=True,
@@ -1478,7 +1478,7 @@ class COMAP2FPXS():
         img3 = ax[0, 2].pcolormesh(
             X_perp, 
             X_par,
-            (xs_mean / xs_sigma),
+            (xs_mean / xs_sigma).T,
             cmap="RdBu_r",
             norm=lim_significance,
             rasterized=True,
@@ -1498,7 +1498,7 @@ class COMAP2FPXS():
         ax[0, 2].pcolormesh(
             X_perp,
             X_par,
-            (xs_mean_masked / xs_sigma_masked),
+            (xs_mean_masked / xs_sigma_masked).T,
             cmap="RdBu_r",
             norm=lim_significance,
             rasterized=True,
@@ -1524,8 +1524,8 @@ class COMAP2FPXS():
             ax[0, i].set_yticks(ticks)
             ax[0, i].set_yticklabels(ticklabels)
 
-            ax[0, i].set_xlim(k_bin_edges_par[0], k_bin_edges_par[-1])
-            ax[0, i].set_ylim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
+            ax[0, i].set_ylim(k_bin_edges_par[0], k_bin_edges_par[-1])
+            ax[0, i].set_xlim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
 
 
             ax[0, i].set_xlabel(r"$k_\parallel$ [Mpc${}^{-1}$]", fontsize=16)
@@ -1535,15 +1535,16 @@ class COMAP2FPXS():
 
         majorticks = [0.03, 0.1, 0.3, 1]
 
-        ax2 = ax[0, 2].twinx()
-        ax2.set_yscale("log")
+        for i in range(3):
+            ax2 = ax[0, i].twiny()
+            ax2.set_xscale("log")
 
-        ax2.set_yticks(majorticks)
-        ax2.set_yticklabels(majorticks)
-        
-        ax2.set_ylim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
-        ax2.set_yticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc.value), 2).astype(str))
-        ax2.set_ylabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
+            ax2.set_xticks(majorticks)
+            ax2.set_xticklabels(majorticks)
+            
+            ax2.set_xlim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
+            ax2.set_xticklabels(np.round(2 * np.pi / (np.array(majorticks) * self.angle2Mpc.value), 2).astype(str))
+            ax2.set_xlabel(r"angular scale [$\mathrm{arcmin}$]", fontsize = 16)
 
         ###############################
         # chi2 of white noise spectra #
