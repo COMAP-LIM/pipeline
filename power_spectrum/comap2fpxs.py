@@ -13,6 +13,10 @@ import itertools
 from mpi4py import MPI
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
+
+matplotlib.use('Agg')
+
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import time 
 import scipy.interpolate as interpolate
@@ -341,6 +345,9 @@ class COMAP2FPXS():
         
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
+        if self.rank == 0:
+            pbar.close()
+            
         if self.rank == 0 and not self.params.psx_rnd_run:
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
@@ -372,7 +379,6 @@ class COMAP2FPXS():
                 rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
                 rndpath = os.path.join(rndpath, f"{self.params.fields[0]}_{self.params.map_name}_rnd{self.params.jk_rnd_split_seed}{self.params.psx_map_name_postfix}")
                 if not os.path.exists(rndpath):
-                    # print("hei", f"rnd{self.params.jk_rnd_split_seed}", rndpath)
                     os.makedirs(rndpath, exist_ok = True)
                 
                 rndfile = os.path.join(rndpath, f"rndfile_seed{self.params.jk_rnd_split_seed}.h5")
@@ -396,7 +402,7 @@ class COMAP2FPXS():
         if not os.path.exists(average_spectrum_dir):
             os.mkdir(average_spectrum_dir)
     
-        fig_dir = os.path.join(fig_dir, self.params.psx_subdir)
+        # fig_dir = os.path.join(fig_dir, self.params.psx_subdir)
         if not os.path.exists(fig_dir):
             os.mkdir(fig_dir)
 
@@ -495,6 +501,9 @@ class COMAP2FPXS():
 
             if not os.path.exists(outdir):
                 os.mkdir(outdir)
+
+            xs_all = np.zeros((N_splits, N_feed, N_feed, N_k, N_k))
+            xs_error_all = np.zeros((N_splits, N_feed, N_feed, N_k, N_k))
 
             xs_mean = np.zeros((N_splits, N_k, N_k))
             xs_error = np.zeros((N_splits, N_k, N_k))
@@ -602,6 +611,9 @@ class COMAP2FPXS():
                             
                         xs = cross_spectrum.xs_2D
 
+                        xs_all[i, feed1, feed2, ...] = xs
+                        xs_error_all[i, feed1, feed2, ...] = xs_sigma
+                        
                         k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
                         
                         k_bin_edges_par = cross_spectrum.k_bin_edges_par
@@ -831,7 +843,6 @@ class COMAP2FPXS():
                     Ck_wn_nmodes_1d[n, :] = np.histogram(
                     kgrid[kgrid > 0], bins=k_bin_edges, weights=xs_wn_1d[n, kgrid > 0]
                 )[0]
-                    # print("hei", Ck_wn_nmodes_1d[n, :] == 0, n)
 
                 # Ck = Ck_nmodes / nmodes
                 k_1d = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
@@ -1007,6 +1018,18 @@ class COMAP2FPXS():
                     average_name,
                 )
 
+                self.plot_feed_grid(
+                    k_bin_edges_par,
+                    k_bin_edges_perp,
+                    k_bin_centers_par,
+                    k_bin_centers_perp,
+                    xs_all[i, ...] / transfer_function,
+                    xs_error_all[i, ...] / transfer_function,
+                    transfer_function_mask,
+                    splits,
+                    average_name,
+                )
+                
                 if self.params.psx_null_diffmap:
                     plot_chi2 = loaded_chi2_grid[current_cross_variable, ...]                
                     # plot_chi2 = chi2                
@@ -1045,9 +1068,9 @@ class COMAP2FPXS():
                 outfile.create_dataset("k_edges_par", data = k_bin_edges_par)      
                 outfile.create_dataset("k_edges_perp", data = k_bin_edges_perp)     
                 outfile.create_dataset("xs_mean_1d", data = xs_mean_1d)       
-                outfile.create_dataset("xs_mean_2d", data = xs_mean)
+                outfile.create_dataset("xs_mean_2d", data = xs_mean / transfer_function[None, ...])
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
-                outfile.create_dataset("xs_sigma_2d", data = xs_error)
+                outfile.create_dataset("xs_sigma_2d", data = xs_error / transfer_function[None, ...])
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
@@ -1100,7 +1123,7 @@ class COMAP2FPXS():
                     null_pte_name = os.path.join(null_pte_name, self.params.psx_subdir)
                     
                     if not os.path.exists(null_pte_name):
-                        os.makedirs(null_pte_name, exists_ok = True)
+                        os.makedirs(null_pte_name, exist_ok = True)
                     
                     
                     self.tabulate_null_PTEs(
@@ -1159,7 +1182,8 @@ class COMAP2FPXS():
         
         outname = os.path.join(
             filename, 
-            f"null_pte"
+            self.params.psx_subdir,
+            f"null_pte",
         )
 
                 
@@ -1228,7 +1252,7 @@ class COMAP2FPXS():
                 elif float(val) >= 99.5:
                     html_base += fr'<td><orange>{float(val):.5g}</orange></td>'
                 else:
-                    html_base += fr'<td>{val}</td>'
+                    html_base += fr'<td>{float(val):.5g}</td>'
                     
             html_base += "</tr>\n"
 
@@ -1301,7 +1325,152 @@ class COMAP2FPXS():
         #plt.figlegend(lns[4:-1], labs[4:-1], loc = 'lower center', ncol=2, fontsize = 14, bbox_to_anchor = (0.51, 0.365), bbox_transform = fig.transFigure, frameon = False)
         fig.savefig(f"{outname}_histogram.pdf", facecolor = "white", bbox_inches = "tight")
 
-    
+    def plot_feed_grid(self,
+                    k_bin_edges_par: npt.NDArray,
+                    k_bin_edges_perp: npt.NDArray,
+                    k_bin_centers_par: npt.NDArray,
+                    k_bin_centers_perp: npt.NDArray,
+                    xs: npt.NDArray,
+                    xs_sigma: npt.NDArray,
+                    transfer_function_mask: npt.NDArray,
+                    splits: Sequence[str],
+                    outname: str,
+                    ):
+        
+        if self.params.psx_null_diffmap:
+            try:
+                split1 = splits[0][0].split("map_")[-1][5:]
+                split2 = splits[1][0].split("map_")[-1][5:]
+            except:
+                split1 = ""
+                split2 = ""
+        else:
+            try:
+                split1 = splits[0].split("map_")[-1]
+                split2 = splits[1].split("map_")[-1]
+            except:
+                split1 = ""
+                split2 = ""
+
+        outname = os.path.join(
+            outname, 
+            self.params.psx_subdir,
+            f"xs_grid_2d_{split1}_X_{split2}.jpg"
+        )
+        
+        if not os.path.exists(os.path.dirname(outname)):
+            os.makedirs(os.path.dirname(outname), exist_ok = True)
+            
+        N_feed = len(self.included_feeds)
+        fig = plt.figure(figsize = (16, 16))
+        # fig_significance = plt.figure(figsize = (single_width, 9))
+        # fig_sigma = plt.figure(figsize = (single_width, 9))
+        gs = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.08, hspace = 0.08)
+        # gs_significance = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.00, hspace = 0.00)
+        # gs_sigma = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.00, hspace = 0.00)
+        axes = []
+
+        limit_idx = int(np.round(3 / 14 * xs.shape[0])) 
+
+        if limit_idx != 0:
+            lim = np.nanmax(np.abs(xs[..., limit_idx:-limit_idx, limit_idx:-limit_idx]))
+            lim_error = np.nanmax(xs_sigma[..., limit_idx:-limit_idx, limit_idx:-limit_idx])
+            lim_significance = np.nanmax(np.abs((xs / xs_sigma)[..., limit_idx:-limit_idx, limit_idx:-limit_idx]))
+        else:
+            lim = np.percentile(np.abs(xs), 80)
+            # lim = np.nanmax(np.abs(xs))
+            lim_error = np.nanmax(xs_sigma)
+            lim_significance = np.nanmax(np.abs((xs / xs_sigma)))
+
+        norm = matplotlib.colors.Normalize(vmin=-lim, vmax=lim)
+        # norm = matplotlib.colors.Normalize(vmin=-3e4, vmax=3e4)
+        lim_error = matplotlib.colors.Normalize(vmin=0, vmax=lim_error)
+        norm_significance = matplotlib.colors.Normalize(vmin=-3, vmax=3)
+        # lim_significance = matplotlib.colors.Normalize(vmin=-lim_significance, vmax=lim_significance)
+        
+        
+        pbar1 = tqdm.tqdm(
+                total = N_feed, 
+                colour = "green", 
+                ncols = 80,
+                desc = f"Total",
+                position = 0,
+            )
+        pbar2 = tqdm.tqdm(
+                total = N_feed, 
+                colour = "blue", 
+                ncols = 80,
+                desc = f"Total",
+                position = 1,
+                # leave = False,
+            )
+        
+        for i in range(N_feed):
+            pbar2.reset()
+            for j in range(N_feed):
+                ax = fig.add_subplot(gs[i, j])
+                # ax.text(0.1, 0.5, f"i={i},j={j},\nidx={i * 8 + j}", transform = ax.transAxes)
+                        
+                X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)
+        
+                img = ax.pcolormesh(
+                    X_perp, 
+                    X_par,
+                    (xs / xs_sigma)[i, j].T,
+                    #transfer_function.T,
+                    cmap="RdBu_r",
+                    norm = norm_significance,
+                    zorder = 1,
+                    rasterized = True,
+                )
+                
+                ax.set_yscale("log")
+                ax.set_xscale("log")
+
+                ticks = [0.03, 0.1, 0.3, 1]
+                ticklabels = ["0.03", "0.1", "0.3", "1"]
+
+                ylabels = ticklabels
+                xlabels = ticklabels
+                
+                
+                if j > 0:
+                    ylabels = []
+                else:
+                    ax.set_ylabel(f"Feed {i + 1}")
+                
+                if i < N_feed - 1:
+                    xlabels = []
+                else:
+                    ax.set_xlabel(f"Feed {j + 1}", rotation = 90)
+
+                ax.set_xticks(ticks)
+                ax.set_xticklabels(xlabels, fontsize = 10, rotation = 90)
+                ax.set_yticks(ticks)
+                ax.set_yticklabels(ylabels, fontsize = 10)
+
+                ax.set_ylim(k_bin_edges_par[0], k_bin_edges_par[-1])
+                ax.set_xlim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
+
+                axes.append(ax)
+                pbar2.update(1)
+            pbar1.update(1)
+
+        pbar1.close()
+        pbar2.close()
+
+        fig.text(0.01, 0.5, r"$k_\parallel$ [Mpc${}^{-1}$]", rotation = 90, fontsize=16, transform = fig.transFigure)
+        fig.text(0.4, 0.01, r"$k_\bot$ [Mpc${}^{-1}$]", fontsize=16, transform = fig.transFigure)
+                    
+        cbar = fig.colorbar(img, ax=axes)
+        cbar.set_label(
+            #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
+            size=16,
+        )
+        fig.savefig(outname, bbox_inches = "tight", dpi = 200)
+
+        
     def plot_2D_mean(self,
                     k_bin_edges_par: npt.NDArray,
                     k_bin_edges_perp: npt.NDArray,
@@ -1355,15 +1524,22 @@ class COMAP2FPXS():
 
         outname_corr = os.path.join(
             outname, 
+            self.params.psx_subdir,
             f"corr_2d_{split1}_X_{split2}.png"
             )
-
+        
         outname = os.path.join(
             outname, 
+            self.params.psx_subdir,
             f"xs_mean_2d_{split1}_X_{split2}.png"
         )
-
         
+        if not os.path.exists(os.path.dirname(outname_corr)):
+            os.makedirs(os.path.dirname(outname_corr), exist_ok = True)
+            
+        if not os.path.exists(os.path.dirname(outname)):
+            os.makedirs(os.path.dirname(outname), exist_ok = True)
+            
         # fig, ax = plt.subplots(1, 3, figsize=(16, 5.6))
         fig, ax = plt.subplots(2, 3, figsize=(16, 13))
 
@@ -1511,7 +1687,7 @@ class COMAP2FPXS():
             size=16,
         )
         cbar.ax.tick_params(rotation=45)
-       
+
         for i in range(3):
             ax[0, i].set_xscale("log")
             ax[0, i].set_yscale("log")
@@ -1528,9 +1704,9 @@ class COMAP2FPXS():
             ax[0, i].set_xlim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
 
 
-            ax[0, i].set_xlabel(r"$k_\parallel$ [Mpc${}^{-1}$]", fontsize=16)
+            ax[0, i].set_xlabel(r"$k_\bot$ [Mpc${}^{-1}$]", fontsize=16)
         
-        ax[0, 0].set_ylabel(r"$k_\bot$ [Mpc${}^{-1}$]", fontsize=16)
+        ax[0, 0].set_ylabel(r"$k_\parallel$ [Mpc${}^{-1}$]", fontsize=16)
 
 
         majorticks = [0.03, 0.1, 0.3, 1]
@@ -1712,13 +1888,21 @@ class COMAP2FPXS():
 
         outname_corr = os.path.join(
             outname, 
+            self.params.psx_subdir,
             f"corr_1d_{split1}_X_{split2}.png"
         )
+            
         # Add output name to output path
         outname = os.path.join(
             outname, 
+            self.params.psx_subdir,
             f"xs_mean_1d_{split1}_X_{split2}.png"
             )
+        
+        if not os.path.exists(os.path.dirname(outname_corr)):
+            os.makedirs(os.path.dirname(outname_corr), exist_ok = True)    
+        if not os.path.exists(os.path.dirname(outname)):
+            os.makedirs(os.path.dirname(outname), exist_ok = True)
         
         # Plot spherically averaged mean FPXS
         # Only want to use points between 0.04 and 1.0 /Mpc        
@@ -1727,11 +1911,11 @@ class COMAP2FPXS():
         
         # Plot y-limits
         lim = np.nanmax(np.abs((k_1d * (xs_mean + xs_sigma))[where]))
-        lim = 2 * np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
+        lim = 1.1 * np.nanmax((np.nanmax(np.abs((k_1d * (xs_mean - xs_sigma))[where])), lim))
         
         # lim = 2e4
 
-        lim_significance = 2 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
+        lim_significance = 1.1 * np.nanmax(np.abs((xs_mean / xs_sigma)[where]))
         
         mask = np.isfinite(xs_mean / xs_sigma)
 
@@ -1811,8 +1995,8 @@ class COMAP2FPXS():
         
         if not self.params.psx_null_diffmap:
             # Upper limit from S1:
-            _k_1d = np.linspace(0.05, 1, 100)
-            ax[0].plot(_k_1d, 5.4e3 / 0.24 * _k_1d, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3, label = r"95% $\mathrm{UL_{S1}}$")
+            # _k_1d = np.linspace(0.05, 1, 100)
+            # ax[0].plot(_k_1d, 5.4e3 / 0.24 * _k_1d, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3, label = r"95% $\mathrm{UL_{S1}}$")
             # ax[0].axhline(5.4e3, linestyle = "dashed", alpha = 0.8, color = "k", lw = 3, label = r"95% $\mathrm{UL_{S1}}$")
             
             all_pt_coadded = np.sum((xs_mean) / (xs_sigma) ** 2)
@@ -2044,9 +2228,13 @@ class COMAP2FPXS():
         # Add output name to output path
         outname = os.path.join(
             outname, 
+            self.params.psx_subdir,
             f"overlap_grid_{split1}_X_{split2}.png"
             )
         
+        if not os.path.exists(os.path.dirname(outname)):
+            os.makedirs(os.path.dirname(outname), exist_ok = True)
+            
         # Number of detectors used in cross-correlation combinations
         N_feed = len(self.included_feeds)
 
@@ -2216,9 +2404,13 @@ class COMAP2FPXS():
         # Add output name to output path
         outname = os.path.join(
             outname, 
+            self.params.psx_subdir,
             f"xs_chi2_grid_{split1}_X_{split2}.png"
             )
-        
+                
+        if not os.path.exists(os.path.dirname(outname)):
+            os.makedirs(os.path.dirname(outname), exist_ok = True)
+            
         # Number of detectors used in cross-correlation combinations
         N_feed = len(self.included_feeds)
 
