@@ -337,6 +337,9 @@ class Mapmaker:
                 print(f"Map {full_map_name} already exists. Please delete or rename existing map to make new one.")
             sys.exit() 
 
+        if self.params.distributed_starting and self.rank > 0:
+            time.sleep(60 * self.rank)
+
         # Define and initialize empty map object to acumulate data
         full_map = COmap(full_map_name)
         full_map.init_emtpy_map(
