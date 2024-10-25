@@ -2320,7 +2320,7 @@ if __name__ == "__main__":
                     "rain" : [-0.1, 3.0],
                     "winddir" : [-1, 361],
                     "windspeed" : [-1, 21],
-                    "moon_dist" : [20, 200],
+                    "moon_dist" : [0, 200],
                     "moon_angle" : [-200, 370],
                     "moon_cent_sl" : [-0.1, 2.1],
                     "moon_outer_sl" : [-0.1, 2.1],    
