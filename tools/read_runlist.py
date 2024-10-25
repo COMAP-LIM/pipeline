@@ -131,7 +131,11 @@ def read_runlist(params, ignore_existing, only_existing=False):
         if params.runlist_split_num_i == params.runlist_split_in_n - 1:
             runlist_stop_idx = len_runlist
         runlist_i = runlist_all[runlist_start_idx:runlist_stop_idx]
-        runlist_i = [scan for scan in runlist_i if scan[0] not in existing_scans]
+        if ignore_existing:
+            runlist_i = [scan for scan in runlist_i if scan[0] not in existing_scans]
+        else:
+            runlist_i = [scan for scan in runlist_i]
+            
         print(f"Runlist splitting enabled: Running part {params.runlist_split_num_i} of {params.runlist_split_in_n}.")
         print(f"Runlist cut: [{runlist_start_idx}:{runlist_stop_idx}], {runlist_stop_idx-runlist_start_idx} scans, of which {len(runlist_i)} are not yet processed.")
         return runlist_i

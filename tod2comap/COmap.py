@@ -615,7 +615,10 @@ class COmap:
                             primary_split = primary_split[:4]
                             outfile.create_dataset(
                                 f"multisplits/{primary_split}{key}",
-                                data=self._data[key],
+                                data = self._data[key],
+                                compression = "gzip", 
+                                compression_opts = 1, 
+                                shuffle=True
                             )
                         elif "params" in key:
                             for param_key in self._data["params"].keys():
@@ -624,7 +627,10 @@ class COmap:
                                     param_key
                                 ]
                         else:
-                            outfile.create_dataset(key, data=self._data[key])
+                            outfile.create_dataset(
+                                    key, 
+                                    data = self._data[key], 
+                                )
 
                     if params is not None and "params" not in self.keys:
                         for key in vars(

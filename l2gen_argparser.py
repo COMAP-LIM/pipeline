@@ -480,7 +480,6 @@ parser.add_argument(
     help="(comap2fpxs) Seed to use when splitting scans randomly into maps (rnd split maps).",
 )
 
-parser.add_argument("--show_accept_plot", type=str2bool, default=True)
 
 ### Defaults ###
 parser.add_argument("--stats_list", type=str, default="stats_list.py")
