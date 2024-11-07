@@ -679,7 +679,7 @@ parser.add_argument(
     "--psx_symmetric_weights",
     type=str2bool,
     default = True,
-    help="(comap2fpxs) If True the pseudo-cross-spectra are computet using symmetric weights, i.e. proportional to 1 / (sigma_i^2 * sigma_j^2), on both maps i and j prior to Fourier transformation. Otherwise the two maps respectively are weighted by weights proportional to 1 / (sigma_i^2 * sigma_i^2)".,
+    help="(comap2fpxs) If True the pseudo-cross-spectra are computet using symmetric weights, i.e. proportional to 1 / (sigma_i^2 * sigma_j^2), on both maps i and j prior to Fourier transformation. Otherwise the two maps respectively are weighted by weights proportional to 1 / (sigma_i^2 * sigma_i^2).",
 )
 
 parser.add_argument(
