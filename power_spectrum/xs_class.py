@@ -203,7 +203,6 @@ class CrossSpectrum_nmaps:
             index += 1
 
             self.normalize_weights(i, j)  # normalize weights for given xs pair of maps
-
             wi = self.maps[i].w.copy()
             wj = self.maps[j].w.copy()
 
@@ -211,14 +210,24 @@ class CrossSpectrum_nmaps:
             wh_j = np.where((np.log10(wj) < -0.5))
             wi[wh_i] = 0.0
             wj[wh_j] = 0.0
-
-            full_weight = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
             
-            full_weight[wi * wj == 0] = 0.0
-            full_weight[np.isnan(full_weight)] = 0.0
-
+            if self.params.psx_symmetric_weights:
+                full_weight_i = np.sqrt(wi * wj) / np.sqrt(np.mean((wi * wj).flatten()))
+                full_weight_i[wi * wj == 0] = 0.0
+                full_weight_i[np.isnan(full_weight_i)] = 0.0
+                full_weight_j = full_weight_i.copy()
+            else:
+                full_weight_i = np.sqrt(wi * wi) / np.sqrt(np.mean((wi * wi).flatten()))
+                full_weight_i[wi * wi == 0] = 0.0
+                full_weight_i[np.isnan(full_weight_i)] = 0.0
+                
+                full_weight_j = np.sqrt(wj * wj) / np.sqrt(np.mean((wj * wj).flatten()))
+                full_weight_j[wj * wj == 0] = 0.0
+                full_weight_j[np.isnan(full_weight_j)] = 0.0
+                
+                
             my_xs, my_k, my_nmodes = tools.compute_cross_spec_perp_vs_par(
-                (self.maps[i].map * full_weight, self.maps[j].map * full_weight),
+                (self.maps[i].map * full_weight_i, self.maps[j].map * full_weight_j),
                 (self.k_bin_edges_perp, self.k_bin_edges_par),
                 dx=self.maps[i].dx,
                 dy=self.maps[i].dy,
