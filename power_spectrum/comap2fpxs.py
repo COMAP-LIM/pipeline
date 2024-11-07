@@ -441,12 +441,13 @@ class COMAP2FPXS():
             
             for num_rnd, rndfile_name in enumerate(self.params.psx_rnd_file_list):
                 rndfile = os.path.join(rndpath, f"{self.params.fields[0]}_{rndfile_name}")
-                rndfile = glob.glob(os.path.join(rndfile, f"*.h5"))[0]
                 print("Loading RND-file from: ", rndfile)
+                rndfile = glob.glob(os.path.join(rndfile, f"*.h5"))[0]
                 
                 with h5py.File(rndfile, "r") as infile:
                     rnd_spectra = infile["all_spectra"][()] 
                     rnd_overlap = infile["all_overlap"][()] 
+                    print(np.any(rnd_spectra == 0), *np.where(rnd_spectra == 0), np.unique(np.where(rnd_spectra == 0)[1]), np.sum(rnd_spectra == 0) / rnd_spectra.size * 100, rnd_spectra.shape)
                 if num_rnd == 0:
                     all_rnd_spectra = rnd_spectra
                     all_rnd_overlap = rnd_overlap
@@ -459,9 +460,17 @@ class COMAP2FPXS():
             
             if np.all(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
                 raise ValueError("All loaded RND spectra are either zero or infinite/NaN!")
+            if np.any(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
+                print("hei", np.sum(all_rnd_spectra == 0), all_rnd_spectra.size, np.any(all_rnd_spectra == 0), np.any(~np.isfinite(all_rnd_spectra)))
+                # for s in range(len(all_rnd_spectra.shape)):
+                #     print(np.sum(np.all(all_rnd_spectra == 0, axis = s)), all_rnd_spectra.shape, all_rnd_spectra.shape[s])
+                # raise ValueError("Some loaded RND spectra are either zero or infinite/NaN!")
             
+                        
             ### all in one ###
             # all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
+            
+            rnd_spectra[rnd_spectra == 0] = np.nan
             
             ### 60-120 ###
             all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
@@ -548,6 +557,7 @@ class COMAP2FPXS():
                 if self.params.psx_mode == "saddlebag":
                     self.params.psx_chi2_import_path = re.sub(r"average_spectra", "average_spectra_saddlebag", self.params.psx_chi2_import_path)
 
+                self.params.psx_chi2_import_path = re.sub(r"co\d_", f"{self.params.fields[0]}_", self.params.psx_chi2_import_path)
                 if len(self.params.psx_chi2_import_path) <= 0 or not os.path.exists(self.params.psx_chi2_import_path):
                     raise ValueError("No chi2 import file provided to perform null test chi2 cuts!")
 
@@ -1120,11 +1130,10 @@ class COMAP2FPXS():
 
                     null_pte_name = os.path.join(null_pte_name, indir)
                     null_pte_name = null_pte_name + f"_{self.params.psx_plot_name_suffix}"
-                    null_pte_name = os.path.join(null_pte_name, self.params.psx_subdir)
+                    # null_pte_name = os.path.join(null_pte_name, self.params.psx_subdir)
                     
                     if not os.path.exists(null_pte_name):
                         os.makedirs(null_pte_name, exist_ok = True)
-                    
                     
                     self.tabulate_null_PTEs(
                         PTE_data_coadd_numeric_1d, 
@@ -1183,10 +1192,16 @@ class COMAP2FPXS():
         outname = os.path.join(
             filename, 
             self.params.psx_subdir,
-            f"null_pte",
         )
 
-                
+        if not os.path.exists(outname):
+            os.makedirs(outname, exist_ok = True)
+
+        outname = os.path.join(
+            outname,
+            f"null_pte",
+        )
+                     
         table = Table(
             [
                 null_names,
@@ -1286,16 +1301,19 @@ class COMAP2FPXS():
         with open(html_name, mode = "w") as outfile:
             outfile.write(html_base)
         
+        print("hei", html_name)
+        
         www_tsih3_path = "/mn/stornext/d16/www_cmb/comap/power_spectrum"
         move_to = os.path.join(www_tsih3_path, html_name.split(os.path.join(self.power_spectrum_dir, "figs/"))[-1])
         move_to_dir = os.path.dirname(move_to) 
+        print("hei", move_to_dir)
 
         if not os.path.exists(move_to_dir):
             os.makedirs(move_to_dir, exist_ok = True)
             
         shutil.copyfile(
             html_name, 
-            move_to
+            move_to,
         )
 
         
@@ -2242,9 +2260,21 @@ class COMAP2FPXS():
         cmap = matplotlib.cm.CMRmap
 
         # Bad values, i.e. NaN and Inf, are set to black
-        #cmap.set_bad("k", 1)
-
-        # Plot chi2 value grid
+        cmap.set_bad("lime", 1)
+        
+        overlap_vs_rnd_masked = np.ma.masked_where(~chi2_mask.astype(bool), overlap_vs_rnd)
+        
+        # print("hei", np.sum(overlap_vs_rnd == 0))
+        # print("hei hei", np.sum(~np.isfinite(overlap_vs_rnd)))
+        # print(overlap_vs_rnd)
+        
+        # overlap_vs_rnd[overlap_vs_rnd == 0] = np.nan
+        #overlap_vs_rnd[~np.isfinite(overlap_vs_rnd)] = np.nan
+        
+        # weighted_overlap[weighted_overlap == 0] = np.nan
+        #weighted_overlap[~np.isfinite(weighted_overlap)] = np.nan
+        
+        # Plot overlap value grid
         fig, ax = plt.subplots(2, 2, figsize = (13, 10))
 
         img = ax[0, 0].imshow(
@@ -2272,13 +2302,12 @@ class COMAP2FPXS():
         
         # chi2_masked = np.ma.masked_where(~(np.abs(chi2) < self.params.psx_chi2_cut_limit), chi2)
 
-        overlap_vs_rnd_masked = np.ma.masked_where(~chi2_mask.astype(bool), overlap_vs_rnd)
 
         ax[0, 0].imshow(
             overlap_vs_rnd_masked,
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
-            cmap=cmap,
+            cmap = "CMRmap",
             vmin = 0,
             vmax = np.nanmax(overlap_vs_rnd) + 0.1 * np.nanstd(overlap_vs_rnd),
             rasterized=True,
@@ -2324,7 +2353,7 @@ class COMAP2FPXS():
             weighted_overlap_masked,
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
-            cmap=cmap,
+            cmap="RdBu_r",
             vmin = 0,
             vmax = 1,
             rasterized=True,
@@ -2419,7 +2448,8 @@ class COMAP2FPXS():
 
         # Bad values, i.e. NaN and Inf, are set to black
         cmap.set_bad("k", 1)
-        
+        chi2[chi2 == 0] = np.nan
+        chi2[~np.isfinite(chi2)] = np.nan
 
         lim = np.nanmin((100, np.nanmax(np.abs(chi2))))
         norm = matplotlib.colors.Normalize(vmin=-1.2 * lim, vmax=1.2 * lim)
