@@ -614,7 +614,7 @@ parser.add_argument(
 parser.add_argument(
     "--t2m_save_gif",
     type=str2bool,
-    default=True,
+    default=False,
     help="(tod2comap) If True a .gif animation of all datasets is saved along with hdf5 map files. Default True."
 )
 

@@ -17,7 +17,7 @@ field_id_dict = {
     "co7": "field2",
     "co6": "field3",
 }
- 
+
 
 @dataclass
 class COmap:
@@ -48,6 +48,7 @@ class COmap:
                     if key == "multisplits":
                         try:
                             # For all parent splits
+                            self.multisplits = list(value.keys())
                             for split_key, split_group in value.items():
                                 # For all datasets in parent split
                                 for data_key, data_value in split_group.items():
@@ -95,6 +96,11 @@ class COmap:
             for key in key_list:
                 self._data[key] = infile[key][()]
         
+            self._data[f"wcs"] = {}
+            for wcs_key, wcs_param in infile["wcs"].items():
+                self._data[f"wcs"][wcs_key] = wcs_param[()]
+        
+        self.keys = self._data.keys()
 
     def init_emtpy_map(
         self,
@@ -390,6 +396,7 @@ class COmap:
         params: Optional[argparse.Namespace] = None,
         save_hdf5=True,
         save_fits=False,
+        save_gif=False,
     ) -> None:
         """Method for writing map data to file.
 
@@ -601,13 +608,18 @@ class COmap:
                             outfile.create_group(f"multisplits/{primary_split}")
 
                     for key in self.keys:
+                        if "map" == key and save_gif: 
+                            self.make_gif(key, outpath.split(".h5")[0])
+                            
                         if "wcs" in key:
                             # Saving World Coordinate System parameters to group
                             for wcs_key, wcs_param in self._data["wcs"].items():
                                 outfile.create_dataset(f"wcs/{wcs_key}", data=wcs_param)
                         elif "multisplits" in key:
                             outfile.create_dataset(f"{key}", data=self._data[key])
-
+                            if "map" in key and save_gif: 
+                                self.make_gif(key, outpath.split(".h5")[0])
+                            
                         elif "/" in key:
                             # If splis are to be performed save data to correct group
                             primary_split = key.split("_")[-1]
@@ -643,6 +655,176 @@ class COmap:
                             else:
                                 outfile[f"params/{key}"] = getattr(params, key)
 
+    
+    def make_gif(self, key: str, outdir) -> None:
+        """Method for producing .gif animation of map dataset.
+
+        Args:
+            key (str): String key for map to make .gif of. 
+            Must contain 'map' in string, otherwise an error is raised.
+            outdir (str): Output directory to save .gif files.
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.animation as animation
+        import matplotlib
+        matplotlib.use("Agg")
+        
+        from scipy.ndimage import gaussian_filter
+        import astropy.units as u
+        from astropy.wcs import WCS
+        import copy
+        import tqdm
+        from functools import partial
+        
+        if not "map" in key:
+            raise ValueError("Key must contain string 'map' to work properly.")
+        
+        _, wcs_full = self.get_full_wcs()
+
+        cmap_name_div = "RdBu_r"
+        cmap_name_seq = "inferno_r"
+        cmap_div = copy.copy(plt.get_cmap(cmap_name_div))
+        cmap_seq = copy.copy(plt.get_cmap(cmap_name_seq))
+        cmap_div.set_bad("0.8", 1) # Set color of masked elements to gray.
+        cmap_seq.set_bad("0.8", 1) # Set color of masked elements to gray.
+
+        mapkey = "map"
+
+
+        sideband_names = ["A:LSB", "A:USB", "B:LSB", "B:USB"]
+        n_sb, n_ch = self._data["freq_centers"].shape
+        n_frequencies = n_sb * n_ch
+        n_feed = self._data["map"].shape[0]
+        sb, ch = 0, 0
+
+        plt.rcParams["font.size"] = 14
+
+        for feed in range(n_feed):
+            fig = plt.figure()
+            fig.set_size_inches(16, 6)
+            ax = []
+            for i in range(4):
+                ax.append(fig.add_subplot(1, 4, i+1, projection = wcs_full, slices=('x', 'y', sb * self._data["n_channels"] + ch, feed)))
+                    
+            lim1 = 2 * np.nanstd(1e6 * self._data[key][..., 40:-40, 40:-40])
+            lim2_max = 3 * np.nanstd(1e6 * self._data[key.replace("map", "sigma_wn")])
+            lim2_min = 0
+            lim3 = 1
+
+            img1 = ax[0].imshow(
+                1e6 * self._data[key][feed, sb, ch, 30:-30, 30:-30],
+                interpolation = "none",
+                cmap = cmap_div,
+                vmin = -lim1,
+                vmax = lim1,
+            )
+
+            img2 = ax[1].imshow(
+                1e6 * self._data[key.replace("map", "sigma_wn")][feed, sb, ch, 30:-30, 30:-30],
+                interpolation = "none",
+                cmap = cmap_seq,
+                vmin = lim2_min,
+                vmax = lim2_max,
+            )
+
+            y = (self._data[key][feed, sb, ch, 30:-30, 30:-30] 
+                / self._data[key.replace("map", "sigma_wn")][feed, sb, ch, 30:-30, 30:-30])
+            y[~np.isfinite(y)] = 0
+            
+            y = gaussian_filter(
+                y, 
+                0.7
+            )
+            img4 = ax[3].imshow(
+                y,
+                interpolation = "none",
+                cmap = cmap_div,
+                vmin = -2 * lim3,
+                vmax = 2 * lim3,
+            )
+            
+            img3 = ax[2].imshow(
+                y,
+                interpolation = "gaussian",
+                cmap = cmap_div,
+                vmin = -lim3,
+                vmax = lim3,
+            )
+
+
+            pad = 0.02
+            cbar1 = fig.colorbar(img1, ax = ax[0], orientation = "horizontal", pad = pad)
+            cbar2 = fig.colorbar(img2, ax = ax[1], orientation = "horizontal", pad = pad)
+            cbar3 = fig.colorbar(img3, ax = ax[2], orientation = "horizontal", pad = pad)
+            cbar4 = fig.colorbar(img4, ax = ax[3], orientation = "horizontal", pad = pad)
+            cbar1.set_label(r"$m$ $[\mathrm{\mu K}]$")
+            cbar2.set_label(r"$\sigma$ $[\mathrm{\mu K}]$")
+            cbar3.set_label(r"$m / \sigma$ (smoothed)")
+            cbar4.set_label(r"$m / \sigma$ (unsmoothed)")
+            
+            t = "Sideband %s | Channel %d | Freq %.2f GHz" % (sideband_names[sb], ch + 1, self._data["freq_centers"][sb, ch]) + "\n"
+            t += "Maptype: " + mapkey + " | " + os.path.basename(self.path) 
+            title = ax[1].set_title(t, y = 1.27, x = 1.1)
+                
+            def init():
+                for i in range(4):
+                    ra = ax[i].coords[0]
+                    dec = ax[i].coords[1]
+                    
+                    
+                    ra.set_major_formatter('d.dd')
+                    dec.set_major_formatter('d.dd')
+                    if i == 0:    
+                        dec.set_axislabel("Declination (J2000)")
+                    else:
+                        dec.set_ticks_visible(True)
+                        dec.set_ticklabel_visible(False)
+                        dec.set_axislabel(" ")
+                    ra.set_axislabel("Right Ascension (J2000)")
+                    
+                    dec.set_ticks(spacing = 1.0 * u.deg)
+                    ra.set_ticks(spacing = 1.5 * u.deg)
+                    dec.set_ticklabel(rotation = 90)
+
+                    ra.set_axislabel_position("top")
+                    ra.set_ticks_position("top")
+                    ra.set_ticklabel_position("top")
+                return [img1, img2, img3, img4, title] 
+            
+            def update(i, im1, im2, im3, im4, tx):
+                f = i % n_ch
+                s = i // n_ch
+
+                im1.set_data(1e6 * self._data[key][feed, s, f, 30:-30, 30:-30])
+                im2.set_data(1e6 * self._data[key.replace("map", "sigma_wn")][feed, s, f, 30:-30, 30:-30])
+                y = (self._data[key][feed, s, f, 30:-30, 30:-30] 
+                / self._data[key.replace("map", "sigma_wn")][feed, s, f, 30:-30, 30:-30])
+                y[~np.isfinite(y)] = 0
+                im4.set_data(y)
+                y = gaussian_filter(y, 0.7)
+                im3.set_data(y)
+                
+                t = "Sideband %s | Channel %d | Freq %.2f GHz" % (sideband_names[s], f + 1, self._data["freq_centers"][s, f]) + "\n"
+                t += "Maptype: " + mapkey + " | " + os.path.basename(self.path) 
+                tx.set_text(t)
+
+                return [im1, im2, im3, im4, tx]
+
+            ani = animation.FuncAnimation(fig, partial(update, im1 = img1, im2 = img2, im3 = img3, im4 = img4, tx = title), init_func = init, frames=tqdm.tqdm(range(0, n_frequencies, 1), colour = "green", position = 1, desc = f"Animating {key} at feed {feed + 1}:"), interval=200, blit=True, repeat_delay=1000)
+
+            if not os.path.exists(outdir):
+                os.makedirs(outdir, exist_ok = True)
+                
+            writer = animation.FFMpegWriter(fps=15, metadata=dict(artist='Me'), bitrate=-1)
+            ani.save(
+                os.path.join(outdir, f'{key.split("/")[-1]}_feed{feed + 1}.mp4'), 
+                writer = writer,
+                dpi = 100,
+                savefig_kwargs={"transparent": False, "facecolor": "white"}
+            )
+            plt.close(fig)
+
+    
     def __getitem__(self, key: str) -> npt.ArrayLike:
         """Method for indexing map data as dictionary
 
