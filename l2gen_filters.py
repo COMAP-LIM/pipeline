@@ -32,6 +32,52 @@ class Filter:
         pass
 
 
+
+def mask_tsys(l2):
+    l2.freqmask[l2.Tsys < l2.params.min_tsys] = False
+    l2.freqmask_reason[l2.Tsys < l2.params.min_tsys] += 2**l2.freqmask_reason_num_dict["Tsys < min_tsys"]
+    
+    ### Running median tsys cuts ###
+    kernel_size1 = 400
+    kernel_size2 = 150
+    median_cut1 = l2.params.median_tsys_cut+10
+    median_cut2 = l2.params.median_tsys_cut
+
+    tsys_temp = l2.Tsys.copy()
+    tsys_temp[tsys_temp < l2.params.min_tsys] = np.nan
+    tsys_temp[tsys_temp > l2.params.max_tsys] = np.nan
+    running_median1 = np.zeros_like(tsys_temp)
+    running_median2 = np.zeros_like(tsys_temp)
+    for ifeed in range(l2.Nfeeds):
+        for isb in range(l2.Nsb):
+            # Iteration 1
+            for i in range(l2.Nfreqs):
+                start = max(i-kernel_size1//2, 0)
+                stop = min(i+kernel_size1//2, l2.Nfreqs)
+                tsys_local = tsys_temp[ifeed,isb,start:stop]
+                if np.sum(np.isfinite(tsys_local)) > kernel_size1//5:  # If more than 20% of points remaining.
+                    running_median1[ifeed,isb,i] = np.nanmedian(tsys_local)
+                else:
+                    running_median1[ifeed,isb,i] = 0
+            tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median1[ifeed,isb] + median_cut1)] = np.nan
+            # Iteration 2
+            for i in range(l2.Nfreqs):
+                start = max(i-kernel_size2//2, 0)
+                stop = min(i+kernel_size2//2, l2.Nfreqs)
+                tsys_local = tsys_temp[ifeed,isb,start:stop]
+                if np.sum(np.isfinite(tsys_local)) > kernel_size2//5:  # If more than 20% of points remaining.
+                    running_median2[ifeed,isb,i] = np.nanmedian(tsys_local)
+                else:
+                    running_median2[ifeed,isb,i] = 0
+            tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median2[ifeed,isb] + median_cut2)] = np.nan
+    tsys_median_mask = np.isfinite(tsys_temp)
+    tsys_median_mask[~np.isfinite(l2.Tsys)] = True  # Channels that have already been flagged as NaN or inf, don't need to double-flag them.
+    
+    l2.freqmask[~tsys_median_mask] = False
+    l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_reason_num_dict["Tsys > running median max"]
+
+
+
 class Subtract_Start_Exponential(Filter):
     name = "start_exp"
     name_long ="subtract_start_exponential"
@@ -1797,8 +1843,8 @@ class Tsys_calc(Filter):
         l2.tofile_dict["Thot_times"] = calib_times[l2.feeds-1]
         l2.tofile_dict["n_cal"] = n_cal
 
-
-
+        if self.params.mask_tsys_at_beginning:
+            mask_tsys(l2)
 
 
 
@@ -1814,50 +1860,11 @@ class Calibration(Filter):
 
     def run(self, l2):
         if not self.params.mask_tsys_at_beginning:
-            l2.tod *= l2.Tsys[:,:,:,None]
+            mask_tsys(l2)
 
-        l2.freqmask[l2.Tsys < self.params.min_tsys] = False
-        l2.freqmask_reason[l2.Tsys < self.params.min_tsys] += 2**l2.freqmask_reason_num_dict["Tsys < min_tsys"]
-        
-        ### Running median tsys cuts ###
-        kernel_size1 = 400
-        kernel_size2 = 150
-        median_cut1 = self.params.median_tsys_cut+10
-        median_cut2 = self.params.median_tsys_cut
+        l2.tod *= l2.Tsys[:,:,:,None]
 
-        tsys_temp = l2.Tsys.copy()
-        tsys_temp[tsys_temp < self.params.min_tsys] = np.nan
-        tsys_temp[tsys_temp > self.params.max_tsys] = np.nan
-        running_median1 = np.zeros_like(tsys_temp)
-        running_median2 = np.zeros_like(tsys_temp)
-        for ifeed in range(l2.Nfeeds):
-            for isb in range(l2.Nsb):
-                # Iteration 1
-                for i in range(l2.Nfreqs):
-                    start = max(i-kernel_size1//2, 0)
-                    stop = min(i+kernel_size1//2, l2.Nfreqs)
-                    tsys_local = tsys_temp[ifeed,isb,start:stop]
-                    if np.sum(np.isfinite(tsys_local)) > kernel_size1//5:  # If more than 20% of points remaining.
-                        running_median1[ifeed,isb,i] = np.nanmedian(tsys_local)
-                    else:
-                        running_median1[ifeed,isb,i] = 0
-                tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median1[ifeed,isb] + median_cut1)] = np.nan
-                # Iteration 2
-                for i in range(l2.Nfreqs):
-                    start = max(i-kernel_size2//2, 0)
-                    stop = min(i+kernel_size2//2, l2.Nfreqs)
-                    tsys_local = tsys_temp[ifeed,isb,start:stop]
-                    if np.sum(np.isfinite(tsys_local)) > kernel_size2//5:  # If more than 20% of points remaining.
-                        running_median2[ifeed,isb,i] = np.nanmedian(tsys_local)
-                    else:
-                        running_median2[ifeed,isb,i] = 0
-                tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median2[ifeed,isb] + median_cut2)] = np.nan
-        tsys_median_mask = np.isfinite(tsys_temp)
-        tsys_median_mask[~np.isfinite(l2.Tsys)] = True  # Channels that have already been flagged as NaN or inf, don't need to double-flag them.
-        
-        l2.freqmask[~tsys_median_mask] = False
-        l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_reason_num_dict["Tsys > running median max"]
-        
+
 
 class Mask_Az_Edges(Filter):
     name = "az-cut"
