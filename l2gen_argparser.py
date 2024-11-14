@@ -611,6 +611,14 @@ parser.add_argument(
     help="(tod2comap) If not negative, this parameter will mask high noise regions in map datasets. All regions with a higher noise than the bottom-100 freq-coadded noise per feed and split times the parameter factor will be masked out.",
 )
 
+parser.add_argument(
+    "--t2m_save_gif",
+    type=str2bool,
+    default=False,
+    help="(tod2comap) If True a .gif animation of all datasets is saved along with hdf5 map files. Default True."
+)
+
+
 ###### Cross-Spectrum stuff ######
 parser.add_argument(
     "--psx_only_feed_splits",
@@ -665,6 +673,13 @@ parser.add_argument(
     nargs="+",
     default = [],
     help="(comap2fpxs) List of RND map file directories relative to power_spectrum_dir. The files given are used to generate the power spectrum error bars in RND runs.",
+)
+
+parser.add_argument(
+    "--psx_symmetric_weights",
+    type=str2bool,
+    default = True,
+    help="(comap2fpxs) If True the pseudo-cross-spectra are computet using symmetric weights, i.e. proportional to 1 / (sigma_i^2 * sigma_j^2), on both maps i and j prior to Fourier transformation. Otherwise the two maps respectively are weighted by weights proportional to 1 / (sigma_i^2 * sigma_i^2).",
 )
 
 parser.add_argument(

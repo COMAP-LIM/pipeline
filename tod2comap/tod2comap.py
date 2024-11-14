@@ -376,7 +376,7 @@ class Mapmaker:
 
         for i, scan in enumerate(self.runlist):
             scanid = scan[0]
-
+            
             # If not verbose use progress bars instead of informative prints
             if not self.params.verbose:
                 prog_tot = self.comm.reduce(
@@ -388,8 +388,7 @@ class Mapmaker:
                 if self.rank == 0:
                     pbar.refresh()
                     pbar.n = int(pbar.n + prog_tot / self.Nranks)
-                
-                        
+                                        
             if i % self.Nranks == self.rank:
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]
@@ -516,12 +515,14 @@ class Mapmaker:
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
                     save_fits=(self.params.fits),
+                    save_gif = self.params.t2m_save_gif,
                 )
             else:
                 full_map.write_map(
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
                     save_fits=(self.params.fits),
+                    save_gif = self.params.t2m_save_gif,
                 )
             finish_time = time.perf_counter()
 
@@ -1331,9 +1332,16 @@ class Mapmaker:
                         mapdata[key][i][mask] = signal[mask]
 
             # Providing name of primary splits to make group names
-            mapdata.write_map(primary_splits=self.primary_splits, params=self.params)
+            mapdata.write_map(
+                primary_splits=self.primary_splits, 
+                params=self.params, 
+                save_gif = self.params.t2m_save_gif,
+            )
         else:
-            mapdata.write_map(params=self.params)
+            mapdata.write_map(
+                params=self.params,
+                save_gif = self.params.t2m_save_gif,
+            )
 
 
 def main():
