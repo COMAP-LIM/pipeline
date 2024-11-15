@@ -333,8 +333,6 @@ class Decimation(Filter):
         self.params = params
 
     def run(self, l2):
-        if self.params.mask_tsys_at_beginning:
-            l2.tod *= l2.Tsys[:,:,:,None]
         # Set up the lowres frequency bins.
         self.freq_bin_centers_lowres = np.zeros((l2.Nsb, self.Nfreqs_lowres))
         self.freq_bin_edges_lowres = np.zeros((l2.Nsb, self.Nfreqs_lowres+1))
