@@ -396,7 +396,6 @@ class COmap:
         params: Optional[argparse.Namespace] = None,
         save_hdf5=True,
         save_fits=False,
-        save_gif=False,
     ) -> None:
         """Method for writing map data to file.
 
@@ -608,17 +607,12 @@ class COmap:
                             outfile.create_group(f"multisplits/{primary_split}")
 
                     for key in self.keys:
-                        if "map" == key and save_gif: 
-                            self.make_gif(key, outpath.split(".h5")[0])
-                            
                         if "wcs" in key:
                             # Saving World Coordinate System parameters to group
                             for wcs_key, wcs_param in self._data["wcs"].items():
                                 outfile.create_dataset(f"wcs/{wcs_key}", data=wcs_param)
                         elif "multisplits" in key:
                             outfile.create_dataset(f"{key}", data=self._data[key])
-                            if "map" in key and save_gif: 
-                                self.make_gif(key, outpath.split(".h5")[0])
                             
                         elif "/" in key:
                             # If splis are to be performed save data to correct group
@@ -654,7 +648,19 @@ class COmap:
                                 outfile[f"params/{key}"] = "None"
                             else:
                                 outfile[f"params/{key}"] = getattr(params, key)
-
+    
+    def animate_map(self):
+        """Method that loops through map datasets and generates video 
+        over channels of all map datasets for all feeds."""
+        
+        for key in self.keys:
+            if "map" == key and save_gif: 
+                self.make_gif(key, outpath.split(".h5")[0])
+                
+            elif "multisplits" in key:
+                if "map" in key and save_gif: 
+                    self.make_gif(key, outpath.split(".h5")[0])
+                
     
     def make_gif(self, key: str, outdir) -> None:
         """Method for producing .gif animation of map dataset.
