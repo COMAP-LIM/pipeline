@@ -1743,7 +1743,6 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
     
     assert np.max(jk_list) <= np.sum(2 ** np.arange(len(strings) + 1))
     
-    
     return jk_list, cutoff_list, strings
 
 def set_bit(jk_list, where, bit):
