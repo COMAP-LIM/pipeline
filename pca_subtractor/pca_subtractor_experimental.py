@@ -93,7 +93,9 @@ class PCA_SubTractor_Experimental:
         self.subtract_mean = subtract_mean
         self.approx_noise = approx_noise
         self.mpca_freq_downsample_facs = mpca_freq_downsample_facs
-
+        if self.ncomps > len(self.mpca_freq_downsample_facs):
+            self.mpca_freq_downsample_facs = list(np.ones(self.ncomps, dtype = np.int32))
+            
         # List of keys to perform PCA on (only per feed hence remove "map" and "sigma_wn")
         self.keys_to_pca = [
             key for key in map.keys if (("map" in key) and ("coadd" not in key)) and ("saddlebag" not in key)
