@@ -103,8 +103,10 @@ def main():
         mymap_clean = highpass.run()
 
     # Writing cleaned map data to file
-    mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True, save_gif = args.t2m_save_gif,)
-
+    mymap_clean.write_map(outpath=outpath, save_fits=False, save_hdf5=True)
+    if args.t2m_save_gif:
+        mymap_clean.animate_map()
+    
     if save_reconstruction:
         pca_sub.overwrite_maps_with_reconstruction()
 
@@ -118,8 +120,9 @@ def main():
         else:
             new_outpath = outpath.split(".h5")[0] + f"_pca_reconstruction_n{ncomps}{approx}_{rmsnorm}.h5"
 
-        mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True, save_gif = args.t2m_save_gif,)
-
+        mymap_clean.write_map(outpath=new_outpath, save_fits=False, save_hdf5=True)
+        if args.t2m_save_gif:
+            mymap_clean.animate_map()
         # for i in range(ncomps):
         #     pca_sub.overwrite_maps_with_reconstruction(component=i)
 
