@@ -140,7 +140,6 @@ class Mapmaker:
                     self.scandata[key] = value[()]
 
         split_data_path = os.path.join(self.accept_dir, split_data_path)
-        print(split_data_path)
 
         with h5py.File(split_data_path, "r") as splitfile:
             self.splitdata = {}
