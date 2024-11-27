@@ -293,6 +293,11 @@ class COMAP2FPXS():
                     cross_spectrum.calculate_xs_2d(
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
+                    
+                    if np.all(cross_spectrum.xs == 0):
+                        print(self.rank, "All XS 2D zero:", mapnames, splits, feeds)
+                    if np.any(cross_spectrum.xs == 0):
+                        print(self.rank, "Any XS 2D zero:", mapnames, splits, feeds)
 
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
@@ -470,7 +475,7 @@ class COMAP2FPXS():
             ### all in one ###
             # all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
             
-            rnd_spectra[rnd_spectra == 0] = np.nan
+            all_rnd_overlap = np.nanmedian(all_rnd_overlap, axis = 0)
             
             ### 60-120 ###
             all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
