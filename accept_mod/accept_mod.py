@@ -1708,6 +1708,7 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
         accept_list10[~el1_rise0_mask] = False
         accept_list11[~el1_rise1_mask] = False
         for j, string in enumerate(strings):
+            print(j+1, string)
             if string == "elev":  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
                 implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, j+1)
             else:
@@ -1739,11 +1740,19 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
     # insert 0 on rejected sidebands, add 1 on accepted 
     jk_list[np.invert(accept_list)] = 0
     jk_list[accept_list] += 1 
+    
+    assert np.max(jk_list) <= np.sum(2 ** np.arange(len(strings) + 1))
+    
+    
     return jk_list, cutoff_list, strings
 
+def set_bit(jk_list, where, bit):
+    assert np.all(jk_list[where] & bit == 0)
+    jk_list[where] |= bit
 
 def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, n):
     
+    check_bit = 1 << n
     # Generating all possible random split keys
     import itertools
     rndstrings = ["rnd","RND","Rnd","RNd","rNd","RnD","rnD","rND",]
@@ -1769,21 +1778,25 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         odd = np.array(obsid) % 2
         odd = np.zeros((scan_data.shape[:-1]), dtype=int) + odd[:,None,None]
         odd[~accept_list] = 0
-        jk_list[:] += odd * int(2 ** n)
+        set_bit(jk_list, odd == 1, check_bit)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
     elif "rnd" in string.casefold():
         # random scan split
         seed = params.jk_rnd_split_seed
         seed += subseeds[allstrings.index(string)]
         np.random.seed(seed)
+        
         bits = np.zeros((scan_data.shape[:-1]), dtype=np.int64)
         for ifeed in range(scan_data.shape[1]):
             for isb in range(scan_data.shape[2]):
                 indices = np.arange(scan_data.shape[0], dtype=np.int64)
-                indices = indices[accept_list[:,ifeed,isb]]
+                indices = indices[accept_list[:, ifeed, isb]]
                 np.random.shuffle(indices)
                 bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
-        jk_list += bits * int(2 ** n)
+        
+        
+        
+        set_bit(jk_list, np.where(bits == 1), check_bit)
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
     elif "trtp" in string.casefold():
         # random scan split
@@ -1796,7 +1809,8 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
                 indices = indices[accept_list[:,ifeed,isb]]
                 np.random.shuffle(indices)
                 bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
-        jk_list += bits * int(2 ** n)
+        set_bit(jk_list, bits == 1, check_bit)
+        
         cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
     elif string == 'dayn':
         # day/night split
@@ -1804,33 +1818,35 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         closetonight[~accept_list] = np.nan
         closetonight += np.random.normal(0, 1e-6, closetonight.shape)
         cutoff = np.nanpercentile(closetonight, 50.0)
-        jk_list[np.where(closetonight > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(closetonight > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'half':
         # halfmission split
         mjd = extract_data_from_array(scan_data, 'mjd').copy()
         mjd[~accept_list] = np.nan
         cutoff = np.nanpercentile(mjd, 50.0, axis=0)
-        jk_list[np.where(mjd > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(mjd > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'tsys':
         # halfmission split
         tsys = extract_data_from_array(scan_data, 'tsys').copy()
         tsys[~accept_list] = np.nan 
         cutoff = np.nanpercentile(tsys, 50, axis = 0)
-        jk_list[np.where(tsys > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(tsys > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'sdlb':
         # saddlebag split
         saddlebags = extract_data_from_array(scan_data, 'saddlebag')
-        jk_list[np.where(saddlebags > 2.5)] += int(2 ** n)
+        set_bit(jk_list, np.where(saddlebags > 2.5), check_bit)
+        
         cutoff_list[n-1] = 0.0 # placeholder
     elif string == 'sidr':
         # sidereal time split 
         sid = extract_data_from_array(scan_data, 'sidereal')
         cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
-        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(sid > cutoff), check_bit)
+        
         cutoff_list[n-1] = cutoff
     elif string == 'sid1':
         # sidereal time split 
@@ -1838,7 +1854,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         sid = np.abs(sid - 160)
         cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
-        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(sid > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'sid2':
         # sidereal time split 
@@ -1846,7 +1862,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         sid = np.abs(sid - 200)
         cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
-        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(sid > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'sid3':
         # sidereal time split 
@@ -1855,18 +1871,18 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         sid = np.abs(sid - 240)
         cutoff = np.nanpercentile(sid[accept_list], 50.0, axis=0)
         # print('Sidereal time cutoff: ', cutoff)
-        jk_list[np.where(sid > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(sid > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'cesc':
         fbit = extract_data_from_array(scan_data, 'fbit')
-        jk_list[np.where(fbit == 32)] += int(2 ** n) 
+        set_bit(jk_list, np.where(fbit == 32), check_bit)
         cutoff_list[n-1] = 0.0 # placeholder'
     elif string == 'ambt':
         # ambient temperature split 
         ambt = extract_data_from_array(scan_data, 'airtemp').copy()
         ambt[~accept_list] = np.nan
         cutoff = np.nanpercentile(ambt, 50.0, axis=0)
-        jk_list[np.where(ambt > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(ambt > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'dtmp':
         # dew temperature
@@ -1874,21 +1890,21 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         dtmp = extract_data_from_array(scan_data, 'dewtemp').copy()
         dtmp[~accept_list] = np.nan
         cutoff = np.nanpercentile(dtmp, 50.0, axis=0)
-        jk_list[np.where(dtmp > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(dtmp > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'elev':
         # elevation split 
         el = extract_data_from_array(scan_data, 'el').copy()
         el[~accept_list] = np.nan
         cutoff = np.nanpercentile(el, 50.0, axis=0)
-        jk_list[np.where(el > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(el > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     elif string == 'wind':
         # windspeed split 
         wind = extract_data_from_array(scan_data, 'windspeed').copy()
         wind[~accept_list] = np.nan
         cutoff = np.nanpercentile(wind, 50.0, axis=0)
-        jk_list[np.where(wind > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(wind > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'widr':
@@ -1896,7 +1912,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         winddir = extract_data_from_array(scan_data, 'winddir').copy()
         winddir[~accept_list] = np.nan
         cutoff = np.nanpercentile(np.cos(np.radians(winddir)), 50.0, axis=0)
-        jk_list[np.where(winddir > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(winddir > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'hmty':
@@ -1904,7 +1920,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         humidity = extract_data_from_array(scan_data, 'humidity').copy()
         humidity[~accept_list] = np.nan
         cutoff = np.nanpercentile(humidity, 50.0, axis=0)
-        jk_list[np.where(humidity > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(humidity > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'pres':
@@ -1912,7 +1928,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         pressure = extract_data_from_array(scan_data, 'pressure').copy()
         pressure[~accept_list] = np.nan
         cutoff = np.nanpercentile(pressure, 50.0, axis=0)
-        jk_list[np.where(pressure > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(pressure > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'rain':
@@ -1921,7 +1937,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         rain[~accept_list] = np.nan
         rain += np.random.normal(0, 1e-6, rain.shape)
         cutoff = np.nanpercentile(rain, 50.0, axis=0)
-        jk_list[np.where(rain > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(rain > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'wthr':
@@ -1929,7 +1945,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         weather = extract_data_from_array(scan_data, 'weather').copy()
         weather[~accept_list] = np.nan
         cutoff = np.nanpercentile(weather, 50.0, axis=0)
-        jk_list[np.where(weather > cutoff)] += int(2 ** n) 
+        set_bit(jk_list, np.where(weather > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'sune':
@@ -1937,13 +1953,13 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         sunel = extract_data_from_array(scan_data, 'sun_el').copy()
         sunel[~accept_list] = np.nan
         cutoff = np.nanpercentile(sunel, 50.0, axis=0)
-        jk_list[np.where(sunel > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(sunel > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'snup':
         # sun_up split (sun elevation > -5 deg) 
         sunel = extract_data_from_array(scan_data, 'sun_el').copy()
-        jk_list[np.where(sunel > -5.0)] += int(2 ** n) 
+        set_bit(jk_list, np.where(sunel > -5.0), check_bit)
         cutoff_list[n-1] = 0.0 # placeholder
 
     elif string == 'modi':
@@ -1951,7 +1967,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         moondist = extract_data_from_array(scan_data, 'moon_dist').copy()
         moondist[~accept_list] = np.nan
         cutoff = np.nanpercentile(moondist, 50.0, axis=0)
-        jk_list[np.where(moondist > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(moondist > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'sudi':
@@ -1959,7 +1975,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         sundist = extract_data_from_array(scan_data, 'sun_dist').copy()
         sundist[~accept_list] = np.nan
         cutoff = np.nanpercentile(sundist, 50.0, axis=0)
-        jk_list[np.where(sundist > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(sundist > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'wint':
@@ -1969,7 +1985,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         days_since_mid_winter = (mjd - mid_winter) % 365                                                                                                                                                         
         close_to_winter = np.minimum(np.abs(days_since_mid_winter), np.abs(365 - days_since_mid_winter))
         cutoff = np.nanpercentile(close_to_winter, 50.0, axis=0)
-        jk_list[np.where(close_to_winter > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(close_to_winter > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'rise':
@@ -1985,28 +2001,28 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         else:
             print('Unknown field: ', fieldname, ' rising split invalid')
             cutoff = 0
-        jk_list[np.where(sid < cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(sid < cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'azmp':  ## az filter amplitude
         az_amp = extract_data_from_array(scan_data, 'az_amp').copy() 
         az_amp[~accept_list] = np.nan
         cutoff = np.nanpercentile(az_amp, 50.0, axis=0)
-        jk_list[np.where(az_amp > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(az_amp > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'fpol':  ## fknee of second polyfilter component
         fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy() 
         fknee[~accept_list] = np.nan 
         cutoff = np.nanpercentile(fknee, 50.0, axis=0)
-        jk_list[np.where(fknee > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(fknee > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'fpoO':  ## fknee of first polyfilter component
         fknee = extract_data_from_array(scan_data, 'fknee_poly0').copy()
         fknee[~accept_list] = np.nan 
         cutoff = np.nanpercentile(fknee, 50.0, axis = 0)
-        jk_list[np.where(fknee > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(fknee > cutoff), check_bit)
         
         cutoff_list[n-1] = cutoff
 
@@ -2014,35 +2030,35 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy()
         fknee[~accept_list] = np.nan 
         cutoff = np.nanpercentile(fknee, 50, axis = 0)
-        jk_list[np.where(fknee > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(fknee > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'apoO':  ## alpha of second polyfilter component
         alpha = extract_data_from_array(scan_data, 'alpha_poly0').copy()
         alpha[~accept_list] = np.nan
         cutoff = np.nanpercentile(alpha, 50.0, axis = 0)
-        jk_list[np.where(alpha > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(alpha > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'apoI':  ## alpha of first polyfilter component
         alpha = extract_data_from_array(scan_data, 'alpha_poly1').copy()
         alpha[~accept_list] = np.nan
         cutoff = np.nanpercentile(alpha, 50.0, axis = 0)
-        jk_list[np.where(alpha > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(alpha > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'spoO':  ## sigma of second polyfilter component
         sigma = extract_data_from_array(scan_data, 'sigma_poly0').copy()
         sigma[~accept_list] = np.nan
         cutoff = np.nanpercentile(sigma, 50.0, axis = 0)
-        jk_list[np.where(sigma > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(sigma > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
     
     elif string == 'spoI':  ## sigma of first polyfilter component
         sigma = extract_data_from_array(scan_data, 'sigma_poly1').copy()
         sigma[~accept_list] = np.nan
         cutoff = np.nanpercentile(sigma, 50.0, axis = 0)
-        jk_list[np.where(sigma > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(sigma > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'npca':
@@ -2052,36 +2068,37 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         npca_both[~accept_list] = np.nan
         npca_both += np.random.normal(0, 1e-4, npca_both.shape[0])[:, None, None]
         cutoff = np.nanpercentile(npca_both, 50.0, axis = 0)
+        set_bit(jk_list, np.where(npca_both > cutoff), check_bit)
 
-        jk_list[np.where(npca_both > cutoff)] += int(2 ** n)
         cutoff_list[n-1] = cutoff
 
     elif string == 'pcaa':
         pca_ampl_sum = extract_data_from_array(scan_data, 'pcsm').copy()
         pca_ampl_sum[~accept_list] = np.nan
         cutoff = np.nanpercentile(pca_ampl_sum, 50.0, axis = 0)
-        jk_list[np.where(pca_ampl_sum > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(pca_ampl_sum > cutoff), check_bit)
+        
         cutoff_list[n-1] = cutoff
 
     elif string == 's01f':
         sigma0_1f = extract_data_from_array(scan_data, 'sigma_mean').copy()
         sigma0_1f[~accept_list] = np.nan
         cutoff = np.nanpercentile(sigma0_1f, 50.0, axis = 0)
-        jk_list[np.where(sigma0_1f > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(sigma0_1f > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'fk1f':
         fknee_1f = extract_data_from_array(scan_data, 'fknee_mean').copy()
         fknee_1f[~accept_list] = np.nan
         cutoff = np.nanpercentile(fknee_1f, 50.0, axis = 0)
-        jk_list[np.where(fknee_1f > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(fknee_1f > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'al1f':
         alpha_1f = extract_data_from_array(scan_data, 'alpha_mean').copy()
         alpha_1f[~accept_list] = np.nan
         cutoff = np.nanpercentile(alpha_1f, 50.0, axis = 0)
-        jk_list[np.where(alpha_1f > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(alpha_1f > cutoff), check_bit)
         cutoff_list[n-1] = cutoff
 
     elif string == 'obhf':
@@ -2091,7 +2108,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         scanid_recast[~accept_list] = np.nan
         scanid_recast += np.random.normal(0, 1e-6, scanid_recast.shape)
         cutoff = np.nanpercentile(scanid_recast, 50.0, axis=0)
-        jk_list[np.where(scanid_recast > cutoff)] += int(2 ** n)
+        set_bit(jk_list, np.where(scanid_recast > cutoff), check_bit)        
         cutoff_list[n-1] = cutoff
 
         ######## Here you can add new jack-knives  ############
