@@ -140,6 +140,7 @@ class Mapmaker:
                     self.scandata[key] = value[()]
 
         split_data_path = os.path.join(self.accept_dir, split_data_path)
+        print(split_data_path)
 
         with h5py.File(split_data_path, "r") as splitfile:
             self.splitdata = {}
@@ -216,6 +217,9 @@ class Mapmaker:
                 print(f"Perform primary splits: {primary_splits}")
                 print(f"For each primary split perform splits: {secondary_splits}")
 
+            # Split bitflag should never exceed possible number of bits!
+            assert np.max(split_list) <= np.sum(2 ** np.arange(Nsplits + 1))
+            
             for i, number in enumerate(unique_numbers):
                 # Convert number to bits
                 bit_num = f"{number:0{Nsplits+1}b}"
@@ -321,7 +325,7 @@ class Mapmaker:
 
             # Removing dollar signs
             self.primary_splits = primary_splits
-        
+
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -337,8 +341,8 @@ class Mapmaker:
                 print(f"Map {full_map_name} already exists. Please delete or rename existing map to make new one.")
             sys.exit() 
 
-        if self.params.distributed_starting and self.rank > 0:
-            time.sleep(60 * self.rank)
+        # if self.params.distributed_starting and self.rank > 0:
+        #     time.sleep(60 * self.rank)
 
         # Define and initialize empty map object to acumulate data
         full_map = COmap(full_map_name)
@@ -515,15 +519,16 @@ class Mapmaker:
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
                     save_fits=(self.params.fits),
-                    save_gif = self.params.t2m_save_gif,
                 )
             else:
                 full_map.write_map(
                     params=self.params,
                     save_hdf5=(not self.params.no_hdf5),
                     save_fits=(self.params.fits),
-                    save_gif = self.params.t2m_save_gif,
                 )
+            if self.params.t2m_save_gif:
+                full_map.animate_map()
+                
             finish_time = time.perf_counter()
 
             # Check if last l2data object contained simualtion and assume all did and make map of cube data only:
@@ -1335,14 +1340,14 @@ class Mapmaker:
             mapdata.write_map(
                 primary_splits=self.primary_splits, 
                 params=self.params, 
-                save_gif = self.params.t2m_save_gif,
             )
         else:
             mapdata.write_map(
                 params=self.params,
-                save_gif = self.params.t2m_save_gif,
             )
 
+        if self.params.t2m_save_gif:
+            mapdata.animate_map()
 
 def main():
     if "OMP_NUM_THREADS" in os.environ:
