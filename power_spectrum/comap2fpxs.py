@@ -151,9 +151,10 @@ class COMAP2FPXS():
         self.field_combinations = field_combinations        
 
         # Generate tuple of (field/map filename, split map key, feed combination) to use for computing FPXS 
-        if self.params.psx_only_feed_splits:
+        if self.params.psx_only_feed_splits:            
             self.split_map_combinations = [(None, None)]
         all_combinations = list(itertools.product(self.field_combinations, self.split_map_combinations, self.feed_combinations))
+        
         
         Number_of_combinations = len(all_combinations)
         
@@ -179,10 +180,11 @@ class COMAP2FPXS():
             
         
         if self.params.psx_rnd_run:
-            
             all_spectra = np.zeros(
                 (       
                 len(self.primary_variables),
+                2, 
+                2,
                 len(self.included_feeds), 
                 len(self.included_feeds), 
                 self.params.psx_number_of_k_bins, 
@@ -192,6 +194,8 @@ class COMAP2FPXS():
             all_overlap = np.zeros(
                 (   
                 len(self.primary_variables),
+                2, 
+                2,
                 len(self.included_feeds), 
                 len(self.included_feeds), 
                 )
@@ -221,7 +225,24 @@ class COMAP2FPXS():
                 map1, map2 = mapnames
                 split1, split2 = splits
                 feed1, feed2 = feeds
-
+                
+                current_primary_split = split1[0].split("/")[-1].split("map_")[-1][:4]
+                
+                if self.params.psx_rnd_run:
+                    split_idx = np.where(np.array(self.primary_variables) == current_primary_split)[0]
+                
+                if self.params.psx_null_diffmap or self.params.psx_rnd_run:
+                    cross_var1 = int(split1[0].split("/")[-1][-1])
+                    cross_var2 = int(split2[0].split("/")[-1][-1])
+                else:
+                    cross_var1 = int(split1.split("/")[-1][-1])
+                    cross_var2 = int(split2.split("/")[-1][-1])
+                    
+                if cross_var1 == cross_var2 and feed2 < feed1:
+                    # print(split1, split2)
+                    # print("Skipping:", cross_var1, cross_var2, feed2, feed1)
+                    continue
+                
                 # Construnct full map file paths
                 mappaths = [
                     os.path.join(self.params.map_dir, map1),
@@ -276,6 +297,11 @@ class COMAP2FPXS():
                 
                 # Skip loop iteration if cross-spectrum of current combination already exists
                 if os.path.exists(os.path.join(self.params.power_spectrum_dir, spectrum_subdir, outdir, cross_spectrum.outname)):
+                    if self.params.psx_rnd_run:
+                        inname = os.path.join(self.params.power_spectrum_dir, spectrum_subdir, outdir, cross_spectrum.outname)
+                        cross_spectrum.read_and_append_attribute(["xs_2D", "weighted_overlap"], None, inname)                        
+                        all_spectra[split_idx, cross_var1, cross_var2, feed1 - 1, feed2 - 1, ...] = cross_spectrum.xs_2D
+                        all_overlap[split_idx, cross_var1, cross_var2, feed1 - 1, feed2 - 1] = cross_spectrum.weighted_overlap
                     continue
                 else:
                     # Read maps from generated map paths, and provide cosmology to translate from
@@ -288,16 +314,16 @@ class COMAP2FPXS():
                     except KeyError:                         
                         print(f"\033[95m Map for {feed1}x{feed2} {splits} not found. Moving to next map cross!\033[00m")
                         continue
-                        
+                    
                     # Compute cross-spectrum for current FPXS combination
                     cross_spectrum.calculate_xs_2d(
                         no_of_k_bins=self.params.psx_number_of_k_bins + 1,
                     )
                     
                     if np.all(cross_spectrum.xs == 0):
-                        print(self.rank, "All XS 2D zero:", mapnames, splits, feeds)
+                        print(self.rank, "\033[95m WARNING: All XS 2D zero:\033[00m", mapnames, splits, feeds)
                     if np.any(cross_spectrum.xs == 0):
-                        print(self.rank, "Any XS 2D zero:", mapnames, splits, feeds)
+                        print(self.rank, "\033[95m WARNING: Any XS 2D zero:\033[00m", mapnames, splits, feeds)
 
                     if not self.params.psx_generate_white_noise_sim:
                         # Run noise simulations to generate FPXS errorbar
@@ -329,10 +355,8 @@ class COMAP2FPXS():
                         cross_spectrum.weighted_overlap = np.nanmean(cross_spectrum.weighted_overlap[cross_spectrum.weighted_overlap != 0])
                         
                         if self.params.psx_rnd_run:
-                            current_primary_split = split1[0].split("/")[-1].split("map_")[-1][:4]
-                            split_idx = np.where(np.array(self.primary_variables) == current_primary_split)[0]
-                            all_spectra[split_idx, feed1 - 1, feed2 - 1, ...] = cross_spectrum.xs
-                            all_overlap[split_idx, feed1 - 1, feed2 - 1] = cross_spectrum.weighted_overlap 
+                            all_spectra[split_idx, cross_var1, cross_var2, feed1 - 1, feed2 - 1, ...] = cross_spectrum.xs
+                            all_overlap[split_idx, cross_var1, cross_var2, feed1 - 1, feed2 - 1] = cross_spectrum.weighted_overlap 
                         
                         elif not self.params.psx_rnd_run and self.params.psx_noise_sim_number > 0:
                             cross_spectrum.run_noise_sims_2d(
@@ -357,6 +381,7 @@ class COMAP2FPXS():
             # Compute average FPXS and finished data product plots
             print("\nComputing averages:")
             self.compute_averages()
+            self.grid_combo_plot()
         
         elif self.params.psx_rnd_run:
             all_spectra_buffer = np.zeros_like(all_spectra)
@@ -391,7 +416,7 @@ class COMAP2FPXS():
                     with h5py.File(rndfile, "w") as outfile:
                         outfile["all_spectra"] = all_spectra
                         outfile["all_overlap"] = all_overlap
-    
+        
     
     def compute_averages(self):
         
@@ -432,7 +457,7 @@ class COMAP2FPXS():
                     os.mkdir(os.path.join(fig_dir, "null_pte"))
         
         N_feed = len(self.included_feeds)
-        N_splits = len(self.split_map_combinations)
+        N_splits = len(self.split_map_combinations) // 3
         N_k = self.params.psx_number_of_k_bins
 
         if self.params.psx_noise_sim_number <= 0 and len(self.params.psx_rnd_file_list) == 0:
@@ -452,7 +477,7 @@ class COMAP2FPXS():
                 with h5py.File(rndfile, "r") as infile:
                     rnd_spectra = infile["all_spectra"][()] 
                     rnd_overlap = infile["all_overlap"][()] 
-                    print(np.any(rnd_spectra == 0), *np.where(rnd_spectra == 0), np.unique(np.where(rnd_spectra == 0)[1]), np.sum(rnd_spectra == 0) / rnd_spectra.size * 100, rnd_spectra.shape)
+                    print(np.any(rnd_spectra == 0), *np.where(rnd_spectra == 0), np.unique(np.where(rnd_spectra == 0)[1]), (np.sum(rnd_spectra == 0)) / rnd_spectra.size * 100, rnd_spectra.shape)
                 if num_rnd == 0:
                     all_rnd_spectra = rnd_spectra
                     all_rnd_overlap = rnd_overlap
@@ -465,9 +490,9 @@ class COMAP2FPXS():
             
             if np.all(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
                 raise ValueError("All loaded RND spectra are either zero or infinite/NaN!")
-            if np.any(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
-                print("hei", np.sum(all_rnd_spectra == 0), all_rnd_spectra.size, np.any(all_rnd_spectra == 0), np.any(~np.isfinite(all_rnd_spectra)))
-                # for s in range(len(all_rnd_spectra.shape)):
+            # if np.any(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
+            #     print(np.sum(all_rnd_spectra == 0), all_rnd_spectra.size, np.any(all_rnd_spectra == 0), np.any(~np.isfinite(all_rnd_spectra)))
+            #     # for s in range(len(all_rnd_spectra.shape)):
                 #     print(np.sum(np.all(all_rnd_spectra == 0, axis = s)), all_rnd_spectra.shape, all_rnd_spectra.shape[s])
                 # raise ValueError("Some loaded RND spectra are either zero or infinite/NaN!")
             
@@ -475,12 +500,12 @@ class COMAP2FPXS():
             ### all in one ###
             # all_rnd_std = np.nanstd(all_rnd_spectra, axis = 0, ddof = 1)
             
-            all_rnd_overlap = np.nanmedian(all_rnd_overlap, axis = 0)
+            all_rnd_spectra[all_rnd_spectra == 0] = np.nan
             
             ### 60-120 ###
             all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
             all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 4:]
-                        
+
             ### 90-90 ###
             # all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 2], axis = 0, ddof = 1)
             # all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 2:]
@@ -570,15 +595,31 @@ class COMAP2FPXS():
                     loaded_names = infile["cross_variable_names"][()].astype(str)
                     loaded_chi2_grid = infile["chi2_grid"][()]
                     
+            split_counter = 0
+            # for i, splits in enumerate(self.split_map_combinations):
+            for i in range(N_splits):
+                splits = self.split_map_combinations[split_counter]
+                split_counter += 3
 
-            for i, splits in enumerate(self.split_map_combinations):
                 if not self.params.psx_null_diffmap:
-                    cross_variable = splits[0].split("/")[1]
+                    cross_variable1 = int(splits[0].split("/")[-1][-1])
+                    cross_variable2 = int(splits[1].split("/")[-1][-1])
+                else:
+                    cross_variable1 = int(splits[0][0].split("/")[-1][-1])
+                    cross_variable2 = int(splits[1][0].split("/")[-1][-1])
+                    
+                if cross_variable1 == cross_variable2:
+                    # Exclude auto-cross variable combos
+                    continue
+                
+                
+                if not self.params.psx_null_diffmap:
+                    cross_variable = splits[0].split("/")[1]                    
                     cross_variable_names.append(cross_variable)
                 else:
                     cross_variable = splits[0][0].split("/")[-1]
                     cross_variable = cross_variable[-5:-1]
-
+                
                 if self.params.psx_use_full_wn_covariance:
                     xs_sum = np.zeros(N_k ** 2)
                     xs_inv_cov = np.zeros((N_k ** 2, N_k ** 2))
@@ -613,8 +654,8 @@ class COMAP2FPXS():
                         cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap", "dx", "dy", "dz"], indir)
                         
                         if len(self.params.psx_rnd_file_list) > 0:
-                            xs_wn = all_rnd_spectra[:, feed1, feed2, ...]
-                            xs_sigma = all_rnd_std[feed1, feed2, ...]
+                            xs_wn = all_rnd_spectra[:, cross_variable1, cross_variable2, feed1, feed2, ...]
+                            xs_sigma = all_rnd_std[cross_variable1, cross_variable2, feed1, feed2, ...]
                         else:
                             xs_wn = cross_spectrum.white_noise_simulation
                             xs_sigma = cross_spectrum.rms_xs_std_2D
@@ -697,7 +738,8 @@ class COMAP2FPXS():
                         
                         if self.params.psx_null_diffmap:
                             # If null test is run the same chi2 as in data run must be used!
-                            current_cross_variable, = np.where(loaded_names == cross_variable)[0]
+                            # print("hallo", np.where(loaded_names == cross_variable,)[0], loaded_names, cross_variable)
+                            current_cross_variable = np.where(loaded_names == cross_variable)[0][0]
                             accept_chi2 = np.abs(loaded_chi2_grid[current_cross_variable, feed1, feed2]) < self.params.psx_chi2_cut_limit
                             # accept_chi2 = np.abs(chi2[feed1, feed2]) < self.params.psx_chi2_cut_limit
                         else:
@@ -963,7 +1005,7 @@ class COMAP2FPXS():
                         loaded_chi2_grids[i, ...] = loaded_chi2_grid[current_cross_variable, ...]
 
                     self.plot_chi2_grid(chi2, np.logical_and(accepted_chi2, mean_weighted_overlaps > self.params.psx_overlap_limit), splits, chi2_name)
-                    self.plot_overlap_stats(mean_weighted_overlaps / all_rnd_overlap, mean_weighted_overlaps, np.logical_and(accepted_chi2, mean_weighted_overlaps > self.params.psx_overlap_limit), splits, chi2_name)
+                    self.plot_overlap_stats(mean_weighted_overlaps / all_rnd_overlap[cross_variable1, cross_variable2], mean_weighted_overlaps, np.logical_and(accepted_chi2, mean_weighted_overlaps > self.params.psx_overlap_limit), splits, chi2_name)
                     
                     if self.params.psx_mode == "saddlebag":
                         average_name = os.path.join(fig_dir, "average_spectra_saddlebag")
@@ -1033,17 +1075,17 @@ class COMAP2FPXS():
                     average_name,
                 )
 
-                self.plot_feed_grid(
-                    k_bin_edges_par,
-                    k_bin_edges_perp,
-                    k_bin_centers_par,
-                    k_bin_centers_perp,
-                    xs_all[i, ...] / transfer_function,
-                    xs_error_all[i, ...] / transfer_function,
-                    transfer_function_mask,
-                    splits,
-                    average_name,
-                )
+                # self.plot_feed_grid(
+                #     k_bin_edges_par,
+                #     k_bin_edges_perp,
+                #     k_bin_centers_par,
+                #     k_bin_centers_perp,
+                #     xs_all[i, ...] / transfer_function,
+                #     xs_error_all[i, ...] / transfer_function,
+                #     transfer_function_mask,
+                #     splits,
+                #     average_name,
+                # )
                 
                 if self.params.psx_null_diffmap:
                     plot_chi2 = loaded_chi2_grid[current_cross_variable, ...]                
@@ -1171,6 +1213,273 @@ class COMAP2FPXS():
                     else:
                         outfile[f"params/{key}"] = getattr(self.params, key)
     
+    def grid_combo_plot(self):
+        
+        beam_tf = self.beam_transfer_function() 
+        
+        if self.params.psx_mode == "saddlebag":
+            average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra_saddlebag")
+        else:
+            average_spectrum_dir = os.path.join(self.power_spectrum_dir, "average_spectra")
+
+        fig_dir = os.path.join(self.power_spectrum_dir, "figs")
+
+        if not os.path.exists(average_spectrum_dir):
+            os.mkdir(average_spectrum_dir)
+    
+        # fig_dir = os.path.join(fig_dir, self.params.psx_subdir)
+        if not os.path.exists(fig_dir):
+            os.mkdir(fig_dir)
+
+        if self.params.psx_mode == "saddlebag":
+            if not os.path.exists(os.path.join(fig_dir, "chi2_grid_saddlebag")):
+                os.mkdir(os.path.join(fig_dir, "chi2_grid_saddlebag"))
+
+            if not os.path.exists(os.path.join(fig_dir, "average_spectra_saddlebag")):
+                os.mkdir(os.path.join(fig_dir, "average_spectra_saddlebag"))
+            if self.params.psx_null_diffmap:
+                if not os.path.exists(os.path.join(fig_dir, "null_pte_saddlebag")):
+                    os.mkdir(os.path.join(fig_dir, "null_pte_saddlebag"))
+        else:
+            if not os.path.exists(os.path.join(fig_dir, "chi2_grid")):
+                os.mkdir(os.path.join(fig_dir, "chi2_grid"))
+
+            if not os.path.exists(os.path.join(fig_dir, "average_spectra")):
+                os.mkdir(os.path.join(fig_dir, "average_spectra"))
+                
+            if self.params.psx_null_diffmap:
+                if not os.path.exists(os.path.join(fig_dir, "null_pte")):
+                    os.mkdir(os.path.join(fig_dir, "null_pte"))
+        
+        N_feed = len(self.included_feeds)
+        N_splits = len(self.split_map_combinations) // 3
+        N_k = self.params.psx_number_of_k_bins
+
+        if self.params.psx_noise_sim_number <= 0 and len(self.params.psx_rnd_file_list) == 0:
+            raise ValueError("Cannot compute average power spectrum without noise simulations or an RND ensemble.")
+        elif len(self.params.psx_rnd_file_list) > 0:
+            import glob
+            rndsubdir = "rnd_split_files"
+            if self.params.psx_mode == "saddlebag":
+                rndsubdir += "_saddlebag"
+            rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
+            
+            for num_rnd, rndfile_name in enumerate(self.params.psx_rnd_file_list):
+                rndfile = os.path.join(rndpath, f"{self.params.fields[0]}_{rndfile_name}")
+                print("Loading RND-file from: ", rndfile)
+                rndfile = glob.glob(os.path.join(rndfile, f"*.h5"))[0]
+                
+                with h5py.File(rndfile, "r") as infile:
+                    rnd_spectra = infile["all_spectra"][()] 
+                    rnd_overlap = infile["all_overlap"][()] 
+                    print(np.any(rnd_spectra == 0), *np.where(rnd_spectra == 0), np.unique(np.where(rnd_spectra == 0)[1]), (np.sum(rnd_spectra == 0)) / rnd_spectra.size * 100, rnd_spectra.shape)
+                if num_rnd == 0:
+                    all_rnd_spectra = rnd_spectra
+                    all_rnd_overlap = rnd_overlap
+                else:
+                    all_rnd_spectra = np.concatenate((all_rnd_spectra, rnd_spectra), axis = 0)
+                    all_rnd_overlap = np.concatenate((all_rnd_overlap, rnd_overlap), axis = 0)
+            
+                
+            all_rnd_overlap = np.nanmedian(all_rnd_overlap, axis = 0)
+            
+            if np.all(all_rnd_spectra == 0) or np.any(~np.isfinite(all_rnd_spectra)):
+                raise ValueError("All loaded RND spectra are either zero or infinite/NaN!")
+            if np.any(~np.isfinite(all_rnd_spectra)):
+                raise ValueError("All loaded RND spectra contain infinite/NaN!")
+                
+            all_rnd_spectra[all_rnd_spectra == 0] = np.nan
+            
+            ### 60-120 ###
+            all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
+            all_rnd_mean = np.nanmean(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0)
+            all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 4:]
+            
+            self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
+            
+        
+        for map1, map2 in self.field_combinations:
+            # Generate name of outpute data directory
+            mapname1 = map1.split("/")[-1]
+            mapname2 = map2.split("/")[-1]
+            
+            if self.params.psx_null_cross_field:
+                indir = f"{mapname1[:-3]}_X_{mapname2[:-3]}"
+            else:
+                indir = f"{mapname1[:-3]}"
+            
+            outdir = os.path.join(average_spectrum_dir, indir)
+            if self.params.psx_generate_white_noise_sim:
+                #outdir_data = f"{outdir}"
+                outdir = f"{outdir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+                        
+            if self.params.psx_generate_white_noise_sim:
+                #indir_data = f"{indir}"
+                indir = f"{indir}/white_noise_seed{self.params.psx_white_noise_sim_seed}"
+
+            if not os.path.exists(outdir):
+                os.mkdir(outdir)
+
+            xs_all = np.zeros((N_splits, 2, N_feed, 2, N_feed, N_k, N_k))
+            xs_error_all = np.zeros((N_splits, 2, N_feed, 2, N_feed, N_k, N_k))
+
+            cross_variable_names = [] 
+
+            
+            # if self.params.psx_null_diffmap:
+            #     if self.params.psx_mode == "saddlebag":
+            #         self.params.psx_chi2_import_path = re.sub(r"average_spectra", "average_spectra_saddlebag", self.params.psx_chi2_import_path)
+
+            #     self.params.psx_chi2_import_path = re.sub(r"co\d_", f"{self.params.fields[0]}_", self.params.psx_chi2_import_path)
+            #     if len(self.params.psx_chi2_import_path) <= 0 or not os.path.exists(self.params.psx_chi2_import_path):
+            #         raise ValueError("No chi2 import file provided to perform null test chi2 cuts!")
+                    
+            split_counter = 0
+            # for i, splits in enumerate(self.split_map_combinations):
+            for i in range(N_splits):
+                splits = self.split_map_combinations[split_counter]
+                split_counter += 3
+
+                for cross_variable1, cross_variable2 in [[0, 1], [0, 0], [1, 1]]:
+
+                    if not self.params.psx_null_diffmap:
+                        cross_variable = splits[0].split("/")[1]                    
+                        cross_variable_names.append(cross_variable)
+                        splits = list(splits)
+                        splits = tuple([re.sub(rf"{cross_variable}\d", rf"{cross_variable}{cross_variable1}", splits[s]) for s in range(2)])
+                        splits = (
+                            re.sub(rf"{cross_variable}\d", rf"{cross_variable}{cross_variable1}", splits[0]), 
+                            re.sub(rf"{cross_variable}\d", rf"{cross_variable}{cross_variable2}", splits[1])
+                            )
+                        splits = tuple(splits)
+                        
+                    else:
+                        cross_variable = splits[0][0].split("/")[-1]
+                        cross_variable = cross_variable[-5:-1]
+                        splits = list(splits)
+                        splits[0] = tuple([re.sub(rf"{cross_variable}\d", rf"{cross_variable}{cross_variable1}", splits[0][s]) for s in range(2)])
+                        splits[1] = tuple([re.sub(rf"{cross_variable}\d", rf"{cross_variable}{cross_variable2}", splits[0][s]) for s in range(2)])
+                        splits = tuple(splits)
+
+                    for feed1 in range(N_feed):
+                        for feed2 in range(N_feed):
+                            if cross_variable2 < cross_variable1:
+                                continue
+                            elif cross_variable2 == cross_variable1 and feed2 < feed1:
+                                continue
+
+                            cross_spectrum = xs_class.CrossSpectrum_nmaps(
+                                self.params, 
+                                splits, 
+                                self.included_feeds[feed1], 
+                                self.included_feeds[feed2],
+                            )   
+
+                            try:
+                                cross_spectrum.read_spectrum(indir)
+                            except (FileNotFoundError, KeyError):
+                                print(f"\033[95m WARNING: Split {splits[0]} or {splits[1]} not found in map file. Skipping split in averaging.\033[00m")
+                                continue            
+                            
+                            cross_spectrum.read_and_append_attribute(["white_noise_simulation", "IoU", "weighted_overlap", "dx", "dy", "dz"], indir)
+                            
+                            if len(self.params.psx_rnd_file_list) > 0:
+                                xs_wn = all_rnd_spectra[:, cross_variable1, cross_variable2, feed1, feed2, ...]
+                                xs_sigma = all_rnd_std[cross_variable1, cross_variable2, feed1, feed2, ...]
+                            else:
+                                xs_wn = cross_spectrum.white_noise_simulation
+                                xs_sigma = cross_spectrum.rms_xs_std_2D
+                                # Applying white noise transfer function
+                                transfer_function_wn = self.transfer_function_wn_interp(k_bin_centers_perp, k_bin_centers_par)
+                                
+                                xs_sigma *= transfer_function_wn 
+                                xs_wn *= transfer_function_wn[None, ...]
+                            
+                            xs = cross_spectrum.xs_2D
+
+                            if cross_variable1 == cross_variable2 and feed1 == feed2:
+                                xs -= all_rnd_mean[cross_variable1, cross_variable2, feed1, feed2, ...]
+                            
+                            xs_all[i, cross_variable1, feed1, cross_variable2, feed2, ...] = xs
+                            xs_error_all[i, cross_variable1, feed1, cross_variable2, feed2, ...] = xs_sigma
+                            
+                            k_bin_centers_perp, k_bin_centers_par  = cross_spectrum.k
+                            
+                            k_bin_edges_par = cross_spectrum.k_bin_edges_par
+                            
+                            k_bin_edges_perp = cross_spectrum.k_bin_edges_perp
+                
+                # Filter transfer function
+                transfer_function = np.abs(self.full_transfer_function_interp(k_bin_centers_perp, k_bin_centers_par))
+                
+                # Beam and voxel window transfer functions
+                px_window = self.pix_window(k_bin_centers_perp, cross_spectrum.dx)
+                freq_window = self.pix_window(k_bin_centers_par, cross_spectrum.dz)
+                transfer_function *= beam_tf(k_bin_centers_perp)[:, None] * px_window[:, None] 
+                transfer_function *= freq_window[None, :] 
+                        
+                self.angle2Mpc = cross_spectrum.angle2Mpc * u.Mpc / u.arcmin
+
+                self.map_dx = cross_spectrum.dx
+                self.map_dy = cross_spectrum.dy
+                self.map_dz = cross_spectrum.dz
+
+                if not self.params.psx_generate_white_noise_sim:
+
+                    if self.params.psx_mode == "saddlebag":
+                        average_name = os.path.join(fig_dir, "average_spectra_saddlebag")
+                    else:
+                        average_name = os.path.join(fig_dir, "average_spectra")
+                    
+                    average_name = os.path.join(average_name, indir)
+                    
+
+                    average_name = average_name + f"_{self.params.psx_plot_name_suffix}"
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+
+                    if self.params.psx_null_diffmap:
+                        average_name = os.path.join(average_name, "null_diffmap")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+
+                        average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                    
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                else:
+                    if self.params.psx_mode == "saddlebag":
+                        average_name = os.path.join(fig_dir, "average_spectra_saddlebag")
+                    else:
+                        average_name = os.path.join(fig_dir, "average_spectra")
+
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+                    average_name = os.path.join(average_name, indir)
+                    if not os.path.exists(average_name):
+                        os.mkdir(average_name)
+
+                    if self.params.psx_null_diffmap:
+                        average_name = os.path.join(average_name, "null_diffmap")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+
+                        average_name = os.path.join(average_name, f"{cross_spectrum.null_variable}")
+                        if not os.path.exists(average_name):
+                            os.mkdir(average_name)
+            
+                self.plot_feed_grid_all(
+                    k_bin_edges_par,
+                    k_bin_edges_perp,
+                    k_bin_centers_par,
+                    k_bin_centers_perp,
+                    xs_all[i, ...] / transfer_function,
+                    xs_error_all[i, ...] / transfer_function,
+                    splits,
+                    average_name,
+                )
+                    
+    
     def tabulate_null_PTEs(self, 
                     PTE_numeric_1d: npt.NDArray,
                     PTE_numeric_2d: npt.NDArray,
@@ -1206,7 +1515,9 @@ class COMAP2FPXS():
             outname,
             f"null_pte",
         )
-                     
+        
+        print("hei pte", PTE_numeric_1d.shape, PTE_numeric_1d.shape)
+        
         table = Table(
             [
                 null_names,
@@ -1306,12 +1617,9 @@ class COMAP2FPXS():
         with open(html_name, mode = "w") as outfile:
             outfile.write(html_base)
         
-        print("hei", html_name)
-        
         www_tsih3_path = "/mn/stornext/d16/www_cmb/comap/power_spectrum"
         move_to = os.path.join(www_tsih3_path, html_name.split(os.path.join(self.power_spectrum_dir, "figs/"))[-1])
         move_to_dir = os.path.dirname(move_to) 
-        print("hei", move_to_dir)
 
         if not os.path.exists(move_to_dir):
             os.makedirs(move_to_dir, exist_ok = True)
@@ -1348,6 +1656,218 @@ class COMAP2FPXS():
         #plt.figlegend(lns[4:-1], labs[4:-1], loc = 'lower center', ncol=2, fontsize = 14, bbox_to_anchor = (0.51, 0.365), bbox_transform = fig.transFigure, frameon = False)
         fig.savefig(f"{outname}_histogram.pdf", facecolor = "white", bbox_inches = "tight")
 
+    def plot_feed_grid_all(self,
+                    k_bin_edges_par: npt.NDArray,
+                    k_bin_edges_perp: npt.NDArray,
+                    k_bin_centers_par: npt.NDArray,
+                    k_bin_centers_perp: npt.NDArray,
+                    xs: npt.NDArray,
+                    xs_sigma: npt.NDArray,
+                    splits: Sequence[str],
+                    outname: str,
+                    ):
+        
+        
+        if self.params.psx_null_diffmap:
+            try:
+                split1 = splits[0][0].split("map_")[-1][5:]
+                split2 = splits[1][0].split("map_")[-1][5:]
+            except:
+                split1 = ""
+                split2 = ""
+        else:
+            try:
+                split1 = splits[0].split("map_")[-1]
+                split2 = splits[1].split("map_")[-1]
+            except:
+                split1 = ""
+                split2 = ""
+
+        outname = os.path.join(
+            outname, 
+            self.params.psx_subdir,
+            f"xs_full_grid_2d_{split1[:-1]}_X_{split2[:-1]}.png"
+        )
+
+        if not os.path.exists(os.path.dirname(outname)):
+            os.makedirs(os.path.dirname(outname), exist_ok = True)
+            
+        N_feed = len(self.included_feeds)
+        
+        _, N_feed, _, N_feed, N_kx, N_ky = xs.shape
+        
+        xs = xs.reshape(2 * N_feed, 2 * N_feed, N_kx, N_ky)
+        xs = xs.transpose(1, 0, 2, 3)
+        
+        xs_sigma = xs_sigma.reshape(2 * N_feed, 2 * N_feed, N_kx, N_ky)
+        xs_sigma = xs_sigma.transpose(1, 0, 2, 3)
+        
+        
+        auto_feeds = []
+        c = 0
+        for k in range(2):
+            for i in range(N_feed):
+                for l in range(2):        
+                    for j in range(N_feed):
+                        if (i == j and k != l) and k>l: 
+                            auto_feeds.append(c)
+                        c += 1        
+        
+        fig = plt.figure(figsize = (16, 15))
+        gs = GridSpec(N_feed * 2, N_feed * 2, figure=fig, wspace = 0.08, hspace = 0.08)
+        # gs_significance = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.00, hspace = 0.00)
+        # gs_sigma = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.00, hspace = 0.00)
+        axes = []
+
+        norm_significance = matplotlib.colors.Normalize(vmin=-3, vmax=3)
+        norm_significance2 = matplotlib.colors.Normalize(vmin=-8, vmax=8)
+        
+        
+        pbar1 = tqdm.tqdm(
+                total = N_feed * 2, 
+                colour = "green", 
+                ncols = 80,
+                desc = f"Total",
+                position = 0,
+            )
+        pbar2 = tqdm.tqdm(
+                total = N_feed * 2, 
+                colour = "blue", 
+                ncols = 80,
+                desc = f"Total",
+                position = 1,
+                # leave = False,
+            )
+        
+
+        axes = []
+        axes_auto = []
+        axes_cross = []
+        imgs = []
+        
+        X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)                    
+
+        for i in range(N_feed * 2):
+            pbar2.reset()
+            for j in range(N_feed * 2):
+                
+                if i >= j:
+                    ax = fig.add_subplot(gs[i, j])
+                    X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)
+                    
+                    # print(i, j, (xs / xs_sigma)[i, j])
+                    if i != j:
+                        axes_cross.append(ax)
+                        norm = norm_significance
+                        cmap = "RdBu_r"
+                    else:
+                        axes_auto.append(ax)
+                        norm = norm_significance2
+                        cmap = "PiYG"
+                        
+                    if (i >= N_feed and j < N_feed) and (i * (2 * N_feed) + j not in auto_feeds):
+                        ax.spines[:].set_color("lime")
+                        ax.spines[:].set_linewidth(2)
+                    if i * (2 * N_feed) + j in auto_feeds:
+                        ax.spines[:].set_color("gold")
+                        ax.spines[:].set_linewidth(2)
+                    elif i == j:
+                        ax.spines[:].set_color("red")
+                        ax.spines[:].set_linewidth(2)
+                        
+                    img = ax.pcolormesh(
+                        X_perp, 
+                        X_par,
+                        (xs / xs_sigma)[i, j].T,
+                        #transfer_function.T,
+                        cmap=cmap,
+                        norm = norm,
+                        zorder = 1,
+                        rasterized = True,
+                    )
+                    imgs.append(img)
+                    ax.set_yscale("log")
+                    ax.set_xscale("log")
+
+                    ticks = [0.03, 0.1, 0.3, 1]
+                    ticklabels = ["0.03", "0.1", "0.3", "1"]
+
+                    ylabels = ticklabels
+                    xlabels = ticklabels
+                    
+                    
+                    if j > 0:
+                        ylabels = []
+                    else:
+                        ax.set_ylabel(f"Feed {i % N_feed + 1}")
+                    
+                    if i < (N_feed * 2) - 1:
+                        xlabels = []
+                    else:
+                        ax.set_xlabel(f"Feed {j % N_feed + 1}", rotation = 90)
+
+                    ax.set_xticks(ticks)
+                    ax.set_xticklabels(xlabels, fontsize = 10, rotation = 90)
+                    ax.set_yticks(ticks)
+                    ax.set_yticklabels(ylabels, fontsize = 10)
+
+                    ax.set_ylim(k_bin_edges_par[0], k_bin_edges_par[-1])
+                    ax.set_xlim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
+
+                    axes.append(ax)
+                else:
+                    continue
+                
+                pbar2.update(1)
+            pbar1.update(1)
+
+        pbar1.close()
+        pbar2.close()
+
+        fig.text(0.05, 0.65, f"Feeds, low {split1[:-1]}", fontsize = 15, rotation = 90, transform = fig.transFigure)
+        fig.text(0.05, 0.25, f"Feeds, high {split2[:-1]}", fontsize = 15, rotation = 90, transform = fig.transFigure)
+
+        fig.text(0.65, 0.03, f"Feeds, high {split2[:-1]}", fontsize = 15, rotation = 0, transform = fig.transFigure)
+        fig.text(0.25, 0.03, f"Feeds, low {split1[:-1]}", fontsize = 15, rotation = 0, transform = fig.transFigure)
+
+
+        fig.text(0.01, 0.4, r"$k_\parallel$ [Mpc${}^{-1}$]", rotation = 90, fontsize=16, transform = fig.transFigure)
+        fig.text(0.4, 0.01, r"$k_\bot$ [Mpc${}^{-1}$]", fontsize=16, transform = fig.transFigure)
+        
+        axins1 = inset_axes(
+            axes[-1],
+            width="2.5%",  # width: 5% of parent_bbox width
+            height="40%",  # height: 50%
+            loc="center left",
+            bbox_to_anchor=(0.83, 0., 1, 1),
+            bbox_transform=fig.transFigure,
+            borderpad=0,
+        )            
+        
+        axins2 = inset_axes(
+            axes[-2],
+            width="2.5%",  # width: 5% of parent_bbox width
+            height="40%",  # height: 50%
+            loc="center left",
+            bbox_to_anchor=(0.86, 0., 1, 1),
+            bbox_transform=fig.transFigure,
+            borderpad=0,
+        )            
+        
+        cbar1 = fig.colorbar(imgs[-1], cax=axins1, ticklocation = 'left')
+        cbar2 = fig.colorbar(imgs[-2], cax=axins2, ticklocation = 'right')
+        cbar1.set_label(
+            #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$ diagonal",
+            size=16,
+        )
+        cbar2.set_label(
+            #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$ off-diagonal",
+            size=16,
+        )
+        fig.savefig(outname, bbox_inches = "tight", dpi = 200)
+        
     def plot_feed_grid(self,
                     k_bin_edges_par: npt.NDArray,
                     k_bin_edges_perp: npt.NDArray,
@@ -1491,7 +2011,7 @@ class COMAP2FPXS():
             r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
             size=16,
         )
-        fig.savefig(outname, bbox_inches = "tight", dpi = 200)
+        fig.savefig(outname, bbox_inches = "tight")
 
         
     def plot_2D_mean(self,
@@ -2266,18 +2786,8 @@ class COMAP2FPXS():
 
         # Bad values, i.e. NaN and Inf, are set to black
         cmap.set_bad("lime", 1)
-        
+
         overlap_vs_rnd_masked = np.ma.masked_where(~chi2_mask.astype(bool), overlap_vs_rnd)
-        
-        # print("hei", np.sum(overlap_vs_rnd == 0))
-        # print("hei hei", np.sum(~np.isfinite(overlap_vs_rnd)))
-        # print(overlap_vs_rnd)
-        
-        # overlap_vs_rnd[overlap_vs_rnd == 0] = np.nan
-        #overlap_vs_rnd[~np.isfinite(overlap_vs_rnd)] = np.nan
-        
-        # weighted_overlap[weighted_overlap == 0] = np.nan
-        #weighted_overlap[~np.isfinite(weighted_overlap)] = np.nan
         
         # Plot overlap value grid
         fig, ax = plt.subplots(2, 2, figsize = (13, 10))
@@ -2287,8 +2797,8 @@ class COMAP2FPXS():
             interpolation = "none",
             extent = (0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
             cmap = cmap,
-            vmin = 0,
-            vmax = np.nanmax(overlap_vs_rnd) + 0.1 * np.nanstd(overlap_vs_rnd),
+            vmin = np.nanmin(overlap_vs_rnd) - 0.5 * np.nanstd(overlap_vs_rnd),
+            vmax = np.nanmax(overlap_vs_rnd) + 0.2 * np.nanstd(overlap_vs_rnd),
             rasterized = True,
             zorder = 1,
         )
@@ -2307,14 +2817,13 @@ class COMAP2FPXS():
         
         # chi2_masked = np.ma.masked_where(~(np.abs(chi2) < self.params.psx_chi2_cut_limit), chi2)
 
-
         ax[0, 0].imshow(
             overlap_vs_rnd_masked,
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
             cmap = "CMRmap",
-            vmin = 0,
-            vmax = np.nanmax(overlap_vs_rnd) + 0.1 * np.nanstd(overlap_vs_rnd),
+            vmin = np.nanmin(overlap_vs_rnd) - 0.5 * np.nanstd(overlap_vs_rnd),
+            vmax = np.nanmax(overlap_vs_rnd) + 0.2 * np.nanstd(overlap_vs_rnd),
             rasterized=True,
             zorder = 3,
         )
@@ -2358,7 +2867,7 @@ class COMAP2FPXS():
             weighted_overlap_masked,
             interpolation="none",
             extent=(0.5, N_feed + 0.5, N_feed + 0.5, 0.5),
-            cmap="RdBu_r",
+            cmap="CMRmap",
             vmin = 0,
             vmax = 1,
             rasterized=True,
@@ -2736,6 +3245,15 @@ class COMAP2FPXS():
                         (f"multisplits/{primary_variable}/map_{primary_variable}{0}{name}",
                         f"multisplits/{primary_variable}/map_{primary_variable}{1}{name}",)
                     )
+                    
+                    for j in range(2):
+                        split_map_combinations.append(
+                            (f"multisplits/{primary_variable}/map_{primary_variable}{j}{name}",
+                            f"multisplits/{primary_variable}/map_{primary_variable}{j}{name}",)
+                        )
+                    
+                    
+                    
         else:
             number_of_secondary_variables = len(secondary_variables)  
             
@@ -2743,7 +3261,9 @@ class COMAP2FPXS():
 
             combinations = list(itertools.combinations(range(self.params.split_base_number), r = 2))  
             secondary_combinations = list(itertools.combinations(range(self.params.split_base_number), r = 2 * len(cross_and_secondary)))  
-
+            
+            secondary_combinations += [(0, 0)] + [(1, 1)]
+            
             secondary_permutations = list(itertools.product(range(self.params.split_base_number), repeat = len(secondary_variables)))
             
             secondary_cross_combos = []
@@ -2769,14 +3289,13 @@ class COMAP2FPXS():
                         ####################################
                         # GENERALIZE TO MORE THAN 2 SPLIT BINS LATER
                         ####################################
-                        
                         null_name1 = f"multisplits/{primary_variable}/map_{primary_variable}{0}"
                         null_name2 = f"multisplits/{primary_variable}/map_{primary_variable}{1}"
 
                         for secondary_cross_combo in secondary_cross_combos:
-                         
+                        
                             secondary_name1, secondary_name2 = secondary_cross_combo
-                            
+
                             split_name11 =  f"{null_name1}{secondary_name1}"
                             split_name22 =  f"{null_name2}{secondary_name2}"
                             split_name12 =  f"{null_name1}{secondary_name2}"
@@ -2805,10 +3324,8 @@ class COMAP2FPXS():
                                 split_name2,
                             ))
 
-
-    
         self.split_map_combinations = split_map_combinations
-
+        
     def log2lin(self, x: npt.NDArray, k_edges: npt.NDArray) -> npt.NDArray:
         """Method that converts from logarithmic to linear spaced k-bin edges.
 
@@ -3026,8 +3543,8 @@ if __name__ == "__main__":
         comap2fpxs.params.psx_generate_white_noise_sim = False
     
     comap2fpxs.params.psx_white_noise_sim_seed = None
-    comap2fpxs.params.psx_mode = "feed"
-    comap2fpxs.run()
+    # comap2fpxs.params.psx_mode = "feed"
+    # comap2fpxs.run()
 
     comap2fpxs.params.psx_mode = "saddlebag"
     comap2fpxs.run()
