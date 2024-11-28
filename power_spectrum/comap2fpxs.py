@@ -3543,11 +3543,12 @@ if __name__ == "__main__":
         comap2fpxs.params.psx_generate_white_noise_sim = False
     
     comap2fpxs.params.psx_white_noise_sim_seed = None
-    # comap2fpxs.params.psx_mode = "feed"
-    # comap2fpxs.run()
-
     comap2fpxs.params.psx_mode = "saddlebag"
     comap2fpxs.run()
+
+    comap2fpxs.params.psx_mode = "feed"
+    comap2fpxs.run()
+
 
     
     # if run_wn_sim:
