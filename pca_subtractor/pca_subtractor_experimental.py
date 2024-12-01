@@ -301,3 +301,73 @@ class PCA_SubTractor_Experimental:
         else:
             return (map_coadd, rms_coadd)
         
+
+    def overwrite_maps_with_reconstruction(self):
+        """Method that will overwrite, i.e. fill in, map data with PCA reconstruction"""
+
+        if self.verbose:
+            print(f"mPCA to be performed on keys: {self.keys_to_pca}")
+        for key in self.keys_to_pca:
+            if self.verbose:
+                print(" " * 4 + "Dataset: " + f"{key}")
+
+            rms_key = re.sub(r"map", "sigma_wn", key)
+
+            mapshape = self.map[key].shape
+            nfeed, nsb, nfreq, ndec, nra = mapshape
+            self.nfeed, self.nsb, self.nfreq, self.ndec, self.nra = nfeed, nsb, nfreq, ndec, nra
+            
+            freqvec = self.map[key + "_pca_freqvec"].copy()
+            angvec = self.map[key + "_pca_angvec"].copy()
+            
+            reconstruction = np.nansum(freqvec[:, :, :, None] * angvec[:, :, None, :], axis = 0)
+            self.map[key] = reconstruction.reshape((nfeed, nsb, nfreq, ndec, nra))
+            
+            map_saddlebag_key = re.sub(r"map", "map_saddlebag", key)
+            rms_saddlebag_key = re.sub(r"map", "sigma_wn_saddlebag", key)
+            nhit_saddlebag_key = re.sub(r"map", "nhit_saddlebag", key)
+
+            if "nhit" in self.map.keys:
+                map_saddlebag, nhit_saddlebag, rms_saddlebag = self.get_coadded_saddlebags(key)
+                self.map[nhit_saddlebag_key] = nhit_saddlebag
+            else:
+                map_saddlebag, rms_saddlebag = self.get_coadded_saddlebags(key)
+
+
+            self.map[map_saddlebag_key] = map_saddlebag
+            self.map[rms_saddlebag_key] = rms_saddlebag
+            
+            
+            # Coadd feed map
+            if "nhit" in self.map.keys:
+                map_coadd, nhit_coadd, rms_coadd = self.get_coadded_feeds("map")
+            else:
+                map_coadd, rms_coadd = self.get_coadded_feeds("map")
+
+            if not self.maskrms:
+                # Assert if coadded rms and nhit maps are same as the ones from
+                # original initialization
+                #if "nhit" in self.map.keys:
+                #    assert np.allclose(nhit_coadd, self.map["nhit_coadd"])
+
+                rms_coadd[rms_coadd == 0] = np.inf
+
+                #assert np.allclose(rms_coadd, self.map["sigma_wn_coadd"])
+
+            rms_coadd[np.isinf(rms_coadd)] = np.nan
+
+            self.map["map_coadd"] = map_coadd
+
+            if "nhit" in self.map.keys:
+                self.map["nhit_coadd"] = nhit_coadd
+
+            self.map["sigma_wn_coadd"] = rms_coadd
+            
+        self.map["n_pca"] = self.ncomps        
+        self.map["pca_approx_noise"] = False
+        self.map["is_pca_subtr"] = False
+        self.map["is_pca_recon"] = True
+
+        return self.map
+    
+        
