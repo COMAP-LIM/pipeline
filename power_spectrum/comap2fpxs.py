@@ -18,6 +18,7 @@ from matplotlib.gridspec import GridSpec
 matplotlib.use('Agg')
 
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import time 
 import scipy.interpolate as interpolate
 import scipy.stats
@@ -136,7 +137,7 @@ class COMAP2FPXS():
             # assume that map file name follows mapmaker file name pattern for all fields.
 
             fields = self.params.fields
-            if np.any(["rnd" in var.casefold() for var in self.primary_variables]) or np.any(["rnd" in var.casefold() for var in self.secondary_variables]): 
+            if self.params.jk_rnd_split_seed is not None: 
                 rnd_string = f"_rnd{self.params.jk_rnd_split_seed}" 
             else:
                 rnd_string = ""
@@ -588,6 +589,7 @@ class COMAP2FPXS():
                     self.params.psx_chi2_import_path = re.sub(r"average_spectra", "average_spectra_saddlebag", self.params.psx_chi2_import_path)
 
                 self.params.psx_chi2_import_path = re.sub(r"co\d_", f"{self.params.fields[0]}_", self.params.psx_chi2_import_path)
+                print(self.params.psx_chi2_import_path)
                 if len(self.params.psx_chi2_import_path) <= 0 or not os.path.exists(self.params.psx_chi2_import_path):
                     raise ValueError("No chi2 import file provided to perform null test chi2 cuts!")
 
@@ -1715,12 +1717,25 @@ class COMAP2FPXS():
         
         fig = plt.figure(figsize = (16, 15))
         gs = GridSpec(N_feed * 2, N_feed * 2, figure=fig, wspace = 0.08, hspace = 0.08)
-        # gs_significance = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.00, hspace = 0.00)
-        # gs_sigma = GridSpec(N_feed, N_feed, figure=fig, wspace = 0.00, hspace = 0.00)
         axes = []
 
-        norm_significance = matplotlib.colors.Normalize(vmin=-3, vmax=3)
-        norm_significance2 = matplotlib.colors.Normalize(vmin=-8, vmax=8)
+        
+        # lim1 = []
+        # lim2 = []
+        # for i in range(2 * N_feed):
+        #     lim2.append(0.2 * np.nanmax(np.abs(xs[i, i] / xs_sigma[i, i])))
+        #     for j in range(2 * N_feed):
+        #         if i != j:
+        #             lim1.append(0.2 * np.nanmax(np.abs(xs[i, j] / xs_sigma[i, j])))
+        
+        # lim1.append(3)
+        # lim2.append(8)
+
+        # lim1 = np.nanmax(lim1)
+        # lim2 = np.nanmax(lim2)
+        
+        # norm_significance = matplotlib.colors.Normalize(vmin=-lim1, vmax=lim1)
+        # norm_significance2 = matplotlib.colors.Normalize(vmin=-lim2, vmax=lim2)
         
         
         pbar1 = tqdm.tqdm(
@@ -1745,6 +1760,9 @@ class COMAP2FPXS():
         axes_cross = []
         imgs = []
         
+        # cmap = "RdGy_r"
+        cmap = "RdBu_r"
+        
         X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)                    
 
         for i in range(N_feed * 2):
@@ -1752,34 +1770,36 @@ class COMAP2FPXS():
             for j in range(N_feed * 2):
                 
                 if i >= j:
+                    
+
                     ax = fig.add_subplot(gs[i, j])
                     X_perp, X_par = np.meshgrid(k_bin_centers_perp, k_bin_centers_par)
                     
                     # print(i, j, (xs / xs_sigma)[i, j])
                     if i != j:
                         axes_cross.append(ax)
-                        norm = norm_significance
-                        cmap = "RdBu_r"
+                        lim = np.nanmax((3, 2 * np.nanstd(np.abs(xs[i, j] / xs_sigma[i, j]))))
                     else:
+                        lim = np.nanmax((8, 2 * np.nanstd(np.abs(xs[i, i] / xs_sigma[i, i]))))
                         axes_auto.append(ax)
-                        norm = norm_significance2
-                        cmap = "PiYG"
-                        
+                    
+                    norm =  matplotlib.colors.Normalize(vmin=-lim, vmax=lim)
+                    
+                    
                     if (i >= N_feed and j < N_feed) and (i * (2 * N_feed) + j not in auto_feeds):
-                        ax.spines[:].set_color("lime")
-                        ax.spines[:].set_linewidth(2)
+                        ax.spines[:].set_color("k")
+                        ax.spines[:].set_linewidth(5)
                     if i * (2 * N_feed) + j in auto_feeds:
-                        ax.spines[:].set_color("gold")
-                        ax.spines[:].set_linewidth(2)
+                        ax.spines[:].set_color("fuchsia")
+                        ax.spines[:].set_linewidth(3)
                     elif i == j:
-                        ax.spines[:].set_color("red")
-                        ax.spines[:].set_linewidth(2)
+                        ax.spines[:].set_color("m")
+                        ax.spines[:].set_linewidth(3)
                         
                     img = ax.pcolormesh(
                         X_perp, 
                         X_par,
                         (xs / xs_sigma)[i, j].T,
-                        #transfer_function.T,
                         cmap=cmap,
                         norm = norm,
                         zorder = 1,
@@ -1795,6 +1815,20 @@ class COMAP2FPXS():
                     ylabels = ticklabels
                     xlabels = ticklabels
                     
+                    # divider = make_axes_locatable(ax)
+                    # cax = divider.append_axes("right", size="5%", pad=0.05)
+                    # cbar = plt.colorbar(img, cax = cax)
+                    
+                    # if i == j: 
+                    #     cbar.set_label(
+                    #         r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$",
+                    #         size=11,
+                    #     )
+                    # cticks = np.linspace(-np.round(lim * 0.75), np.round(lim * 0.75), 3)
+                    # cbar.set_ticks(cticks)
+                    # cbar.set_ticklabels(cticks, rotation = 90, fontsize = 9)
+                    
+                    ax.text(0.03, 0.87, fr"$\pm${np.round(lim)}$\sigma$", transform = ax.transAxes, color = "k")
                     
                     if j > 0:
                         ylabels = []
@@ -1834,38 +1868,38 @@ class COMAP2FPXS():
         fig.text(0.01, 0.4, r"$k_\parallel$ [Mpc${}^{-1}$]", rotation = 90, fontsize=16, transform = fig.transFigure)
         fig.text(0.4, 0.01, r"$k_\bot$ [Mpc${}^{-1}$]", fontsize=16, transform = fig.transFigure)
         
-        axins1 = inset_axes(
-            axes[-1],
-            width="2.5%",  # width: 5% of parent_bbox width
-            height="40%",  # height: 50%
-            loc="center left",
-            bbox_to_anchor=(0.83, 0., 1, 1),
-            bbox_transform=fig.transFigure,
-            borderpad=0,
-        )            
+        # axins1 = inset_axes(
+        #     axes[-1],
+        #     width="2.5%",  # width: 5% of parent_bbox width
+        #     height="40%",  # height: 50%
+        #     loc="center left",
+        #     bbox_to_anchor=(0.83, 0., 1, 1),
+        #     bbox_transform=fig.transFigure,
+        #     borderpad=0,
+        # )            
         
-        axins2 = inset_axes(
-            axes[-2],
-            width="2.5%",  # width: 5% of parent_bbox width
-            height="40%",  # height: 50%
-            loc="center left",
-            bbox_to_anchor=(0.86, 0., 1, 1),
-            bbox_transform=fig.transFigure,
-            borderpad=0,
-        )            
+        # axins2 = inset_axes(
+        #     axes[-2],
+        #     width="2.5%",  # width: 5% of parent_bbox width
+        #     height="40%",  # height: 50%
+        #     loc="center left",
+        #     bbox_to_anchor=(0.86, 0., 1, 1),
+        #     bbox_transform=fig.transFigure,
+        #     borderpad=0,
+        # )            
         
-        cbar1 = fig.colorbar(imgs[-1], cax=axins1, ticklocation = 'left')
-        cbar2 = fig.colorbar(imgs[-2], cax=axins2, ticklocation = 'right')
-        cbar1.set_label(
-            #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
-            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$ diagonal",
-            size=16,
-        )
-        cbar2.set_label(
-            #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
-            r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$ off-diagonal",
-            size=16,
-        )
+        # cbar1 = fig.colorbar(imgs[-1], cax=axins1, ticklocation = 'left')
+        # cbar2 = fig.colorbar(imgs[-2], cax=axins2, ticklocation = 'right')
+        # cbar1.set_label(
+        #     #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+        #     r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$ diagonal",
+        #     size=16,
+        # )
+        # cbar2.set_label(
+        #     #r"$\tilde{C}\left(k_{\bot},k_{\parallel}\right)$ [$\mu$K${}^2$ (Mpc)${}^3$]",
+        #     r"$\tilde{C}/\sigma\left(k_{\bot},k_{\parallel}\right)$ off-diagonal",
+        #     size=16,
+        # )
         fig.savefig(outname, bbox_inches = "tight", dpi = 200)
         
     def plot_feed_grid(self,
@@ -3546,8 +3580,8 @@ if __name__ == "__main__":
     comap2fpxs.params.psx_mode = "saddlebag"
     comap2fpxs.run()
 
-    comap2fpxs.params.psx_mode = "feed"
-    comap2fpxs.run()
+    # comap2fpxs.params.psx_mode = "feed"
+    # comap2fpxs.run()
 
 
     
