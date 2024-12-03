@@ -468,8 +468,12 @@ class COMAP2FPXS():
             rndsubdir = "rnd_split_files"
             if self.params.psx_mode == "saddlebag":
                 rndsubdir += "_saddlebag"
-            rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
-            
+                
+            if len(self.params.psx_rnd_path) == 0 or not os.path.exists(self.params.psx_rnd_path):            
+                rndpath = os.path.join(self.params.power_spectrum_dir, rndsubdir)
+            else:
+                rndpath = os.path.join(self.params.psx_rnd_path, rndsubdir)
+                
             for num_rnd, rndfile_name in enumerate(self.params.psx_rnd_file_list):
                 rndfile = os.path.join(rndpath, f"{self.params.fields[0]}_{rndfile_name}")
                 print("Loading RND-file from: ", rndfile)

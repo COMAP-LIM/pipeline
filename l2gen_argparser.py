@@ -672,8 +672,16 @@ parser.add_argument(
     type=str,
     nargs="+",
     default = [],
-    help="(comap2fpxs) List of RND map file directories relative to power_spectrum_dir. The files given are used to generate the power spectrum error bars in RND runs.",
+    help="(comap2fpxs) List of RND map file directories relative to --psx_rnd_path. The files given are used to generate the power spectrum error bars in RND runs.",
 )
+
+parser.add_argument(
+    "--psx_rnd_path",
+    type=str,
+    default="",
+    help="(comap2fpxs) Path to RND files used to make error estimates. If not provided --power_spectrum_dir us used by default.",
+)
+
 
 parser.add_argument(
     "--psx_symmetric_weights",
