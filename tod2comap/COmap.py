@@ -85,6 +85,20 @@ class COmap:
 
         self.keys = self._data.keys()
 
+    def read_map_keys(self) -> None:
+        self.keys = []
+        with h5py.File(self.path, "r") as infile:
+            for key in infile.keys():
+                if ("wcs" in key or "multisplits" in key) or "param" in key:
+                    continue
+                self.keys.append(key)
+                
+            for wcs_key in infile["wcs"].keys():
+                self.keys.append(f"wcs/{wcs_key}")
+            for split_key, value in infile["multisplits"].items():
+                for key in value.keys():
+                    self.keys.append(f"multisplits/{split_key}/{key}")
+        
     def read_and_append(self, key_list: list) -> None:
         """Function for reading map data from file and append to data dictionary of Map class.
 
@@ -95,11 +109,10 @@ class COmap:
         with h5py.File(self.path, "r") as infile:
             for key in key_list:
                 self._data[key] = infile[key][()]
-        
             self._data[f"wcs"] = {}
             for wcs_key, wcs_param in infile["wcs"].items():
                 self._data[f"wcs"][wcs_key] = wcs_param[()]
-        
+
         self.keys = self._data.keys()
 
     def init_emtpy_map(
@@ -389,6 +402,23 @@ class COmap:
 
         return map_hdu_list, nhit_hdu_list, sigma_wn_hdu_list, significance_hdu_list
 
+    def write_dataset(self, key: str, delete: Optional[bool] = False) -> None:
+        """Write data to hdf5 file
+
+        Args:
+            key (str): Dataset key
+            delete (bool): Whether to delete the key-data pair after writing to file
+        """
+        
+        with h5py.File(self.path, "a") as outfile:
+            try:
+                outfile.create_dataset(key, data = self._data[key])
+            except(OSError, ValueError):
+                outfile[key][...] = self._data[key]
+                
+        if delete:
+            del self._data[key]
+    
     def write_map(
         self,
         outpath: Optional[str] = None,

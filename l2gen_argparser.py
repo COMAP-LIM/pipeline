@@ -712,6 +712,21 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--medit_map_names",
+    type=str,
+    nargs="+",
+    default = [],
+    help="(mapeditor) List of map filenames (in --map_dir) to load in mapeditor.",
+)
+
+parser.add_argument(
+    "--medit_outpath",
+    type=str,
+    default = "",
+    help="(mapeditor) Path to output map produced by mapeditor",
+)
+
+parser.add_argument(
     "--psx_map_names",
     type=str,
     nargs="+",
