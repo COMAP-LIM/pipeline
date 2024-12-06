@@ -141,6 +141,11 @@ class MapEditor():
         self.outmap[sigma_key] = outmap_sigma
         self.outmap[hit_key] = outmap_hit
         
+        for comap in self.comaps:
+            del comap[map_key]
+            del comap[sigma_key]
+            del comap[hit_key]
+        
     
 if __name__ == "__main__":
     editor = MapEditor()
