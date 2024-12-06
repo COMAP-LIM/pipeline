@@ -14,6 +14,7 @@ from mpi4py import MPI
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+import matplotlib.patheffects as path_effects
 
 matplotlib.use('Agg')
 
@@ -1832,7 +1833,10 @@ class COMAP2FPXS():
                     # cbar.set_ticks(cticks)
                     # cbar.set_ticklabels(cticks, rotation = 90, fontsize = 9)
                     
-                    ax.text(0.03, 0.87, fr"$\pm${np.round(lim)}$\sigma$", transform = ax.transAxes, color = "k")
+                    # ax.text(0.03, 0.87, fr"$\pm${np.round(lim)}$\sigma$", transform = ax.transAxes, color = "k")
+                    text = ax.text(0.95, 0.05, fr"$\pm${int(np.round(lim))}$\sigma$", transform = ax.transAxes, color = "k", fontsize = 20, horizontalalignment='right')
+                    #ax.text(0.5, 1.1, fr"$\pm${np.round(lim)}$\sigma$", transform = ax.transAxes, color = "k")
+                    text.set_path_effects([path_effects.Stroke(linewidth=3, foreground = 'white'), path_effects.Normal()])
                     
                     if j > 0:
                         ylabels = []
