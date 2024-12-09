@@ -838,7 +838,7 @@ parser.add_argument(
     "--psx_transfer_function_names",
     type=str,
     nargs="+",
-    default = ["tf_default_jul18.h5", "tf_realistic_beam.h5", "tf_frequency_window.h5"],
+    default = ["tf_default_jul18.h5"],
     help="(comap2fpxs) List of transfer function filenames (not absolute path) to make up full transfer function.",
 )
 
