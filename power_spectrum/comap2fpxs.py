@@ -99,7 +99,9 @@ class COMAP2FPXS():
         if self.params.psx_generate_white_noise_sim:
             if self.params.psx_white_noise_sim_seed is None:
                 self.generate_new_monte_carlo_seed()
-
+                
+        self.load_models()
+        
     def run(self):
         """Main run method to perform computation of cross-spectra
         """
@@ -572,10 +574,12 @@ class COMAP2FPXS():
             xs_wn_mean_1d = np.zeros((N_splits, self.params.psx_noise_sim_number, N_k))
             xs_wn_covariance_1d = np.zeros((N_splits, N_k, N_k))
             chi2_wn_1d = np.zeros((N_splits, self.params.psx_noise_sim_number))
+            chi2_wn_1d_models = np.zeros((N_splits, len(self.models), self.params.psx_noise_sim_number))
             chi2_wn_cov_1d = np.zeros((N_splits, self.params.psx_noise_sim_number))
             chi2_data_1d = np.zeros(N_splits)
             chi2_data_cov_1d = np.zeros(N_splits)
             chi2_data_coadd_1d = np.zeros(N_splits)
+            chi2_data_coadd_1d_models = np.zeros((N_splits, len(self.models)))
             PTE_data_1d = np.zeros(N_splits)
             PTE_data_cov_1d = np.zeros(N_splits)
             PTE_data_coadd_1d = np.zeros(N_splits)
@@ -601,7 +605,7 @@ class COMAP2FPXS():
                 with h5py.File(self.params.psx_chi2_import_path, "r") as infile:
                     loaded_names = infile["cross_variable_names"][()].astype(str)
                     loaded_chi2_grid = infile["chi2_grid"][()]
-                    
+
             split_counter = 0
             # for i, splits in enumerate(self.split_map_combinations):
             for i in range(N_splits):
@@ -694,11 +698,14 @@ class COMAP2FPXS():
                         transfer_function *= beam_tf(k_bin_centers_perp)[:, None] * px_window[:, None] 
                         transfer_function *= freq_window[None, :] 
                         
+                        
                         # Transfer function mask
                         tf_cutoff = self.params.psx_tf_cutoff * np.nanmax(transfer_function[1:-1, 1:-1])
                         transfer_function_mask = transfer_function > tf_cutoff 
                         
                         k_PAR, k_PERP = np.meshgrid(k_bin_centers_par, k_bin_centers_perp)
+                        
+                        
                         
                         # Only edges of k-space to be masked
                         if self.params.psx_mask_k_perp_max < self.params.psx_mask_k_perp_min:
@@ -951,6 +958,7 @@ class COMAP2FPXS():
                 # chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / _error_1d) ** 2, axis = 1)
                 chi2_wn_1d[i, :] = np.nansum((chi2_wn_data_1d  / rms_1d[None, mask]) ** 2, axis = 1)
 
+                
                 # print(np.any(chi2_wn_1d[i, :] == 0), chi2_wn_1d[i, :], chi2_wn_1d[i, :].shape, chi2_wn_data_1d.shape, np.where(chi2_wn_data_1d == 0))
                 # print(rms_1d[None, mask].shape, chi2_wn_data_1d.shape, chi2_wn_data_1d)
 
@@ -962,8 +970,12 @@ class COMAP2FPXS():
                 # chi2_data_cov_1d[i] = data_1d.T @ inv_xs_wn_covariance_1d @ data_1d
                 # chi2_data_1d[i] = np.nansum((data_1d  / _error_1d) ** 2)
                 chi2_data_coadd_1d[i] = np.nansum((data_1d  / xs_error_1d[i, mask]) ** 2)
-                
-                
+
+                modelnames = []
+                for m, (name, model) in enumerate(self.models.items()):
+                    chi2_wn_1d_models[i, m, :] = np.nansum(((chi2_wn_data_1d  - model.interpolation(k_1d[mask])) / rms_1d[None, mask]) ** 2, axis = 1)
+                    chi2_data_coadd_1d_models[i, m] = np.nansum(((data_1d - model.interpolation(k_1d[mask]))  / xs_error_1d[i, mask]) ** 2)
+                    modelnames.append(name)
                 # PTE_data_cov_1d[i] = scipy.stats.chi2.sf(chi2_data_cov_1d[i], df = df_1d)
                 # PTE_data_1d[i] = scipy.stats.chi2.sf(chi2_data_1d[i], df = df_1d)
                 # PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = df_1d)
@@ -1122,8 +1134,6 @@ class COMAP2FPXS():
             if not os.path.exists(os.path.join(outdir, self.params.psx_subdir)):
                 os.mkdir(os.path.join(outdir, self.params.psx_subdir))
             
-            
-                
             with h5py.File(os.path.join(os.path.join(outdir, self.params.psx_subdir), mapname + "_average_fpxs.h5"), "w") as outfile:
                 outfile.create_dataset("k_1d", data = k_1d)      
                 outfile.create_dataset("k_edges_1d", data = k_bin_edges)             
@@ -1135,7 +1145,7 @@ class COMAP2FPXS():
                 outfile.create_dataset("xs_mean_2d", data = xs_mean / transfer_function[None, ...])
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error / transfer_function[None, ...])
-                outfile.create_dataset("cross_variable_names", data = cross_variable_names)
+                outfile.create_dataset("cross_variable_names", data = cross_variable_names)                
                 outfile.create_dataset("white_noise_covariance", data = xs_covariance)
                 outfile.create_dataset("transfer_function_mask", data = transfer_function_mask)
                 outfile.create_dataset("transfer_function", data = transfer_function)
@@ -1158,6 +1168,11 @@ class COMAP2FPXS():
                 outfile.create_dataset("chi2_data_cov_1d", data = chi2_data_cov_1d)
                 outfile.create_dataset("chi2_data_coadd_1d", data = chi2_data_coadd_1d)
                 outfile.create_dataset("chi2_data_1d", data = chi2_data_1d)
+                
+                outfile.create_dataset("modelnames", data = np.array(modelnames, dtype = "S"))
+                outfile.create_dataset("chi2_data_coadd_1d_models", data = chi2_data_coadd_1d_models)
+                outfile.create_dataset("chi2_white_noise_sim_1d_models", data = chi2_wn_1d_models)
+                
                 
                 # Data PTE values
                 outfile.create_dataset("PTE_data_cov_2d", data = PTE_data_cov)
@@ -2550,7 +2565,6 @@ class COMAP2FPXS():
         #     color = "r",
         # )
 
-
         if np.isfinite(lim):
             ax[0].set_ylim(-lim, lim)
         ax[0].set_ylabel(
@@ -2624,8 +2638,11 @@ class COMAP2FPXS():
                 marker = "x",
                 label = "coadded points"
                 )
+        
+        for name, model in self.models.items():
+            ax[0].plot(model.k, model.interpolation(model.k) * model.k, label = name)
             
-        ax[0].legend(ncols = 3)
+        ax[0].legend(ncols = 8)
         
         # Plot scatter and error bar of significance plot
         ax[1].scatter(
@@ -3561,6 +3578,21 @@ class COMAP2FPXS():
         ) 
 
         return tf_beam_interp
+    
+    def load_models(self):
+        """Method that loads theoretical model power spectral, and defines 
+        interpolation thereof.
+        """
+        from models import Model
+        
+        self.models = {}
+        for model_name in os.listdir(self.params.psx_model_path):
+            model = Model(os.path.join(self.params.psx_model_path, model_name))
+            model.read_model()
+            model.interpolate_model()
+            setattr(model, "name", os.path.splitext(model_name)[0].split("_")[-1])        
+            self.models[model.name] = model
+    
 
     def generate_new_monte_carlo_seed(self):
             """Method that generates global Monte Carlo seed from current time.time() used in white noise simulations.
@@ -3575,6 +3607,8 @@ class COMAP2FPXS():
 
             seed = self.comm.bcast(seed, root = 0)
             self.params.psx_white_noise_sim_seed = seed
+
+
 
 if __name__ == "__main__":
     
