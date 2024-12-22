@@ -507,7 +507,7 @@ parser.add_argument(
 parser.add_argument(
     "--make_accept_mod_plots",
     type=str2bool,
-    default=True,
+    default=False,
 )
 parser.add_argument(
     "--accept_mod_debug_maps_dir",
@@ -946,6 +946,14 @@ parser.add_argument(
     default=0.0,
     help="(comap2fpxs) Value of transfer function above which to compute chi2 in feed-feed pseudo cross-spectra.",
 )
+
+parser.add_argument(
+    "--psx_model_path",
+    type=str,
+    default="/mn/stornext/d16/cmbco/comap/defaults/models",
+    help="(comap2fpxs) Path to theoretical model power spectra.",
+)
+
 
 
 
