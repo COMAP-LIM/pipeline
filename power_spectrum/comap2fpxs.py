@@ -1739,7 +1739,21 @@ class COMAP2FPXS():
         gs = GridSpec(N_feed * 2, N_feed * 2, figure=fig, wspace = 0.08, hspace = 0.08)
         axes = []
 
-        fig.suptitle(f"{self.params.fields[0]}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5 | {split1} X {split2}", fontsize = 20, y = 0.9, x = 0.6)
+        suptitle = f"Map file: {self.params.fields[0]}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5\n"
+        suptitle += f"Cross: {split1[:-1]}"
+        
+        if self.params.psx_null_diffmap:
+            if len(self.params.psx_subdir) > 0:
+                nullvar = outname.split("/")[-3]
+            else:
+                nullvar = outname.split("/")[-2]
+                
+            suptitle += f" | Null: {nullvar}"
+        
+        if len(self.params.psx_subdir) > 0: 
+            suptitle += f" | Plot subdir: {self.params.psx_subdir}"
+        
+        fig.suptitle(suptitle, fontsize = 20, y = 0.92)
         
         # lim1 = []
         # lim2 = []
