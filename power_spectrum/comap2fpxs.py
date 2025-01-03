@@ -1739,6 +1739,7 @@ class COMAP2FPXS():
         gs = GridSpec(N_feed * 2, N_feed * 2, figure=fig, wspace = 0.08, hspace = 0.08)
         axes = []
 
+        fig.suptitle(f"{self.params.fields[0]}_{self.params.map_name}{self.params.psx_map_name_postfix}.h5 | {split1} X {split2}", fontsize = 20, y = 0.9, x = 0.6)
         
         # lim1 = []
         # lim2 = []
