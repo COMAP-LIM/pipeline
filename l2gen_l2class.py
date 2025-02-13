@@ -51,6 +51,7 @@ class level2_file:
             self.feeds = self.feeds[self.included_feeds_idxs]
             self.array_features = f["/hk/array/frame/features"][()]
             self.array_time     = f["/hk/array/frame/utc"][()]
+            self.air_temperature = f["hk/array/weather/airTemperature"][()]
             self.az             = f["/spectrometer/pixel_pointing/pixel_az"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
             self.el             = f["/spectrometer/pixel_pointing/pixel_el"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
             self.ra             = f["/spectrometer/pixel_pointing/pixel_ra"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
