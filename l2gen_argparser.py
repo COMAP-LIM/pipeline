@@ -941,6 +941,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--psx_mask_k_1d_min",
+    type = float,
+    default = 0.0,
+    help="(comap2fpxs) Bin center of minimum wavenumber k in 1/Mpc used to mask 1D sperically spectrum.",
+)
+
+parser.add_argument(
+    "--psx_mask_k_1d_max",
+    type = float,
+    default = 2.0,
+    help="(comap2fpxs) Bin center of maximum wavenumber k in 1/Mpc used to mask 1D sperically spectrum.",
+)
+
+parser.add_argument(
     "--psx_tf_cutoff",
     type=float,
     default=0.0,
