@@ -935,7 +935,14 @@ class COMAP2FPXS():
                     / inv_var_nmodes_1d[None, np.where(nmodes_1d > 0)]
                 )
 
+                print(Ck_wn_1d.shape)
+                rms_1d[k_1d < self.params.psx_mask_k_1d_min] = np.nan
+                Ck_1d[k_1d < self.params.psx_mask_k_1d_min] = np.nan
+                Ck_wn_1d[:, k_1d < self.params.psx_mask_k_1d_min] = np.nan
                 
+                rms_1d[k_1d > self.params.psx_mask_k_1d_max] = np.nan
+                Ck_1d[k_1d > self.params.psx_mask_k_1d_max] = np.nan
+                Ck_wn_1d[:, k_1d > self.params.psx_mask_k_1d_max] = np.nan
                 
                 xs_error_1d[i, ...] = rms_1d
 
@@ -976,6 +983,7 @@ class COMAP2FPXS():
                     chi2_wn_1d_models[i, m, :] = np.nansum(((chi2_wn_data_1d  - model.interpolation(k_1d[mask])) / rms_1d[None, mask]) ** 2, axis = 1)
                     chi2_data_coadd_1d_models[i, m] = np.nansum(((data_1d - model.interpolation(k_1d[mask]))  / xs_error_1d[i, mask]) ** 2)
                     modelnames.append(name)
+
                 # PTE_data_cov_1d[i] = scipy.stats.chi2.sf(chi2_data_cov_1d[i], df = df_1d)
                 # PTE_data_1d[i] = scipy.stats.chi2.sf(chi2_data_1d[i], df = df_1d)
                 # PTE_data_coadd_1d[i] = scipy.stats.chi2.sf(chi2_data_coadd_1d[i], df = df_1d)
