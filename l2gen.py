@@ -398,6 +398,8 @@ class l2gen_runner:
         runID = self.comm.bcast(runID, root=0)
         
         self.params.runID = int(runID.replace("-", "").replace(".", ""))
+        if not sys.path.exists(os.path.join(self.params.log_dir)):
+            os.makedirs(self.params.log_dir)
         logfilepath = os.path.join(self.params.log_dir, f"l2gen-{runID}.log")
         logging.basicConfig(filename=logfilepath, filemode="a", format="%(levelname)s %(asctime)s - %(message)s", level=logging.DEBUG)
         if self.rank == 0:
