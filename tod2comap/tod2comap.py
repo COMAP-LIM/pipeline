@@ -393,6 +393,7 @@ class Mapmaker:
                     pbar.n = int(pbar.n + prog_tot / self.Nranks)
                                         
             if i % self.Nranks == self.rank:
+                l2path = scan[-1]
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]
                 if len(scan_idx) == 0:
@@ -427,7 +428,6 @@ class Mapmaker:
                     # Print in green forground color
                     print(f"\033[92m Processing scan {scan[0]} ({i + 1} / {len(self.runlist)}) @ rank {self.rank}\033[00m")
                 
-                l2path = scan[-1]
 
                 ti = time.perf_counter()
 
@@ -493,6 +493,13 @@ class Mapmaker:
             if rejection_number_buffer[0] == len(self.runlist):
                 raise NoAcceptedScansError("There were no accepted scans found in this run!")
             # Get frequency bin centers and edges from last level2 file.
+            
+            try:
+                l2data["freq_bin_centers_lowres"]
+            except UnboundLocalError:    
+                l2data = L2file(path=l2path, id=scanid)
+                l2data.read_and_append(["freq_bin_centers_lowres", "freq_bin_edges_lowres", "is_sim"])
+                
             full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
             full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
 
