@@ -228,7 +228,11 @@ class level2_file:
         for ifeed in range(self.Nfeeds):
             self.Ntod_effective[ifeed] = int(np.sum(self.mask_temporal[ifeed]))
             tod_local = self.tod[ifeed][:,:,self.mask_temporal[ifeed]]
-            self.sigma0[ifeed] = np.std(tod_local[:,:,1:] - tod_local[:,:,:-1], axis=-1)/np.sqrt(2)
+            if params.determine_sigma0_from_data:
+                self.sigma0[ifeed] = np.std(tod_local[:,:,1:] - tod_local[:,:,:-1], axis=-1)/np.sqrt(2)
+            else:
+                dnu = np.abs(self.freqs[0,1] - self.freqs[0,0])
+                self.sigma0[ifeed] = self.Tsys[ifeed]/np.sqrt(self.samprate*dnu*1e9)  # Tsys in K, dnu in GHz, samprate in Hz
             self.chi2[ifeed] = (np.sum(tod_local**2, axis=-1)/self.sigma0[ifeed]**2 - self.Ntod_effective[ifeed])/np.sqrt(2*self.Ntod_effective[ifeed])
         
         # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means

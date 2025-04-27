@@ -433,6 +433,13 @@ parser.add_argument(
     help="(mask) Whether to write corr-matrix (and template) to file. Warning: It's big, do not use for large runs.",
 )
 
+parser.add_argument(
+    "--determine_sigma0_from_data",
+    type=str2bool,
+    default=True,
+    help="(l2_write) Whether to determine the sigma0 value written to file from the data. If False, use sigma0=Tsys/sqrt(nu*tau)."
+)
+
 ### Decimation
 parser.add_argument(
     "--decimation_freqs",
