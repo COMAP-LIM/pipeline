@@ -15,7 +15,10 @@ import math
 from scipy.ndimage import gaussian_filter1d
 from mpi4py import MPI
 from sklearn.decomposition import PCA
+
+### Change filter code file
 from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_With_Signal, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
+from simpipeline.l2gen_simulation_filters_leah import Replace_TOD   
 from scipy.interpolate import interp1d
 
 

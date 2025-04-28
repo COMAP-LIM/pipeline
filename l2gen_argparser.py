@@ -1422,3 +1422,19 @@ parser.add_argument(
     type=int,
     default=8
 )
+
+
+parser.add_argument(
+    "--ground_sim_constant",
+    help="""Is the ground pickup model constant? True or false""",
+    type=str2bool,
+    default=False
+)
+
+
+parser.add_argument(
+    "--ground_sim_wn_scale",
+    help="""Is the ground pickup model constant? True or false""",
+    type=int,
+    default=0
+)
