@@ -448,6 +448,13 @@ parser.add_argument(
     help="(dec) Number of frequencies to decimate each sideband into, from the original 1024.",
 )
 
+parser.add_argument(
+    "--prefilter_decimation_freqs",
+    type=int,
+    default=64,
+    help="(dec) Number of frequencies to decimate each sideband into BEFORE starting pipeline, from the original 1024.",
+)
+
 ### Tsys/Calibration
 parser.add_argument(
     "--max_tsys", type=float, default=75.0, help="(cal) Max tsys. Mask above this."

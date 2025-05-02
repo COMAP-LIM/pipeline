@@ -80,12 +80,12 @@ class level2_file:
                                             "Tsys > running median max",
                                             "Aliasing suppression (AB_mask)",
                                             "Aliasing suppression (leak_mask)",
-                                            "Box 32 chi2",  "Box 32 prod",  "Box 32 sum",
-                                            "Box 128 chi2", "Box 128 prod", "Box 128 sum",
-                                            "Box 512 chi2", "Box 512 prod", "Box 512 sum",
-                                            "Stripe 32 chi2",   "Stripe 32 prod",
-                                            "Stripe 128 chi2",  "Stripe 128 prod",
-                                            "Stripe 1024 chi2", "Stripe 1024 prod",
+                                            "Box 4 chi2",  "Box 4 prod",  "Box 4 sum",
+                                            "Box 16 chi2", "Box 16 prod", "Box 16 sum",
+                                            "Box 64 chi2", "Box 64 prod", "Box 64 sum",
+                                            "Stripe 4 chi2",   "Stripe 4 prod",
+                                            "Stripe 16 chi2",  "Stripe 16 prod",
+                                            "Stripe 128 chi2", "Stripe 128 prod",
                                             "Radiometer std",
                                             "Max corr",
                                             "Lonely unmasked channel",
@@ -106,14 +106,13 @@ class level2_file:
             self.mask_temporal = np.ones((self.Nfeeds, self.Ntod), dtype=bool)
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
-            self.freqmask_counter = 0
             self.n_nans = np.sum(~np.isfinite(self.tod), axis=-1)
             self.freqmask[self.n_nans > 0] = False
             self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_reason_num_dict["NaN or inf in TOD"]
             self.freqmask[:,:,:2] = False
             self.freqmask[:,:,512] = False
-            self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
-            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
+            self.freqmask_reason[:,:,:2] += 2**self.freqmask_reason_num_dict["Marked channels"]
+            self.freqmask_reason[:,:,512] += 2**self.freqmask_reason_num_dict["Marked channels"]
             if self.params.sbA_num_masked_channels != 0:
                 self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_reason_num_dict["Marked channels"]
@@ -272,6 +271,10 @@ class level2_file:
             f["acceptrate"] = self.acceptrate
             f["mask_temporal"] = self.mask_temporal
             f["freqmask_full"] = self.freqmask
+            try:
+                f["freqmask"] = self.freqmask_decimated
+            except:
+                pass
             f["freqmask_reason"] = self.freqmask_reason
             f["freqmask_reason_string"] = np.array(self.freqmask_reason_string, dtype="S100")
             f["cal_method"] = 2

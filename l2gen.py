@@ -333,6 +333,8 @@ class l2gen_runner:
                         "acceptrate" : np.zeros((Nscans, 19, 4)) + np.nan,
                         "freqmask_full" : np.zeros((Nscans, 19, 4, 1024), dtype=bool),
                         "freqmask_reason" : np.zeros((Nscans, 19, 4, 1024), dtype=np.uint64),
+                        # "freqmask_full" : np.zeros((Nscans, 19, 4, self.params.prefilter_decimation_freqs), dtype=bool),
+                        # "freqmask_reason" : np.zeros((Nscans, 19, 4, self.params.prefilter_decimation_freqs), dtype=np.uint64),
                         "n_nan" : np.zeros((Nscans, 19, 4, 1024), dtype=np.uint32),
                         "sigma0" : np.zeros((Nscans, 19, 4, self.params.decimation_freqs)) + np.nan,
                         "chi2" : np.zeros((Nscans, 19, 4, self.params.decimation_freqs)) + np.nan,
