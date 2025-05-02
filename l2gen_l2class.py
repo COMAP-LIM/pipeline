@@ -228,7 +228,7 @@ class level2_file:
         for ifeed in range(self.Nfeeds):
             self.Ntod_effective[ifeed] = int(np.sum(self.mask_temporal[ifeed]))
             tod_local = self.tod[ifeed][:,:,self.mask_temporal[ifeed]]
-            if params.determine_sigma0_from_data:
+            if self.params.determine_sigma0_from_data:
                 self.sigma0[ifeed] = np.std(tod_local[:,:,1:] - tod_local[:,:,:-1], axis=-1)/np.sqrt(2)
             else:
                 dnu = np.abs(self.freqs[0,1] - self.freqs[0,0])
