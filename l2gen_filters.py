@@ -391,6 +391,7 @@ class Decimation(Filter):
             for ifreq in range(self.Nfreqs_lowres):
                 tsys_decimated[:,isb,ifreq] = np.sqrt(self.dnu/np.nansum(l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]]/l2.Tsys[:,isb,freq_idxs_included[isb,ifreq]]**2, axis=-1))
 
+        l2.Tsys_lowres = tsys_decimated
         # tsys_decimated[~l2.freqmask_decimated] = np.nan
         l2.tofile_dict["freqmask"] = l2.freqmask_decimated
         l2.tofile_dict["decimation_nu"] = self.dnu
