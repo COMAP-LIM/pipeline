@@ -73,7 +73,7 @@ class Replace_TOD:
         scale = self.params.ground_sim_wn_scale #1/100000
         
         const = self.params.ground_sim_constant
-        test_BB = True
+        test_BB = False #If true sets time to constant while keeping the BB model
         
         d_model, G, correlated, Tsys, white_noise, T_rest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False,  scale=scale, constant_ground = const, BB_test = test_BB )
        

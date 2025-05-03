@@ -33,6 +33,162 @@ conv_folder = Path(tod_gen_folder/ 'data_tground')
 # outfile_figs = Path(tod_gen_folder/'pipeline/figs_testing/azimuth_ground_model')
 
 
+if __name__ == "__main__":
+        
+        
+        # filter_dic = {'normalized':'_3_norm', 'pointing':'_4_pnt_bi', 'poly':'_5_poly'}
+        filter_dic = {'poly':''}
+        version = 'constant_Tsys'
+        ######
+        # timezone = 'Constant'
+        # data_folder=  Path(tod_gen_folder/ 'level2_dir_leah5/co7')
+        # outfile_figs = Path(tod_gen_folder/'pipeline/figs_testing/figs_tground_model/with_pointing')
+        
+        for filtr in filter_dic:
+                print(filtr)
+                timezone = 'Time varying'
+                print(f'Timezone is {timezone}')
+                data_folder=  Path(tod_gen_folder/ f'level2_dir_leah_time_{filtr}/co7_{version}/co7_v1')
+                outfile_figs = Path(tod_gen_folder/f'figs/figs_{version}')
+                ######
+
+
+                # scans = ['co7_001196211','co7_001320603', 'co7_001454102', 'co7_001556802', 'co7_001832603', 'co7_002233305', 'co7_002489606', 'co7_002733208', 'co7_003004205','co7_003174311', 'co7_003431206', 'co7_003754110','co7_003961103' ]
+                
+                scans = ['co7_003004205' ]
+
+                images = []
+                minmax = []
+                titles = []
+                
+
+                images_trest = []
+                minmax_trest = []
+                titles_trest = []
+                for scan in scans:
+                ############################################################
+                        tod_gen = TOD_Gen()
+                        
+
+                        params = ['time', 'Tsys', 'freq_bin_centers', 'tod', 'Gain', 'point_tel',  'T_rest', 'Tsys', 'hk_time', 'air_temp', 'scan_start_idx_hk', 'scan_stop_idx_hk', 'sigma0']#, 'scale']
+                
+                        read_file_start = timer.time()
+                        # tod, params =  tod_gen.read_file(data_folder/'co7_002911511_3_norm.h5', model=True, parameter_list=params, units=False)
+                        tod, params =  tod_gen.read_file(data_folder/f'{scan}{filter_dic[filtr]}.h5', model=True, parameter_list=params, units=False)
+                        
+                        read_file_end = timer.time()
+                        print(f'Time of reading files {read_file_end-read_file_start}')
+                        
+                        with open(f"{outfile_figs}/params/params_{scan}.npy", 'wb') as f:
+                                pickle.dump(params, f, protocol=4)
+
+
+                
+                        ############################################################
+                        
+
+                        with open(f"{outfile_figs}/params/params_{scan}.npy", "rb") as f:
+                                params = pickle.load(f)
+                                
+                        params = dict(params.items())
+                        # print(params.keys())
+
+                        tod = params['tod']
+                        Gain = params['Gain']
+                        Tsys = params['Tsys']
+                        T_rest = params['T_rest']
+                        sigma0 = params['sigma0']
+                        
+
+                        # correlated = params['correlated']
+                        # white_noise = params['white_noise']
+                        freqs = params['freq_bin_centers']
+
+                        time = params['time'] #Time 0 is 0.0 time -1 is 379.9808580195531
+                        time = (time - time[0])*24*60*60
+                        # print(f' Time is from {time[0]} to {time[-1]}')
+
+                        point_tel = params['point_tel']
+                        hk_air_temp = params['air_temp']
+                        hk_time = params['hk_time']
+                        hk_time = (hk_time - hk_time[0])*24*60*60
+
+                        start_scan_idx = params['scan_start_idx_hk']
+                        stop_scan_idx = params['scan_stop_idx_hk']
+
+                        
+                        # print(f'start_scan_idx is {start_scan_idx}, stop scan idx is {stop_scan_idx}')
+                        
+                        
+                        az = point_tel[:, :, 0] # Current point_tel is [feed, time, az/el]
+                        el = point_tel[:, :, 1]
+
+                        scale = 0 # 1/10000 # Scale for whitenoise. This is just a reminder, scaling actually happens before pipeline
+                        # scale = params['scale']
+
+                        extra_params_dict = {'hk_time': hk_time, 'hk_air_temp':hk_air_temp, 'scan_start_idx_hk': start_scan_idx, 'scan_stop_idx_hk':stop_scan_idx}
+
+                        
+                        tod_gen = TOD_Gen(tod=tod, az=az, el=el, Gain=Gain, Tsys=Tsys, time=time, freq_bin_centers = freqs, extra_params_dict=extra_params_dict) 
+                        
+                
+                        convolution_files = [ conv_folder / 'conv_26GHz_NSIDE256.npy', conv_folder / 'conv_30GHz_NSIDE256.npy', conv_folder / 'conv_34GHz_NSIDE256.npy',]
+
+                        # d_model, G, correlated, Tsys, white_noise, Trest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False, point=[az, el], scale = scale)
+                        # air_interp, all_air_smooth, original_interp = tod_gen.interpolating_air_temp(hk_air_temp, hk_time, hk_start=start_scan_idx, hk_end=stop_scan_idx)
+
+
+
+                        print(f'Shape of TOD is {np.shape(tod)}')
+                        # T_rest_waterfall, trest_minmax = waterfall(Trest[0], len(d_model[0, 0, 0, :]), title=f'{timezone} ground pickup for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/T_rest/T_rest_{scan}', shape = 4*1024, minmax=True)
+                        # d_model_waterfall, d_minmax = waterfall(d_model[0], len(d_model[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD/TOD_{scan}', shape = 4*1024, minmax=True)
+                        d_model_waterfall, d_minmax = waterfall(tod[0], len(tod[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD/TOD_{scan}', shape = 4*64, minmax=True)
+
+                        tod_flat = tod[0, :, :, 2500].flatten()
+                        print(np.shape(tod_flat))
+                        plt.figure()
+                        plt.plot(tod_flat)
+                        plt.ylabel('K')
+                        plt.xlabel('freq')
+                        plt.savefig(f'{outfile_figs}/TOD/timestep_over_freq')
+                        plt.close()
+
+                        
+                        plt.figure()
+                        plt.plot(sigma0[0].flatten())
+                        # plt.ylabel('K')
+                        plt.xlabel('freq')
+                        plt.title(f'Feed 0')
+                        plt.savefig(f'{outfile_figs}/TOD/sigma0')
+                        plt.close()
+                        # # sys_time_end = (np.where(hk_time < time[-1]+0.01)[0][-1])
+                        # fig, (ax1, ax2) = plt.subplots(2, 1)
+                
+                        # ax1.plot(air_interp, label = 'smoothed')
+                        # ax1.plot(original_interp, label ='unsmoothed')
+                        # # ax1.plot(time, t_obs[0, 0, 0, :], label='T_obs')
+                        # # ax1.set_xlabel('Timesteps')
+                        # ax1.set_ylabel('K')
+                        # ax1.set_xlabel('obs time')
+                        # ax1.legend()
+                        # ax1.set_title('Smoothed vs unsmoothed air temp in obs')
+
+                        # ax2.plot(hk_time, hk_air_temp)
+                        # ax2.plot(hk_time, all_air_smooth)
+                        # ax2.plot(hk_time[start_scan_idx:stop_scan_idx], hk_air_temp[start_scan_idx:stop_scan_idx])
+
+                        # # ax2.plot(time, air)
+                        # ax1.set_ylabel('K')
+                        # ax2.set_xlabel('Timesteps in hk')
+                        # ax2.set_title('Hk air temp over time')
+                        # fig.tight_layout()
+                        # fig.savefig(f'{outfile_figs}/Air/Smooth_vs_unsmooth_air_over_time_{scan}')
+                        
+                
+        exit()
+
+
+
 
 # MAPS
 if __name__ == "__main__":
@@ -53,15 +209,15 @@ if __name__ == "__main__":
         
 
         outfile_figs = Path("/mn/stornext/d16/cmbco/comap/leah/figs/figs_constant_Tsys")
-        
+        outfile_figs = Path("/mn/stornext/d16/cmbco/comap/leah/figs/figs_constant_BB")
 
         # timezone = 'time_varying'
         filtrs = ['normalized', 'pointing', 'poly']
         # filtrs = ['pointing']
         scale = 0#1/100000
 
-        version = 'co7_constant_Tsys'
-        # version = 'co7_constant_BB'
+        # version = 'co7_constant_Tsys'
+        version = 'co7_constant_BB'
         # version = ''
 
         for i in range(len(filtrs)):
@@ -313,143 +469,6 @@ if __name__ == "__main__":
 
 
      
-
-if __name__ == "__main__":
-        
-        
-        filter_dic = {'normalized':'_3_norm', 'pointing':'_4_pnt_bi', 'poly':'_5_poly'}
-        # filter_dic = {'poly':'_5_poly'}
-
-        ######
-        # timezone = 'Constant'
-        # data_folder=  Path(tod_gen_folder/ 'level2_dir_leah5/co7')
-        # outfile_figs = Path(tod_gen_folder/'pipeline/figs_testing/figs_tground_model/with_pointing')
-        
-        for filtr in filter_dic:
-                print(filtr)
-                timezone = 'Time varying'
-                print(f'Timezone is {timezone}')
-                data_folder=  Path(tod_gen_folder/ f'level2_dir_leah_time_{filtr}/co7')
-                outfile_figs = Path(tod_gen_folder/f'pipeline/figs/figs_through_filter_time_varying/{filtr}')
-                ######
-
-
-                scans = ['co7_001196211','co7_001320603', 'co7_001454102', 'co7_001556802', 'co7_001832603', 'co7_002233305', 'co7_002489606', 'co7_002733208', 'co7_003004205','co7_003174311', 'co7_003431206', 'co7_003754110','co7_003961103' ]
-                
-                # scans = ['co7_003004205' ]
-
-                images = []
-                minmax = []
-                titles = []
-                
-
-                images_trest = []
-                minmax_trest = []
-                titles_trest = []
-                for scan in scans:
-                ############################################################
-                        tod_gen = TOD_Gen()
-                        
-
-                        params = ['time', 'Tsys', 'freq_bin_centers', 'tod', 'Gain', 'point_tel',  'T_rest', 'Tsys', 'hk_time', 'air_temp', 'scan_start_idx_hk', 'scan_stop_idx_hk']#, 'scale']
-                
-                        read_file_start = timer.time()
-                        # tod, params =  tod_gen.read_file(data_folder/'co7_002911511_3_norm.h5', model=True, parameter_list=params, units=False)
-                        tod, params =  tod_gen.read_file(data_folder/f'{scan}{filter_dic[filtr]}.h5', model=True, parameter_list=params, units=False)
-                        
-                        read_file_end = timer.time()
-                        print(f'Time of reading files {read_file_end-read_file_start}')
-                        
-                        with open(f"{outfile_figs}/params/params_{scan}.npy", 'wb') as f:
-                                pickle.dump(params, f, protocol=4)
-
-
-                
-                        ############################################################
-                        
-
-                        with open(f"{outfile_figs}/params/params_{scan}.npy", "rb") as f:
-                                params = pickle.load(f)
-                                
-                        params = dict(params.items())
-                        # print(params.keys())
-
-                        tod = params['tod']
-                        Gain = params['Gain']
-                        Tsys = params['Tsys']
-                        T_rest = params['T_rest']
-                        
-
-                        # correlated = params['correlated']
-                        # white_noise = params['white_noise']
-                        freqs = params['freq_bin_centers']
-
-                        time = params['time'] #Time 0 is 0.0 time -1 is 379.9808580195531
-                        time = (time - time[0])*24*60*60
-                        # print(f' Time is from {time[0]} to {time[-1]}')
-
-                        point_tel = params['point_tel']
-                        hk_air_temp = params['air_temp']
-                        hk_time = params['hk_time']
-                        hk_time = (hk_time - hk_time[0])*24*60*60
-
-                        start_scan_idx = params['scan_start_idx_hk']
-                        stop_scan_idx = params['scan_stop_idx_hk']
-
-                        
-                        # print(f'start_scan_idx is {start_scan_idx}, stop scan idx is {stop_scan_idx}')
-                        
-                        
-                        az = point_tel[:, :, 0] # Current point_tel is [feed, time, az/el]
-                        el = point_tel[:, :, 1]
-
-                        scale = 1/10000 # Scale for whitenoise. This is just a reminder, scaling actually happens before pipeline
-                        # scale = params['scale']
-
-                        extra_params_dict = {'hk_time': hk_time, 'hk_air_temp':hk_air_temp, 'scan_start_idx_hk': start_scan_idx, 'scan_stop_idx_hk':stop_scan_idx}
-
-                        
-                        tod_gen = TOD_Gen(tod=tod, az=az, el=el, Gain=Gain, Tsys=Tsys, time=time, freq_bin_centers = freqs, extra_params_dict=extra_params_dict) 
-                        
-                
-                        convolution_files = [ conv_folder / 'conv_26GHz_NSIDE256.npy', conv_folder / 'conv_30GHz_NSIDE256.npy', conv_folder / 'conv_34GHz_NSIDE256.npy',]
-
-                        d_model, G, correlated, Tsys, white_noise, Trest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False, point=[az, el], scale = scale)
-                        # air_interp, all_air_smooth, original_interp = tod_gen.interpolating_air_temp(hk_air_temp, hk_time, hk_start=start_scan_idx, hk_end=stop_scan_idx)
-
-
-
-                        # print(f'Shape of T_rest is {np.shape(Trest)}')
-                        T_rest_waterfall, trest_minmax = waterfall(Trest[0], len(d_model[0, 0, 0, :]), title=f'{timezone} ground pickup for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/T_rest/T_rest_{scan}', shape = 4*1024, minmax=True)
-                        d_model_waterfall, d_minmax = waterfall(d_model[0], len(d_model[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD/TOD_{scan}', shape = 4*1024, minmax=True)
-
-
-                        # # sys_time_end = (np.where(hk_time < time[-1]+0.01)[0][-1])
-                        # fig, (ax1, ax2) = plt.subplots(2, 1)
-                
-                        # ax1.plot(air_interp, label = 'smoothed')
-                        # ax1.plot(original_interp, label ='unsmoothed')
-                        # # ax1.plot(time, t_obs[0, 0, 0, :], label='T_obs')
-                        # # ax1.set_xlabel('Timesteps')
-                        # ax1.set_ylabel('K')
-                        # ax1.set_xlabel('obs time')
-                        # ax1.legend()
-                        # ax1.set_title('Smoothed vs unsmoothed air temp in obs')
-
-                        # ax2.plot(hk_time, hk_air_temp)
-                        # ax2.plot(hk_time, all_air_smooth)
-                        # ax2.plot(hk_time[start_scan_idx:stop_scan_idx], hk_air_temp[start_scan_idx:stop_scan_idx])
-
-                        # # ax2.plot(time, air)
-                        # ax1.set_ylabel('K')
-                        # ax2.set_xlabel('Timesteps in hk')
-                        # ax2.set_title('Hk air temp over time')
-                        # fig.tight_layout()
-                        # fig.savefig(f'{outfile_figs}/Air/Smooth_vs_unsmooth_air_over_time_{scan}')
-                        
-                
-        exit()
-
 
 
 
