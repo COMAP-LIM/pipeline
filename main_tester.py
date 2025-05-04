@@ -2,13 +2,13 @@ import warnings
 import h5py 
 import numpy as np
 import pickle
-# import healpy as hp
+import healpy as hp
 import matplotlib.pyplot as plt
 # from scipy.fftpack import rfft, irfft
 # from scipy.fftpack import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
 from scipy.fftpack import  next_fast_len
-# import scipy as sp
-# from scipy import ndimage
+import scipy as sp
+from scipy import ndimage
 
 from pathlib import Path
 from astropy.io import fits
@@ -16,7 +16,7 @@ from astropy.wcs import WCS
 from pathlib import Path
 from numpy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq
 import time as timer
-from leah.plot import * # MIGHT need to change address
+from plot import *
 from tod_generator import TOD_Gen
 np.random.seed(4)
 
@@ -27,35 +27,45 @@ src = Path(__file__).parent.absolute()
 tod_gen_folder = src.parent.absolute() # leah folder
 conv_folder = Path(tod_gen_folder/ 'data_tground')
 
-# data_folder=  Path(tod_gen_folder/ 'level2_dir_leah6_time_no_poly/co7')
+data_folder=  Path(tod_gen_folder/ 'level2_dir_leah6_time_no_poly/co7')
 # data_folder_constant =  Path(tod_gen_folder/ 'level2_dir_leah5/co7')
 
 # outfile_figs = Path(tod_gen_folder/'pipeline/figs_testing/azimuth_ground_model')
 
 
+
+
 if __name__ == "__main__":
         
         
-        # filter_dic = {'normalized':'_3_norm', 'pointing':'_4_pnt_bi', 'poly':'_5_poly'}
-        filter_dic = {'poly':''}
-        version = 'constant_Tsys'
+        filter_dic = {'normalized':'_3_norm', 'pointing':'_4_pnt_bi', 'poly':'_5_poly'}
+        # filter_dic = {'pointing':'_4_pnt_bi'}
+
         ######
-        # timezone = 'Constant'
+        timezone = 'Time varying'#'Constant'
         # data_folder=  Path(tod_gen_folder/ 'level2_dir_leah5/co7')
         # outfile_figs = Path(tod_gen_folder/'pipeline/figs_testing/figs_tground_model/with_pointing')
         
         for filtr in filter_dic:
                 print(filtr)
-                timezone = 'Time varying'
+                # timezone = 'Time varying'
+                # timezone = 'constant'
                 print(f'Timezone is {timezone}')
-                data_folder=  Path(tod_gen_folder/ f'level2_dir_leah_time_{filtr}/co7_{version}/co7_v1')
-                outfile_figs = Path(tod_gen_folder/f'figs/figs_{version}')
+                if timezone == 'Time varying':
+                        data_folder =  Path(tod_gen_folder/ f'level2_dir_leah_time_{filtr}/co7')
+                        outfile_figs = Path(tod_gen_folder/f'pipeline/figs/figs_through_filter_time_varying/{filtr}')
+                
+                else:
+                        data_folder =  Path(tod_gen_folder/ f'level2_dir_leah_constant_{filtr}/co7')
+                        outfile_figs = Path(tod_gen_folder/f'pipeline/figs/figs_through_filter_constant/{filtr}')
+                
+
                 ######
 
 
                 # scans = ['co7_001196211','co7_001320603', 'co7_001454102', 'co7_001556802', 'co7_001832603', 'co7_002233305', 'co7_002489606', 'co7_002733208', 'co7_003004205','co7_003174311', 'co7_003431206', 'co7_003754110','co7_003961103' ]
                 
-                scans = ['co7_003004205' ]
+                scans = ['co7_003004205']
 
                 images = []
                 minmax = []
@@ -70,7 +80,7 @@ if __name__ == "__main__":
                         tod_gen = TOD_Gen()
                         
 
-                        params = ['time', 'Tsys', 'freq_bin_centers', 'tod', 'Gain', 'point_tel',  'T_rest', 'Tsys', 'hk_time', 'air_temp', 'scan_start_idx_hk', 'scan_stop_idx_hk', 'sigma0']#, 'scale']
+                        params = ['time', 'Tsys', 'freq_bin_centers', 'tod', 'Gain', 'point_tel',  'T_rest', 'Tsys', 'hk_time', 'air_temp', 'scan_start_idx_hk', 'scan_stop_idx_hk', 'scale']
                 
                         read_file_start = timer.time()
                         # tod, params =  tod_gen.read_file(data_folder/'co7_002911511_3_norm.h5', model=True, parameter_list=params, units=False)
@@ -97,7 +107,6 @@ if __name__ == "__main__":
                         Gain = params['Gain']
                         Tsys = params['Tsys']
                         T_rest = params['T_rest']
-                        sigma0 = params['sigma0']
                         
 
                         # correlated = params['correlated']
@@ -123,72 +132,53 @@ if __name__ == "__main__":
                         az = point_tel[:, :, 0] # Current point_tel is [feed, time, az/el]
                         el = point_tel[:, :, 1]
 
-                        scale = 0 # 1/10000 # Scale for whitenoise. This is just a reminder, scaling actually happens before pipeline
-                        # scale = params['scale']
+                        scale = params['scale'] #1/100000 # Scale for whitenoise. This is just a reminder, scaling actually happens before pipeline
+                        
+
 
                         extra_params_dict = {'hk_time': hk_time, 'hk_air_temp':hk_air_temp, 'scan_start_idx_hk': start_scan_idx, 'scan_stop_idx_hk':stop_scan_idx}
-
-                        
                         tod_gen = TOD_Gen(tod=tod, az=az, el=el, Gain=Gain, Tsys=Tsys, time=time, freq_bin_centers = freqs, extra_params_dict=extra_params_dict) 
                         
                 
-                        convolution_files = [ conv_folder / 'conv_26GHz_NSIDE256.npy', conv_folder / 'conv_30GHz_NSIDE256.npy', conv_folder / 'conv_34GHz_NSIDE256.npy',]
+                        # convolution_files = [ conv_folder / 'conv_26GHz_NSIDE256.npy', conv_folder / 'conv_30GHz_NSIDE256.npy', conv_folder / 'conv_34GHz_NSIDE256.npy']
 
-                        # d_model, G, correlated, Tsys, white_noise, Trest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False, point=[az, el], scale = scale)
-                        # air_interp, all_air_smooth, original_interp = tod_gen.interpolating_air_temp(hk_air_temp, hk_time, hk_start=start_scan_idx, hk_end=stop_scan_idx)
+                        # d_model, G, correlated, Tsys, white_noise, Trest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False, point=[az, el], scale = scale, constant_ground=True)
+                        # d_model_waterfall, d_minmax = waterfall(d_model[0], len(d_model[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD_{scan}_{filtr}', shape = 4*1024, minmax=True)
+                   
+                        air_interp, all_air_smooth, original_interp = tod_gen.interpolating_air_temp(hk_air_temp, hk_time, hk_start=start_scan_idx, hk_end=stop_scan_idx)
 
 
 
-                        print(f'Shape of TOD is {np.shape(tod)}')
-                        # T_rest_waterfall, trest_minmax = waterfall(Trest[0], len(d_model[0, 0, 0, :]), title=f'{timezone} ground pickup for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/T_rest/T_rest_{scan}', shape = 4*1024, minmax=True)
-                        # d_model_waterfall, d_minmax = waterfall(d_model[0], len(d_model[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD/TOD_{scan}', shape = 4*1024, minmax=True)
-                        d_model_waterfall, d_minmax = waterfall(tod[0], len(tod[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD/TOD_{scan}', shape = 4*64, minmax=True)
-
-                        tod_flat = tod[0, :, :, 2500].flatten()
-                        print(np.shape(tod_flat))
-                        plt.figure()
-                        plt.plot(tod_flat)
-                        plt.ylabel('K')
-                        plt.xlabel('freq')
-                        plt.savefig(f'{outfile_figs}/TOD/timestep_over_freq')
-                        plt.close()
-
+                        # print(f'Shape of T_rest is {np.shape(Trest)}')
+                        T_rest_waterfall, trest_minmax = waterfall(T_rest[0], len(tod[0, 0, 0, :]), title=f'{timezone} ground pickup for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/T_rest/T_rest_{scan}', shape = 4*1024, minmax=True)
+                        d_model_waterfall, d_minmax = waterfall(tod[0], len(tod[0, 0, 0, :]), title=f'TOD for {scan} with wn scaled by {scale}', save=f'{outfile_figs}/TOD/TOD_{scan}', shape = 4*1024, minmax=True)
                         
-                        plt.figure()
-                        plt.plot(sigma0[0].flatten())
-                        # plt.ylabel('K')
-                        plt.xlabel('freq')
-                        plt.title(f'Feed 0')
-                        plt.savefig(f'{outfile_figs}/TOD/sigma0')
-                        plt.close()
+
                         # # sys_time_end = (np.where(hk_time < time[-1]+0.01)[0][-1])
-                        # fig, (ax1, ax2) = plt.subplots(2, 1)
+                        fig, (ax1, ax2) = plt.subplots(2, 1)
                 
-                        # ax1.plot(air_interp, label = 'smoothed')
-                        # ax1.plot(original_interp, label ='unsmoothed')
-                        # # ax1.plot(time, t_obs[0, 0, 0, :], label='T_obs')
-                        # # ax1.set_xlabel('Timesteps')
-                        # ax1.set_ylabel('K')
-                        # ax1.set_xlabel('obs time')
-                        # ax1.legend()
-                        # ax1.set_title('Smoothed vs unsmoothed air temp in obs')
+                        ax1.plot(air_interp, label = 'smoothed')
+                        ax1.plot(original_interp, label ='unsmoothed')
+                        # ax1.plot(time, t_obs[0, 0, 0, :], label='T_obs')
+                        # ax1.set_xlabel('Timesteps')
+                        ax1.set_ylabel('K')
+                        ax1.set_xlabel('obs time')
+                        ax1.legend()
+                        ax1.set_title('Smoothed vs unsmoothed air temp in obs')
 
-                        # ax2.plot(hk_time, hk_air_temp)
-                        # ax2.plot(hk_time, all_air_smooth)
-                        # ax2.plot(hk_time[start_scan_idx:stop_scan_idx], hk_air_temp[start_scan_idx:stop_scan_idx])
+                        ax2.plot(hk_time, hk_air_temp)
+                        ax2.plot(hk_time, all_air_smooth)
+                        ax2.plot(hk_time[start_scan_idx:stop_scan_idx], hk_air_temp[start_scan_idx:stop_scan_idx])
 
-                        # # ax2.plot(time, air)
-                        # ax1.set_ylabel('K')
-                        # ax2.set_xlabel('Timesteps in hk')
-                        # ax2.set_title('Hk air temp over time')
-                        # fig.tight_layout()
-                        # fig.savefig(f'{outfile_figs}/Air/Smooth_vs_unsmooth_air_over_time_{scan}')
+                        # ax2.plot(time, air)
+                        ax1.set_ylabel('K')
+                        ax2.set_xlabel('Timesteps in hk')
+                        ax2.set_title('Hk air temp over time')
+                        fig.tight_layout()
+                        fig.savefig(f'{outfile_figs}/Smooth_vs_unsmooth_air_over_time_{scan}')
                         
                 
         exit()
-
-
-
 
 # MAPS
 if __name__ == "__main__":
@@ -206,270 +196,85 @@ if __name__ == "__main__":
 
         """
         #################################################################
+
+        path_maps1 = Path(tod_gen_folder / 'maps_leah/with_pointing_time_varying') # time varying
+        file1 =  Path(path_maps1/'co7_Groundpickup_bb.h5')
+
+        path_maps2 = Path(tod_gen_folder / 'maps_leah2') # constant
+        file2 =  Path(path_maps2/'co7_Groundpickup_bb.h5')
+
+        outfile_figs = Path('/mn/stornext/d16/cmbco/comap/leah/pipeline/figs_testing/maps/with_pointing')
+
+
+
+        parameter_list = ['map']
+        parameter_list_c = ['map']
+
+        params_time = {}
+        params_constant = {}
+
+        with h5py.File(file1, 'r') as infile:
+
+                print(infile.keys())
+                for key in parameter_list:
+                
+                        params_time.update({f'{key}': infile[key][()]})
         
+        with h5py.File(file2, 'r') as f:
 
-        outfile_figs = Path("/mn/stornext/d16/cmbco/comap/leah/figs/figs_constant_Tsys")
-        outfile_figs = Path("/mn/stornext/d16/cmbco/comap/leah/figs/figs_constant_BB")
-
-        # timezone = 'time_varying'
-        filtrs = ['normalized', 'pointing', 'poly']
-        # filtrs = ['pointing']
-        scale = 0#1/100000
-
-        # version = 'co7_constant_Tsys'
-        version = 'co7_constant_BB'
-        # version = ''
-
-        for i in range(len(filtrs)):
-                filtr = filtrs[i]
-                path_maps1 = Path(tod_gen_folder / f"maps_leah_time/{filtr}/{version}") # time varying
-                path_maps2 = Path(tod_gen_folder / f"maps_leah_constant/{filtr}/{version}") 
-                file1 =  Path(path_maps1/"co7_Groundpickup_bb.h5")
-                file2 =  Path(path_maps2/"co7_Groundpickup_bb.h5")
-
-                parameter_list = ["map", "nhit"]
-                parameter_list_c = ["map", "nhit"]
-
-                params_time = {}
-                params_constant = {}
-
-                with h5py.File(file1, 'r') as infile:
-
-                        # print(infile.keys())
-                        for key in parameter_list:
-                        
-                                params_time.update({f'{key}': infile[key][()]})
+                print(f.keys())
+                for key in parameter_list:
                 
-                with h5py.File(file2, 'r') as f:
-
-                        # print(f.keys())
-                        for key in parameter_list:
-                        
-                                params_constant.update({f'{key}': f[key][()]})
-                
-                
-                feed = 15
-                sideband = 3
-                freq_index = 25
-
-
-                
-                maps_1 = params_time['map']
-                pix1 = maps_1[feed, sideband, :, 40, 60]*1e6
-                map_1 = maps_1[feed, sideband, freq_index, ...]*1e6
+                        params_constant.update({f'{key}': f[key][()]})
         
-
-                maps_2 = params_constant['map']
-                pix2 = maps_2[feed, sideband, :, 40, 60]*1e6
-                map_2 = maps_2[feed, sideband, freq_index, ...]*1e6
-                
-                hit_maps_1 = params_time['nhit']
-                hit_pix1 = hit_maps_1[feed, sideband, :, 40, 60]*1e6
-                hit_map_1 = hit_maps_1[feed, sideband, freq_index, ...]*1e6
         
+        map_1 = params_time['map']
+        map_1 = map_1[6, 3, 25, ...]*1e6
 
-                hit_maps_2 = params_constant['nhit']
-                hit_pix2 =  hit_maps_2[feed, sideband, :, 40, 60]*1e6
-                hit_map_2 = hit_maps_2[feed, sideband, freq_index, ...]*1e6
-                
-                        
-                # print(f"Is map_1 0 anywhere for filter {filtr}? {np.any(map_1==0)}")
-                # print(f"Is map_2 0 anywhere for filter {filtr}? {np.any(map_2==0)}\n")
-
-                # print(f"Is map_1 nan anywhere for filter {filtr}? In {len(np.where(np.isnan(map_1))[0])} places")
-                # print(f"Is map_2 nan anywhere for filter {filtr}? In {len(np.where(np.isnan(map_2))[0])} places")
-                # print(f"Are they nan in the same places? {np.where(np.isnan(map_1))==np.where(np.isnan(map_2))}\n")
-
-                # print(f"Min abs of map_1 is {np.nanmin(abs(map_1))}")
-                # print(f"Min abs of map_2 is {np.nanmin(abs(map_2))}\n")
-                print(maps_1.shape)
-                dapper_mapper = [[2, 1, 25], [2, 3, 25 ], [2, 1, 25], [2, 3, 25 ], [6, 1, 25], [6, 3, 25 ], [10, 1, 25 ], [10, 3, 25 ], [13, 1, 25 ], [13, 3, 25 ], [15, 1, 25 ], [15, 3, 25 ], [18, 1, 25 ], [18, 3, 25 ]]
-                # dapper_mapper = []
-                # for i in range(0, len(maps_1), 5):
-                #         for j in [25]:#range(0, len(maps_1[0, 0, :]), 30):
-                #                 dapper_mapper.append([i, 0, j])
-                #                 dapper_mapper.append([i, 1, j])
-                #                 dapper_mapper.append([i, 2, j])
-                #                 dapper_mapper.append([i, 3, j])
-                #                 dapper_mapper.append([i, 0, j+2])
-                #                 dapper_mapper.append([i, 1, j+2])
-                #                 dapper_mapper.append([i, 2, j+2])
-                #                 dapper_mapper.append([i, 3, j+2])
+        map_2 = params_constant['map']
+        map_2 = map_2[6, 3, 25, ...]*1e6
 
 
-                plt.figure()
-                fig, axs = plt.subplots(len(dapper_mapper), 2, figsize=(15, 5 * len(dapper_mapper)))
+        nans_constant = (np.where(np.isnan(map_1)))
+        nans_time = (np.where(np.isnan(map_2)))
+        print(f'shape  of map is {np.shape(map_1)}')
+        # map_1[30:90, 30:50] = (map_1[30:90, 30:50])*1e6*1e6
+        print(f'map time = {map_1[80,80]}\n and {map_1[40,40]}')
+        print(f'map constant = {map_2[80,80]}\n and {map_2[40,40]}')
 
-                for row, item in enumerate(dapper_mapper):
-                        feed, sideband, freq_index = item
-                        # print(f"feed = {feed}, sideband = {sideband}, freq_index = {freq_index}")
-                        
-                        freq_index = freq_index   #Trying different frequencies
-                        freq = freq_index  # assuming direct mapping to GHz
-
-                        map_t = maps_1[feed, sideband, freq_index, ...] * 1e6  # time-varying
-                        map_c = maps_2[feed, sideband, freq_index, ...] * 1e6  # constant
-
-                        cmap = plt.get_cmap("bwr")
-                        cmap.set_bad("gray")
-
-                        # Time-varying (top row)
-                        im1 = axs[row, 0].imshow(map_t, cmap=cmap, interpolation='none',
-                                                vmin=-np.nanmax(abs(map_t)), vmax=np.nanmax(abs(map_t)))
-                        axs[row, 0].set_title(f'Time-varying model. Feed = {feed}, sideband = {sideband}, freq_idx = {freq_index}', pad=14)
-                        axs[row, 0].invert_xaxis()
-                        axs[row, 0].invert_yaxis()
-
-                        axs[row, 0].set_xlabel("RA [pixel]")
-                        axs[row, 0].set_ylabel("Dec [pixel]")
-
-
-                        # Constant (bottom row)
-                        im2 = axs[row, 1].imshow(map_c, cmap=cmap, interpolation='none',
-                                                vmin=-np.nanmax(abs(map_c)), vmax=np.nanmax(abs(map_c)))
-                        axs[row, 1].set_title(f'Constant model. Feed = {feed}, sideband = {sideband}, freq_idx = {freq_index}', pad=14)
-                        axs[row, 1].invert_xaxis()
-                        axs[row, 1].invert_yaxis()
-
-                        axs[row, 1].set_xlabel("RA [pixel]")
-                        axs[row, 1].set_ylabel("Dec [pixel]")
-
-                        # Add colorbars (optional: one for each row or shared per column)
-                        fig.colorbar(im1, ax=axs[row, 0], orientation='vertical', fraction=0.046, pad=0.02, label="μK")
-                        fig.colorbar(im2, ax=axs[row, 1], orientation='vertical', fraction=0.046, pad=0.02, label="μK")
-
-                        
-                        
-
-
-                        # # Shared colorbar
-                        # cbar = fig.colorbar(im, ax=axs.ravel().tolist(), shrink=0.7)
-                        # cbar.set_label("Temperature Difference [μK]")
-
-
-                plt.tight_layout()
-                plt.savefig(outfile_figs/f"MAP_C_T_{filtr}_random.png")
-                plt.close()
-
-                plt.figure()
-                fig, axs = plt.subplots(len(dapper_mapper), 2, figsize=(15, 5 * len(dapper_mapper)))
-
-                for row, item in enumerate(dapper_mapper):
-                        feed, sideband, freq_index = item
-                        # print(f"feed = {feed}, sideband = {sideband}, freq_index = {freq_index}")
-                        
-                        freq_index = freq_index   #Trying different frequencies
-                        freq = freq_index  # assuming direct mapping to GHz
-
-                        map_t = hit_maps_1[feed, sideband, freq_index, ...] * 1e6  # time-varying
-                        map_c = hit_maps_2[feed, sideband, freq_index, ...] * 1e6  # constant
-
-                        cmap = plt.get_cmap("bwr")
-                        cmap.set_bad("gray")
-
-                        # Time-varying (top row)
-                        im1 = axs[row, 0].imshow(map_t, cmap=cmap, interpolation='none',
-                                                vmin=-np.nanmax(abs(map_t)), vmax=np.nanmax(abs(map_t)))
-                        axs[row, 0].set_title(f'Time-varying model. Feed = {feed}, sideband = {sideband}, freq_idx = {freq_index}', pad=14)
-                        axs[row, 0].invert_xaxis()
-                        axs[row, 0].invert_yaxis()
-
-                        axs[row, 0].set_xlabel("RA [pixel]")
-                        axs[row, 0].set_ylabel("Dec [pixel]")
-
-
-                        # Constant (bottom row)
-                        im2 = axs[row, 1].imshow(map_c, cmap=cmap, interpolation='none',
-                                                vmin=-np.nanmax(abs(map_c)), vmax=np.nanmax(abs(map_c)))
-                        axs[row, 1].set_title(f'Constant model. Feed = {feed}, sideband = {sideband}, freq_idx = {freq_index}', pad=14)
-                        axs[row, 1].invert_xaxis()
-                        axs[row, 1].invert_yaxis()
-
-                        axs[row, 1].set_xlabel("RA [pixel]")
-                        axs[row, 1].set_ylabel("Dec [pixel]")
-
-                        # Add colorbars (optional: one for each row or shared per column)
-                        fig.colorbar(im1, ax=axs[row, 0], orientation='vertical', fraction=0.046, pad=0.02, label="μK")
-                        fig.colorbar(im2, ax=axs[row, 1], orientation='vertical', fraction=0.046, pad=0.02, label="μK")
-
-                        
-                        
-
-
-                        # # Shared colorbar
-                        # cbar = fig.colorbar(im, ax=axs.ravel().tolist(), shrink=0.7)
-                        # cbar.set_label("Temperature Difference [μK]")
-
-
-                plt.tight_layout()
-                plt.savefig(outfile_figs/f"HIT_MAP_C_T_{filtr}_random.png")
-                plt.close()
-                
-                     
-                """
-                
-                nans_constant = (np.where(np.isnan(map_1)))
-                # nans_time = (np.where(np.isnan(map_2)))
-                # print(f'shape  of map is {np.shape(map_1)}')
-                # map_1[30:90, 30:50] = (map_1[30:90, 30:50])*1e6*1e6
-                # print(f'map time = {map_1[80,80]}\n and {map_1[40,40]}')
-                # print(f'map constant = {map_2[80,80]}\n and {map_2[40,40]}')
-
-                plt.figure()
-                im = plt.imshow(map_1, cmap='seismic', interpolation='none', vmin=-np.nanmax(abs(map_1)), vmax=np.nanmax(abs(map_1)))
-                cbar = plt.colorbar(im)
-                # Reverse x-axis
-                plt.gca().invert_xaxis()
-                # Reverse y-axis
-                plt.gca().invert_yaxis()
-                cbar.set_label('micro K')
-                plt.title(f'Map of time-varying ground pickup model. Wn scaled by {scale}')
-                plt.xlabel('Ra [pixel]')
-                plt.ylabel('Dec [pixel]')
-                plt.savefig(outfile_figs/f'figs_through_filter_time_varying/{filtr}/maps'/f'map_test_time_varying')
-
-
-                plt.figure()
-                im = plt.imshow(map_2, cmap='seismic', interpolation='none', vmin=-np.nanmax(abs(map_2)), vmax=np.nanmax(abs(map_2)))
-                cbar = plt.colorbar(im)
-                # Reverse x-axis
-                plt.gca().invert_xaxis()
-                # Reverse y-axis
-                plt.gca().invert_yaxis()
-                cbar.set_label('micro K')
-                plt.title(f'Map of constant ground pickup model. Wn scaled by {scale}. Many scans.')
-                plt.xlabel('Ra [pixel]')
-                plt.ylabel('Dec [pixel]')
-                plt.savefig(outfile_figs/f'figs_through_filter_constant/{filtr}/maps'/'map_test_constant')
-                plt.close()
-                """
-                plt.figure()
-                plt.title(f'Plot of pixel in time-varying and constant model after {filtr}. Wn scaled by {scale}. Many scans.')
-                plt.xlabel('Frequency [GHz]')
-                plt.ylabel('micro K')
-                plt.plot(pix1, label='time-varying')
-                plt.plot(pix2, label='constant')
-                plt.legend()
-                plt.savefig(outfile_figs/f'{filtr}_pixl_compare')
-                plt.close()
-
-                plt.figure()
-                plt.title(f'Plot of pixel in time-varying and constant model after {filtr}. Wn scaled by {scale}. Many scans.')
-                plt.xlabel('Frequency [GHz]')
-                plt.ylabel('micro K')
-                plt.plot(hit_pix1, label='time-varying')
-                plt.plot(hit_pix2, label='constant')
-                plt.legend()
-                plt.savefig(outfile_figs/f'{filtr}_hit_pixl_compare')
-                plt.close()
-
-       
         
+        plt.figure()
+        im = plt.imshow(map_1, cmap='seismic', interpolation='none', vmin=-np.nanmax(abs(map_1)), vmax=np.nanmax(abs(map_1)))
+        cbar = plt.colorbar(im)
+        # Reverse x-axis
+        plt.gca().invert_xaxis()
+        # Reverse y-axis
+        plt.gca().invert_yaxis()
+        cbar.set_label('micro K')
+        plt.title('Map of time-varying ground pickup model. Wn scaled by 1/10000')
+        plt.xlabel('Ra [pixel]')
+        plt.ylabel('Dec [pixel]')
+        plt.savefig(outfile_figs/'map_test_time_varying')
+
+
+        plt.figure()
+
+
+
+
+        im = plt.imshow(map_2, cmap='seismic', interpolation='none', vmin=-np.nanmax(abs(map_2)), vmax=np.nanmax(abs(map_2)))
+        cbar = plt.colorbar(im)
+        # Reverse x-axis
+        plt.gca().invert_xaxis()
+        # Reverse y-axis
+        plt.gca().invert_yaxis()
+        cbar.set_label('micro K')
+        plt.title('Map of constant ground pickup model. Wn scaled by 1/10000')
+        plt.xlabel('Ra [pixel]')
+        plt.ylabel('Dec [pixel]')
+        plt.savefig(outfile_figs/'map_test_constant')
+
         exit()
-
-
-     
-
 
 
 # MANY SCANS
