@@ -35,6 +35,7 @@ class Replace_TOD:
         Gain = l2.Gain
         l2.Tsys = np.zeros_like(l2.Tsys) + 44
         Tsys = l2.Tsys
+        
 
         time = l2.tod_times_seconds
         
@@ -68,6 +69,7 @@ class Replace_TOD:
         extra_params_dict = {'hk_air_temp':l2.air_temperature, 'hk_time':hk_times, 'scan_start_idx_hk':l2.scan_start_idx_hk, 'scan_stop_idx_hk':l2.scan_stop_idx_hk}
         tod_gen = TOD_Gen(tod, az, el, Gain, Tsys, freq, time, extra_params_dict=extra_params_dict)
        
+       
         convolution_files = [ data_folder / 'conv_26GHz_NSIDE256.npy', data_folder / 'conv_30GHz_NSIDE256.npy', data_folder / 'conv_34GHz_NSIDE256.npy',]
 
         scale = self.params.ground_sim_wn_scale #1/100000
@@ -76,7 +78,7 @@ class Replace_TOD:
         test_BB = False #If true sets time to constant while keeping the BB model
         
         d_model, G, correlated, Tsys, white_noise, T_rest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False,  scale=scale, constant_ground = const, BB_test = test_BB )
-       
+        
         
 
        

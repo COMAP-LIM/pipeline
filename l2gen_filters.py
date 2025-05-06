@@ -353,7 +353,10 @@ class Decimation(Filter):
         l2.Nfreqs_highres = l2.Nfreqs
         l2.Nfreqs = self.Nfreqs_lowres
         
-        weight = 1.0/np.nanvar(l2.tod, axis=-1)
+        if l2.params.determine_sigma0_from_data:
+            weight = 1.0/np.nanvar(l2.tod, axis=-1)
+        else:
+            weight = np.ones(l2.tod.shape[:-1])
         
         # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
         # if "Replace_TOD_With_Signal" in self.params.filters:
@@ -400,6 +403,7 @@ class Decimation(Filter):
         l2.tofile_dict["N_freqs_in_bin"] = N_freqs_in_bin
         l2.tofile_dict["freq_bin_edges_lowres"] = self.freq_bin_edges_lowres
         l2.tofile_dict["freq_bin_centers_lowres"] = self.freq_bin_centers_lowres
+
         
 
 class DecimationOld(Filter):
@@ -1835,7 +1839,7 @@ class Tsys_calc(Filter):
         l2.freqmask[(~np.isfinite(l2.Tsys))*(l2.freqmask)] = False
         l2.freqmask_reason[(~np.isfinite(l2.Tsys))*(l2.freqmask)] += 2**l2.freqmask_reason_num_dict["Tsys NaN or inf"]
 
-        l2.tofile_dict["Tsys"] = l2.Tsys
+        l2.tofile_dict["Tsys"] = np.zeros_like(l2.Tsys) + 44 #l2.Tsys
         l2.tofile_dict["Gain"] = l2.Gain
         l2.tofile_dict["Pcold"] = Pcold
         l2.tofile_dict["Thot"] = Thot[l2.feeds-1]
