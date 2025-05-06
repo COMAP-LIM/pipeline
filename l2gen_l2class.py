@@ -20,6 +20,7 @@ class level2_file:
         self.fieldname = fieldname
         self.l1_filename = l1_filename
         self.l2_filename = fieldname + "_" + self.scanid_str
+        self.tod_dtype = np.float64 if self.params.float64_mode else np.float32
         self.feature_bit = scantype
         self.is_sim = False  # Whether this is or contains a simulation
         self.is_wn_sim = False # Whether this is or contains a white noise simulation
@@ -56,7 +57,7 @@ class level2_file:
             self.el             = f["/spectrometer/pixel_pointing/pixel_el"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
             self.ra             = f["/spectrometer/pixel_pointing/pixel_ra"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
             self.dec            = f["/spectrometer/pixel_pointing/pixel_dec"][self.included_feeds_idxs,self.scan_start_idx:self.scan_stop_idx]
-            self.tod            = f["/spectrometer/tod"][self.included_feeds_idxs,:,:,self.scan_start_idx:self.scan_stop_idx]
+            self.tod            = f["/spectrometer/tod"][self.included_feeds_idxs,:,:,self.scan_start_idx:self.scan_stop_idx].astype(self.tod_dtype)
             self.freqs          = f["/spectrometer/frequency"][()]
             self.sb_mean = np.nanmean(self.tod, axis=2)
             self.tod_mean = np.nanmean(self.tod, axis=-1)

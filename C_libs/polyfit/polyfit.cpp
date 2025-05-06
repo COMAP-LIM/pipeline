@@ -31,7 +31,16 @@ void polyfit(float *x, float *y, double *w, int Nfreq, int Ntod, double *c0, dou
     }
 }
 
-
+extern "C"
+void polyfit_float64(double *x, double *y, double *w, int Nfreq, int Ntod, double *c0, double *c1)
+{
+    #pragma omp parallel for
+    for(int i=0; i<Ntod; i++)
+    {
+        double cov00, cov01, cov11, sumsq;
+        gsl_fit_wlinear(x, 1, w, 1, y, 1, Nfreq, &c0[i], &c1[i], &cov00, &cov01, &cov11, &sumsq);
+    }
+}
 
 
 
