@@ -82,6 +82,12 @@ parser.add_argument(
     help="Last obsid to include."
 )
 parser.add_argument(
+    "--float64_mode",
+    type=str2bool,
+    default=False,
+    help="Convert level1 files to float64 after reading from file, and keep them as such throughout the pipeline. Default is float32."
+)
+parser.add_argument(
     "--runlist_split_in_n",
     type=int,
     default=1,

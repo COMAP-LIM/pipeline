@@ -365,10 +365,10 @@ class Decimation(Filter):
 
         # weight[~l2.freqmask] = 0
 
-        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=np.float32)
+        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=l2.tod_dtype)
 
         if l2.is_sim:
-            signal_tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=np.float32)
+            signal_tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=l2.tod_dtype)
             
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
@@ -419,7 +419,7 @@ class DecimationOld(Filter):
         l2.Nfreqs = self.Nfreqs
         weight = 1.0/np.nanvar(l2.tod, axis=-1)
         weight[~l2.freqmask] = 0
-        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]), dtype=np.float32)
+        tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs, l2.tod.shape[3]), dtype=l2.tod_dtype)
         for freq in range(self.Nfreqs):
             tod_decimated[:,:,freq,:] = np.nansum(l2.tod[:,:,freq*self.dnu:(freq+1)*self.dnu,:]*weight[:,:,freq*self.dnu:(freq+1)*self.dnu,None], axis=2)
             tod_decimated[:,:,freq,:] /= np.nansum(weight[:,:,freq*self.dnu:(freq+1)*self.dnu], axis=2)[:,:,None]
@@ -558,18 +558,23 @@ class Polynomial_filter(Filter):
         else:
             C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/polyfit/polyfit.so.1")
             polylib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            polyfunc = polylib.polyfit_float64 if l2.params.float64_mode else polylib.polyfit
             float32_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=2, flags="contiguous")
             float32_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=1, flags="contiguous")
+            float64_array2 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=2, flags="contiguous")
             float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
-            polylib.polyfit.argtypes = [float32_array1, float32_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
+            if l2.params.float64_mode:
+                polyfunc.argtypes = [float64_array1, float64_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
+            else:
+                polyfunc.argtypes = [float32_array1, float32_array2, float64_array1, ctypes.c_int, ctypes.c_int, float64_array1, float64_array1]
 
-            sb_freqs = np.linspace(-1, 1, l2.Nfreqs, dtype=np.float32)
+            sb_freqs = np.linspace(-1, 1, l2.Nfreqs, dtype=l2.tod_dtype)
             for ifeed in range(l2.Nfeeds):
                 for sb in range(4):
                     tod_local = l2.tod[ifeed, sb].copy()
                     tod_local[~np.isfinite(tod_local)] = 0
-                    weights = np.array(l2.freqmask[ifeed, sb], dtype=float)
-                    polylib.polyfit(sb_freqs, l2.tod[ifeed, sb], weights, l2.Nfreqs, l2.Ntod, c0[ifeed,sb], c1[ifeed,sb])
+                    weights = np.array(l2.freqmask[ifeed, sb], dtype=np.float64)
+                    polyfunc(sb_freqs, l2.tod[ifeed, sb], weights, l2.Nfreqs, l2.Ntod, c0[ifeed,sb], c1[ifeed,sb])
                     l2.tod[ifeed, sb, :, :] = l2.tod[ifeed, sb, :, :] - c1[ifeed,sb,None,:]*sb_freqs[:,None] - c0[ifeed,sb,None,:]  # Future improvement: Move into C.
         l2.tofile_dict["poly_coeff"] = np.zeros((2, l2.Nfeeds, l2.Nsb, l2.Ntod))
         l2.tofile_dict["poly_coeff"][:] = c0, c1
@@ -1066,13 +1071,19 @@ class PCA_filter(Filter):
 
             C_LIB_PATH = os.path.join(CURRENT_DIR, "C_libs/PCA/PCAlib.so.1")
             PCAlib = ctypes.cdll.LoadLibrary(C_LIB_PATH)
+            PCAsub_func = PCAlib.subtract_eigcomp_float64 if l2.params.float64_mode else PCAlib.subtract_eigcomp
             float64_array1 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=1, flags="contiguous")
             float32_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_float, ndim=4, flags="contiguous")
             float64_array3 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=3, flags="contiguous")
-            PCAlib.subtract_eigcomp.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
+            float64_array4 = np.ctypeslib.ndpointer(dtype=ctypes.c_double, ndim=4, flags="contiguous")
+            if l2.params.float64_mode:
+                PCAsub_func.argtypes = [float64_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
+            else:
+                PCAsub_func.argtypes = [float32_array4, float64_array1, float64_array3, ctypes.c_long, ctypes.c_long]
+
 
             for icomp in range(self.n_pca_comp):
-                PCAlib.subtract_eigcomp(l2.tod, np.ascontiguousarray(comps[:,icomp]), pca_ampl[icomp], l2.tod.shape[0]*l2.tod.shape[1]*l2.tod.shape[2], l2.tod.shape[-1])
+                PCAsub_func(l2.tod, np.ascontiguousarray(comps[:,icomp]), pca_ampl[icomp], l2.tod.shape[0]*l2.tod.shape[1]*l2.tod.shape[2], l2.tod.shape[-1])
 
             # for ifeed in range(l2.Nfeeds):
             #     ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
