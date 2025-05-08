@@ -32,6 +32,19 @@ class L2file:
                 self._data[key] = value[()]
 
         self.keys = self._data.keys()
+        
+    def read_and_append(self, key_list: list) -> None:
+        """Function for reading data from file and append to data dictionary of L2file class.
+
+        Args:
+            key_list: List of keys to data to read in from file and append to data dict. Defaults to None.
+        """
+
+        with h5py.File(self.path, "r") as infile:
+            for key in key_list:
+                self._data[key] = infile[key][()]
+                
+        self.keys = self._data.keys()
 
     def write_l2(self, outpath: str) -> None:
         """Method for writing l2 data to file.
