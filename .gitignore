@@ -6,6 +6,15 @@ __pycache__/
 # C extensions
 *.so
 
+# Ignore specific compiled shared objects
+C_libs/PCA/PCAlib.so.1
+C_libs/cube2tod/cube2tod.so.1
+C_libs/mPCA/mPCAlib.so.1
+C_libs/norm/normlib.so.1
+C_libs/pointing/pointinglib.so.1
+C_libs/polyfit/polyfit.so.1
+C_libs/tod2comap/mapbinner.so.1
+
 # Distribution / packaging
 .Python
 build/
