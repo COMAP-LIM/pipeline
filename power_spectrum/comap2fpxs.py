@@ -3192,6 +3192,7 @@ class COMAP2FPXS():
         # Power spectrum output directory
         self.power_spectrum_dir = self.params.power_spectrum_dir
         
+        
         # Mapmaker map name and directory
         self.map_name = self.params.map_name + f"_rnd{self.params.jk_rnd_split_seed}" + self.params.psx_map_name_postfix
         self.map_dir = self.params.map_dir

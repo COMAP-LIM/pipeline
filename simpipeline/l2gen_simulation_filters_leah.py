@@ -33,7 +33,7 @@ class Replace_TOD:
     def run(self, l2):
         # Collect tsys, gain etc from ex l2.Tsys, l2.Gain, l2.az, l2.el
         Gain = l2.Gain
-        l2.Tsys = np.zeros_like(l2.Tsys) + 44
+        # l2.Tsys = np.zeros_like(l2.Tsys) + 44
         Tsys = l2.Tsys
         
 
@@ -87,7 +87,10 @@ class Replace_TOD:
         if l2.tod.shape != d_model.shape:
             raise ValueError(f'Simulated TOD does not have the same shape as level 2 TOD it is replacing. \n The TOD shape is {l2.tod.shape}')
          
-        l2.tod = np.float32(d_model) 
+        if not l2.params.float64_mode:
+            l2.tod = np.float32(d_model)
+        else: 
+            l2.tod = d_model
 
         l2.tofile_dict["T_rest"] = T_rest ###
         
