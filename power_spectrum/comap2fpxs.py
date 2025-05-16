@@ -2717,7 +2717,7 @@ class COMAP2FPXS():
         ax[1].set_xscale("log")
 
         # Define ticks and ticklabels
-        klabels = [0.2, 0.3, 0.4, 0.6, 0.8, 1.0]
+        klabels = [0.05, 0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0]
         # klabels = [0.05, 0.1, 0.2, 0.5, 1.0]
 
         ax[0].set_xticks(klabels)
