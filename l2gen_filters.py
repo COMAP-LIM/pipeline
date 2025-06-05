@@ -1850,7 +1850,7 @@ class Tsys_calc(Filter):
         l2.freqmask[(~np.isfinite(l2.Tsys))*(l2.freqmask)] = False
         l2.freqmask_reason[(~np.isfinite(l2.Tsys))*(l2.freqmask)] += 2**l2.freqmask_reason_num_dict["Tsys NaN or inf"]
 
-        l2.tofile_dict["Tsys"] = np.zeros_like(l2.Tsys) + 44 #l2.Tsys
+        l2.tofile_dict["Tsys"] = l2.Tsys
         l2.tofile_dict["Gain"] = l2.Gain
         l2.tofile_dict["Pcold"] = Pcold
         l2.tofile_dict["Thot"] = Thot[l2.feeds-1]
