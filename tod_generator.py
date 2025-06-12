@@ -502,10 +502,18 @@ class TOD_Gen:
                 air_temp_interp, _, _ = self.interpolating_air_temp(air_temp=hk_air_temp, sys_time=hk_time, hk_start=self.scan_start_idx_hk, hk_end=self.scan_stop_idx_hk)
 
                 if BB_test:
-                    air_temp_interp = np.zeros_like(air_temp_interp) + 300
-                Blackbody_factor = self.tground_blackbody(air_temp_interp)/300 # Dividing by 300 as this is the assumed temp
-                # print(f'Blackbody_factor has shape {np.shape(Blackbody_factor)}')
-                Tground = Blackbody_factor*Tground
+                    # air_temp_interp = np.zeros_like(air_temp_interp) + 300
+                    Blackbody_factor = (air_temp_interp+ 273.15)/300 #self.tground_blackbody(air_temp_interp)/300 # Dividing by 300 as this is the assumed temp
+                    # print(f'Blackbody_factor has shape {np.shape(Blackbody_factor)}')
+                    # print(f"Tground shape is {np.shape(Tground)}")
+                    Blackbody_factor = Blackbody_factor[None, None, ...]
+                    Tground = Blackbody_factor*Tground
+                    
+                    
+                if BB_test == False:
+                    Blackbody_factor = self.tground_blackbody(air_temp_interp)/300 # Dividing by 300 as this is the assumed temp
+                    # print(f'Blackbody_factor has shape {np.shape(Blackbody_factor)}')
+                    Tground = Blackbody_factor*Tground
 
                 # print(f'Tground has shape {np.shape(Tground)}')
 
@@ -733,7 +741,7 @@ class TOD_Gen:
         #from frq, feed, time -> feed, freq, time
         interp_maps = np.array((interp_maps[:divider, :], interp_maps[divider:2*divider, :], interp_maps[2*divider:3*divider, :], interp_maps[3*divider:, :]))
         
-        interp_maps = interp_maps.transpose(2, 0, 1, 3)
+        interp_maps = interp_maps.transpose(2, 0, 1, 3)*300 # The convolution maps are in normalized units, where 300 is assumed to be the ground temp
 
         
 
@@ -782,7 +790,7 @@ class TOD_Gen:
         # interpolated and smoothed from scan, all hk air temp smoothed, interpolated but not smoothed in scan
         return air_temp_interpolated, smooth_air, original_air_temp_interp     
 
-    def tground_blackbody(self, air_temp_interpolated):
+    def tground_blackbody(self, air_temp_interpolated, test=False):
         """
         T_obs is meant to be divided by 300 and multiplied to specific convolution map values in datamodel
         """

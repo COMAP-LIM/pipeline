@@ -75,10 +75,10 @@ class Replace_TOD:
         scale = self.params.ground_sim_wn_scale #1/100000
         
         const = self.params.ground_sim_constant
-        test_BB = False #If true sets time to constant while keeping the BB model
+        test_BB = True #If true: turns off the BB model
         
-        d_model, G, correlated, Tsys, white_noise, T_rest = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False,  scale=scale, constant_ground = const, BB_test = test_BB )
-        
+        d_model, G, correlated, Tsys, white_noise, T_ground_sim = tod_gen.get_data_model(tground_files=convolution_files, corr_noise=False, downsampled=False,  scale=scale, constant_ground = const, BB_test = test_BB )
+        d_model = np.float32(d_model)
         
 
        
@@ -87,12 +87,13 @@ class Replace_TOD:
         if l2.tod.shape != d_model.shape:
             raise ValueError(f'Simulated TOD does not have the same shape as level 2 TOD it is replacing. \n The TOD shape is {l2.tod.shape}')
          
-        if not l2.params.float64_mode:
-            l2.tod = np.float32(d_model)
-        else: 
-            l2.tod = d_model
+        # if not l2.params.float64_mode:
+        #     l2.tod = np.float32(d_model)
+        # else: 
+        #     l2.tod = d_model
 
-        l2.tofile_dict["T_rest"] = T_rest ###
+        if l2.params.write_inter_files:
+            l2.tofile_dict["T_ground_sim"] = T_ground_sim ###
         
         # l2.tofile_dict['correlated'] = correlated #l2gen doesnt like this one
         # # l2.tofile_dict['Tsys'] = Tsys
