@@ -356,8 +356,9 @@ class Decimation(Filter):
         if l2.params.determine_sigma0_from_data:
             weight = 1.0/np.nanvar(l2.tod, axis=-1)
         else:
-            weight = np.ones(l2.tod.shape[:-1])
-        
+            weight = 1.0/l2.Tsys**2
+        weight[~l2.freqmask] = 0.0
+
         # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
         # if "Replace_TOD_With_Signal" in self.params.filters:
         #     print("Overwriting weights in decimation with ones due to signal only TOD being processed!")
