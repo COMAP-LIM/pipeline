@@ -82,6 +82,14 @@ parser.add_argument(
     help="Last obsid to include."
 )
 parser.add_argument(
+    "--exclude_obsid_range",
+    type=int,
+    nargs="+",
+    action="append",
+    default=[],
+    help="A pair of two obsIDs, indicating that l2gen should exclude the range between the two (inclusive on both ends). NB: This argument can be called multiple times to exclude multiple ranges."
+)
+parser.add_argument(
     "--float64_mode",
     type=str2bool,
     default=False,
@@ -267,6 +275,7 @@ parser.add_argument(
     default=False,
     help="(freq) Whether to use a prior on the gain term in the frequency filter.",
 )
+
 parser.add_argument(
     "--freqfilter_prior_file",
     type=str,

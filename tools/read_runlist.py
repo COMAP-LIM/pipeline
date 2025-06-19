@@ -84,20 +84,27 @@ def read_runlist(params, ignore_existing, only_existing=False):
                     if scantype in params.allowed_scantypes:
                         n_right_scantype += 1
                         if params.obsid_start <= int(obsid) <= params.obsid_stop:
-                            scanid = int(lines[i+k+1][0])
-                            l2_filename = f"{fieldname}_{scanid:09}.h5"
-                            l2_filename = os.path.join(params.level2_dir, fieldname, l2_filename)
-                            mjd_start = float(lines[i+k+1][1]) + params.time_start_cut/(60*60*24)  # seconds -> MJD
-                            mjd_stop = float(lines[i+k+1][2]) - params.time_stop_cut/(60*60*24)
-                            scan_length_seconds = (mjd_stop - mjd_start)*60*60*24
-                            if scan_length_seconds > params.min_allowed_scan_length:
-                                runlist_all.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename])
-                                if scanid in existing_scans:
-                                    n_scans_already_processed += 1
+                            to_skip = False
+                            for exclude_range in params.exclude_obsid_range:  # Loop over the pairs containing (start, stop) of excluded ranges.
+                                if exclude_range[0] <= int(obsid) <= exclude_range[1]:
+                                    to_skip = True
+                            if not to_skip:
+                                scanid = int(lines[i+k+1][0])
+                                l2_filename = f"{fieldname}_{scanid:09}.h5"
+                                l2_filename = os.path.join(params.level2_dir, fieldname, l2_filename)
+                                mjd_start = float(lines[i+k+1][1]) + params.time_start_cut/(60*60*24)  # seconds -> MJD
+                                mjd_stop = float(lines[i+k+1][2]) - params.time_stop_cut/(60*60*24)
+                                scan_length_seconds = (mjd_stop - mjd_start)*60*60*24
+                                if scan_length_seconds > params.min_allowed_scan_length:
+                                    runlist_all.append([scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename])
+                                    if scanid in existing_scans:
+                                        n_scans_already_processed += 1
+                                    else:
+                                        n_scans_included += 1
                                 else:
-                                    n_scans_included += 1
+                                    n_scans_too_short += 1
                             else:
-                                n_scans_too_short += 1
+                                n_scans_outside_range += 1
                         else:
                             n_scans_outside_range += 1
             i = i + n_scans + 1
