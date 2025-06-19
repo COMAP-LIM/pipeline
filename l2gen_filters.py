@@ -705,11 +705,12 @@ class Frequency_filter(Filter):
 
     
     def binned_PS(self, data, samprate, Nbins=100):
-        # data - 4D TOD vector with time along the last axis.
+        # data - XD TOD vector with time along the last axis.
         # Returns the log-binned frequencies and power spectrum of the data along the last axis.
-        freqs = rfftfreq(data.shape[-1], 1.0/samprate)[1:]
+        Ntod = data.shape[-1]
+        freqs = rfftfreq(Ntod, 1.0/samprate)[1:]
         log_freqs = np.log10(freqs)
-        PS = rfft(data).real[...,1:]**2
+        PS = np.abs(rfft(data)**2)[...,1:]/Ntod
         freq_bins = np.linspace(np.log10(freqs[0])-1e-6, np.log10(freqs[-1])+1e-6, Nbins)
         indices = np.digitize(log_freqs, freq_bins)
         PS_binned = np.zeros((*PS.shape[:-1], Nbins))
