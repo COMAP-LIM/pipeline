@@ -1828,16 +1828,20 @@ class COMAP2FPXS():
                     
                     norm =  matplotlib.colors.Normalize(vmin=-lim, vmax=lim)
                     
-                    
+                    if self.params.psx_mode == "saddlebag":
+                        spinewidth = 3
+                    else:
+                        spinewidth = 1
+                        
                     if (i >= N_feed and j < N_feed) and (i * (2 * N_feed) + j not in auto_feeds):
                         ax.spines[:].set_color("k")
-                        ax.spines[:].set_linewidth(5)
+                        ax.spines[:].set_linewidth(spinewidth)
                     if i * (2 * N_feed) + j in auto_feeds:
                         ax.spines[:].set_color("fuchsia")
-                        ax.spines[:].set_linewidth(3)
+                        ax.spines[:].set_linewidth(spinewidth)
                     elif i == j:
                         ax.spines[:].set_color("m")
-                        ax.spines[:].set_linewidth(3)
+                        ax.spines[:].set_linewidth(spinewidth)
                         
                     img = ax.pcolormesh(
                         X_perp, 
@@ -1872,24 +1876,33 @@ class COMAP2FPXS():
                     # cbar.set_ticklabels(cticks, rotation = 90, fontsize = 9)
                     
                     # ax.text(0.03, 0.87, fr"$\pm${np.round(lim)}$\sigma$", transform = ax.transAxes, color = "k")
-                    text = ax.text(0.95, 0.05, fr"$\pm${int(np.round(lim))}$\sigma$", transform = ax.transAxes, color = "k", fontsize = 20, horizontalalignment='right')
-                    #ax.text(0.5, 1.1, fr"$\pm${np.round(lim)}$\sigma$", transform = ax.transAxes, color = "k")
-                    text.set_path_effects([path_effects.Stroke(linewidth=3, foreground = 'white'), path_effects.Normal()])
+                    if self.params.psx_mode == "saddlebag":
+                        text = ax.text(0.95, 0.05, fr"$\pm${int(np.round(lim))}$\sigma$", transform = ax.transAxes, color = "k", fontsize = 20, horizontalalignment='right')
+                        text.set_path_effects([path_effects.Stroke(linewidth=3, foreground = 'white'), path_effects.Normal()])
+                    else:
+                        text = ax.text(0.95, 0.05, fr"$\pm${int(np.round(lim))}$\sigma$", transform = ax.transAxes, color = "k", fontsize = 5, horizontalalignment='right')                    
+                        text.set_path_effects([path_effects.Stroke(linewidth=1, foreground = 'white'), path_effects.Normal()])
+                    
+                    if self.params.psx_mode == "saddlebag":
+                        fontsize = 10
+                    else:
+                        fontsize = 5
                     
                     if j > 0:
                         ylabels = []
                     else:
-                        ax.set_ylabel(f"Feed {i % N_feed + 1}")
+                        ax.set_ylabel(f"Feed {i % N_feed + 1}", fontsize = fontsize)
                     
                     if i < (N_feed * 2) - 1:
                         xlabels = []
                     else:
-                        ax.set_xlabel(f"Feed {j % N_feed + 1}", rotation = 90)
+                        ax.set_xlabel(f"Feed {j % N_feed + 1}", rotation = 90, fontsize = fontsize)
 
+             
                     ax.set_xticks(ticks)
-                    ax.set_xticklabels(xlabels, fontsize = 10, rotation = 90)
+                    ax.set_xticklabels(xlabels, fontsize = fontsize, rotation = 90)
                     ax.set_yticks(ticks)
-                    ax.set_yticklabels(ylabels, fontsize = 10)
+                    ax.set_yticklabels(ylabels, fontsize = fontsize)
 
                     ax.set_ylim(k_bin_edges_par[0], k_bin_edges_par[-1])
                     ax.set_xlim(k_bin_edges_perp[0], k_bin_edges_perp[-1])
@@ -2717,8 +2730,8 @@ class COMAP2FPXS():
         ax[1].set_xscale("log")
 
         # Define ticks and ticklabels
-        klabels = [0.05, 0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0]
-        # klabels = [0.05, 0.1, 0.2, 0.5, 1.0]
+        # klabels = [0.05, 0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0]
+        klabels = [0.025, 0.05, 0.1, 0.2, 0.5, 1.0]
 
         ax[0].set_xticks(klabels)
         ax[0].set_xticklabels(klabels, fontsize = 16)
