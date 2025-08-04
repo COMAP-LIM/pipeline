@@ -1,6 +1,15 @@
 # 1. Usage
 
-## 1.1 Command-line usage and argparse
+## 1.1 Installation
+There are two things that need to happen before a raw git clone of this repo will run:
+1. Compile all of the C files in the `C_libs` folder, and
+2. Create an empty directory called `logs` in the main `pipeline` repo (this one is just a bug)
+   ```
+   bash C_libs/setup.sh
+   mkdir logs
+   ```
+
+## 1.2 Command-line usage and argparse
 l2gen.py uses argparse for arguments (run `python3 l2gen.py --help` for all options, or have a look in the l2gen_argparse.py file).
 Example usage:
 ```
@@ -19,7 +28,7 @@ Example of a file containing the same three parameters as above (sadly no commen
 ```
 
 
-## 1.2 MPI
+## 1.3 MPI
 l2gen.py support MPI, in the excepted way:
 ```
 mpirun -n 16 python l2gen.py --param param_file.txt
