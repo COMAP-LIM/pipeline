@@ -187,7 +187,7 @@ class Cube2TOD_nn:
         l2file.tod *= (1 + signal_tod / l2file.Tsys[..., None])
         l2file.signal_tod = signal_tod
 
-class Cube2TOD:
+class Cube2TOD_bilinear:
     """General signal cube injection class.
 
     Args:
