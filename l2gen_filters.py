@@ -15,7 +15,7 @@ import math
 from scipy.ndimage import gaussian_filter1d
 from mpi4py import MPI
 from sklearn.decomposition import PCA
-from simpipeline.l2gen_simulation_filters import Cube2TOD, Replace_TOD_With_Signal, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
+from simpipeline.l2gen_simulation_filters import Cube2TOD, Cube2TOD_nn, Replace_TOD_With_Signal, Replace_TOD_with_WN, Replace_TOD_with_Tsys_WN
 from simpipeline.l2gen_simulation_filters_leah import Replace_TOD 
 from scipy.interpolate import interp1d
 
@@ -379,7 +379,7 @@ class Decimation(Filter):
                 if l2.is_sim:
                     signal_tod_decimated[:,isb,ifreq,:] = np.nansum(l2.signal_tod[:,isb,freq_idxs_included[isb,ifreq],:]*weight[:,isb,freq_idxs_included[isb,ifreq],None], axis=1)
                     signal_tod_decimated[:,isb,ifreq,:] /= np.nansum(weight[:,isb,freq_idxs_included[isb,ifreq]], axis=1)[:,None]
-
+                    
         l2.tod = tod_decimated
 
         if l2.is_sim:

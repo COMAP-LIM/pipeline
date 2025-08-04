@@ -112,16 +112,15 @@ class SimCube:
         if ".h5" in self.path: 
             self.npz_format = False
             with h5py.File(self.path, "r") as infile:
-                
                 # Note that grid in RA direction is flipped since cubes are not saved in astronomical decreasing RA standard 
-                self._data["simulation"] = enmap.enmap(infile["simulation"][..., min_dec_idx:max_dec_idx, min_ra_idx:max_ra_idx], wcs = self.equator_geometry.wcs, dtype = np.float32)
+                self._data["simulation"] = enmap.enmap(infile["simulation"][..., min_dec_idx:max_dec_idx + 1, min_ra_idx:max_ra_idx + 1], wcs = self.equator_geometry.wcs, dtype = np.float32)
+                
 
                 # Pad a few pixels to be sure when slicing the signal cube
                 if (min_dec_idx is not None or max_dec_idx is not None) or (min_ra_idx is not None or max_ra_idx is not None):
                     self.equator_geometry = enmap.pad(self.equator_geometry, pix = 5)
                     self._data["simulation"] = enmap.pad(self._data["simulation"], pix = 5)
 
-        
         elif ".npz" in self.path:
             self.npz_format = True
             with np.load(self.path) as infile:
@@ -243,7 +242,7 @@ class SimCube:
             dec (npt.NDArray): Declination pointing or grid center
 
         Returns:
-            tuple[npt.NDArray, npt.NDArray]: Rotated pointing or grid centers.
+            tuple[npt.NDArray, npt.NDArray]: Rotated pointing or grid centers, in degrees.
         """
 
         # A cartesian vector from ra, dec pointing
