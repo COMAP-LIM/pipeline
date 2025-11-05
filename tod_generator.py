@@ -1,24 +1,21 @@
+import sys
+import time as timer
 import warnings
-import h5py 
-import numpy as np
+from pathlib import Path
+
+import astropy.units as u
+import h5py
 import healpy as hp
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy as sp
+from astropy.io import fits
+from astropy.modeling.models import BlackBody
+from astropy.wcs import WCS
+from numpy.fft import fft, fftfreq, ifft, irfft, rfft, rfftfreq
 # from scipy.fftpack import rfft, irfft
 # from scipy.fftpack import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
-from scipy.fftpack import  next_fast_len
-import scipy as sp
-from pathlib import Path
-from astropy.io import fits
-from astropy.wcs import WCS
-from pathlib import Path
-from numpy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq
-
-from astropy.modeling.models import BlackBody
-import astropy.units as u
-
-import time as timer
-import sys
-
+from scipy.fftpack import next_fast_len
 
 # from plot import * #***
 np.random.seed(4)
@@ -343,7 +340,7 @@ class TOD_Gen:
 
         # sigma0 = sigma0/(np.nanmean(self.tsys)) # Using sigma gain and not tsys sigma from radiometer eq
         psd_corr = sigma0 ** 2 * (np.abs(f) / f_knee) ** alpha
-        psd_corr[f == 0] = 0 # Removing the singular frequency
+        psd_corr[f == 0] = 1 # Setting the zero frequency to be the white noise mean when convolved
 
         # Generate 1/f correlated noise from generated white noise array 
         correlated_noise = np.random.normal(0, 1, Ntod)
@@ -795,6 +792,7 @@ class TOD_Gen:
         T_obs is meant to be divided by 300 and multiplied to specific convolution map values in datamodel
         """
         from astropy.constants import c, k_B
+
         # Given air temp 
 
         if self.freq is None:
