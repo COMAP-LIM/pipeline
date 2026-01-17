@@ -378,7 +378,7 @@ class COMAP2FPXS():
         
         # MPI barrier to prevent thread 0 from computing average FPXS before all individual combinations are finished.
         self.comm.Barrier()
-        if self.rank == 0:
+        if self.rank == 0 and not self.verbose:
             pbar.close()
             
         if self.rank == 0 and not self.params.psx_rnd_run:
