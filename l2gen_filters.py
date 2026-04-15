@@ -342,6 +342,7 @@ class PreFilterDecimation(Filter):
         for isb in range(l2.Nsb):
             self.freq_bin_edges_lowres[isb] = np.linspace(26+isb*2, 28+isb*2, self.Nfreqs_lowres+1)
             for ifreq in range(self.Nfreqs_lowres):
+                self.freq_bin_centers_lowres[isb,ifreq] = np.mean(self.freq_bin_edges_lowres[isb, ifreq:ifreq+2])
                 # Find the indexes of all high-res frequencies that should go into this frequency bin:
                 freq_idxs_included[isb,ifreq] = (l2.freq_bin_centers[isb] > self.freq_bin_edges_lowres[isb,ifreq])*(l2.freq_bin_centers[isb] < self.freq_bin_edges_lowres[isb,ifreq+1])
         N_freqs_in_bin = np.sum(freq_idxs_included, axis=-1)  # An array saying how many high-res frequencies goes into each low-res frequency.
@@ -350,8 +351,9 @@ class PreFilterDecimation(Filter):
         l2.Nfreqs_highres = l2.Nfreqs
         l2.Nfreqs = self.Nfreqs_lowres
         
-        weight = 1.0/np.nanvar(l2.tod, axis=-1)
-        
+        # We weight the bins by their noise temperature. Note that since we are still in
+        # detector-units (not normalized), this does not match the variance of the data (gain factor missing).
+        weight = 1.0/l2.Tsys**2
         # If processing signal only TOD sigma0 is substituted with 1s to make coadditions become arithmetic means
         # if "Replace_TOD_With_Signal" in self.params.filters:
         #     print("Overwriting weights in decimation with ones due to signal only TOD being processed!")
@@ -386,9 +388,9 @@ class PreFilterDecimation(Filter):
             for ifreq in range(self.Nfreqs_lowres):
                 # l2.freqmask_decimated[:,isb,ifreq] = l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]].all(axis=-1)
                 l2.freqmask_decimated[:,isb,ifreq] = l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]].any(axis=-1)
-                for i in range(self.dnu):
-                    N_unmasked_freqs_in_bin[:,isb,ifreq] += l2.freqmask[:,isb,ifreq*self.dnu+i]
-                    l2.freqmask_reason[:,isb,ifreq] |= l2.freqmask_reason_highres[:,isb,ifreq*self.dnu+i]
+                N_unmasked_freqs_in_bin[:,isb,ifreq] = np.sum(l2.freqmask[:,isb,freq_idxs_included[isb,ifreq]], axis=-1)
+                l2.freqmask_reason[:,isb,ifreq] = np.bitwise_or.reduce(l2.freqmask_reason_highres[:,isb,freq_idxs_included[isb,ifreq]], axis=-1)
+        l2.freqmask_decimated[~(np.isfinite(l2.tod).all(axis=-1))] = False
         tsys_decimated = np.zeros((l2.Nfeeds, l2.Nsb, self.Nfreqs_lowres))
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
