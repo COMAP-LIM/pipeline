@@ -66,7 +66,6 @@ class Mapmaker:
         )
         self.mapbinner = ctypes.cdll.LoadLibrary(mapbinner_path)
 
-
         # Save git hash used
         dir_path = os.path.dirname(
             os.path.realpath(__file__)
@@ -111,13 +110,12 @@ class Mapmaker:
         if self.rank == 0:
             self.runlist = read_runlist(self.params, ignore_existing=False)
             self.fieldname = self.runlist[0][4]
-            
+
             for i in range(1, len(self.runlist)):
                 if self.runlist[i][4] != self.fieldname:
                     raise ValueError(f"Mapmaker doesn't support multiple fields. Found both {self.fieldname} and {self.runlist[i][4]}.")
         self.runlist = self.comm.bcast(self.runlist, root=0)
         self.fieldname = self.comm.bcast(self.fieldname, root=0)
-        
 
     def parse_accept_data(self):
 
@@ -125,7 +123,7 @@ class Mapmaker:
             self.params.jk_data_string = self.params.jk_data_string + f"_rnd{self.params.jk_rnd_split_seed}"
             self.jk_data_string = self.params.jk_data_string
             self.params.map_name = self.params.map_name + f"_rnd{self.params.jk_rnd_split_seed}"
-        
+
         if len(self.jk_data_string) >= 1:
             self.jk_data_string = f"_{self.jk_data_string}"
 
@@ -171,7 +169,7 @@ class Mapmaker:
                 for line in split_def_file.readlines()[2:]:
                     split_name, split_type = line.split()[:2]
                     split_types_dict[split_name] = int(split_type)
-                    
+
                     extra = line.split()[-1]
 
                     # Count number of primary and secondary splits
@@ -182,9 +180,9 @@ class Mapmaker:
                             temporal_primary_splits.append(split_name)
                             # N_temporal_splits += 1
                         # else:
-                            # N_primary_splits += 1
+                        # N_primary_splits += 1
                         primary_splits.append(split_name)
-                        
+
                     elif int(split_type) == 3:
                         if "$" in line:
                             # Temporal splits should be marked by dollar sign
@@ -192,15 +190,15 @@ class Mapmaker:
                             temporal_secondary_splits.append(split_name)
                             # N_temporal_splits += 1
                         # else:
-                            # N_secondary_splits += 1
+                        # N_secondary_splits += 1
                         secondary_splits.append(split_name)
-                                        
+
             N_primary_splits = len(primary_splits)
             N_secondary_splits = len(secondary_splits)
             N_temporal_splits = len(temporal_splits)
             N_temporal_primary_splits = len(temporal_primary_splits)
             N_temporal_secondary_splits = len(temporal_secondary_splits)
-            
+
             split_names = self.splitdata["split_list"].astype(str)
             Nsplits = len(split_names)
             split_list = self.splitdata["jk_list"]
@@ -218,7 +216,7 @@ class Mapmaker:
 
             # Split bitflag should never exceed possible number of bits!
             assert np.max(split_list) <= np.sum(2 ** np.arange(Nsplits + 1))
-            
+
             for i, number in enumerate(unique_numbers):
                 # Convert number to bits
                 bit_num = f"{number:0{Nsplits+1}b}"
@@ -247,7 +245,7 @@ class Mapmaker:
 
                         # Add secondary keys to primary key
                         for s, secondary in enumerate(secondary_splits[::-1]):
-                            
+
                             if secondary in temporal_splits:
                                 key += f"{secondary}"
                             else:
@@ -271,7 +269,7 @@ class Mapmaker:
             temporal_secondary_splits = temporal_secondary_splits[::-1]
 
             # Adding temporal splits to key name but do not change bit flag
-            # since bit flag only should map scan based splits. The temporal splits are implemented 
+            # since bit flag only should map scan based splits. The temporal splits are implemented
             # inside mapmaker at later stage based on the contained keys.
             _split_key_mapping = {}
             for key, num in split_key_mapping.items():
@@ -283,16 +281,16 @@ class Mapmaker:
                         sub_key = ""
                         sub_pattern = ""
 
-                        # subtitute raw temporal key pattern with temporal keys 
+                        # subtitute raw temporal key pattern with temporal keys
                         for j, combo in enumerate(combos):
                             sub_key += f"{temporal_secondary_splits[j]}{combo}"
                             sub_pattern += fr"{temporal_secondary_splits[j]}"
                             # sub_key = f"{temporal_splits[j]}{combo}"
                             # sub_pattern = fr"{temporal_splits[j]}"
-                        
+
                         new_keys.append(re.sub(rf"{sub_pattern}", f"{sub_key}", key))
-                
-                # subtitute raw temporal key pattern with temporal keys 
+
+                # subtitute raw temporal key pattern with temporal keys
                 for j in range(2):
                     if N_temporal_primary_splits == 0:                        
                         new_key = new_keys[0]
@@ -300,7 +298,7 @@ class Mapmaker:
                         continue
 
                     for i, temp_split in enumerate(temporal_primary_splits):
-                
+
                         sub_key = ""
                         sub_pattern = ""
                         sub_key = f"{temp_split}{j}"
@@ -310,7 +308,6 @@ class Mapmaker:
                             new_key2 = re.sub(rf"{sub_pattern}", f"{sub_key}", new_key)
                             if len(new_key2) == 5 * (1 + N_secondary_splits):   # Igniring all new keys that miss the split bin number
                                 _split_key_mapping[new_key2] = num
-                            
 
             self.split_key_mapping = _split_key_mapping
             split_keys = list(self.split_key_mapping.keys())
@@ -324,7 +321,6 @@ class Mapmaker:
 
             # Removing dollar signs
             self.primary_splits = primary_splits
-
 
     def run(self):
         """Method running through the provided runlist and binning up maps."""
@@ -366,7 +362,6 @@ class Mapmaker:
             time_buffer = None
             rejection_number_buffer = None
 
-        
         if self.rank == 0 and not self.params.verbose:
             pbar = tqdm.tqdm(
                 total = len(self.runlist), 
@@ -376,10 +371,9 @@ class Mapmaker:
                 position = 0,
             )
 
-
         for i, scan in enumerate(self.runlist):
             scanid = scan[0]
-            
+
             # If not verbose use progress bars instead of informative prints
             if not self.params.verbose:
                 prog_tot = self.comm.reduce(
@@ -387,11 +381,11 @@ class Mapmaker:
                     op = MPI.SUM,
                     root = 0
                 )
-                
+
                 if self.rank == 0:
                     pbar.refresh()
                     pbar.n = int(pbar.n + prog_tot / self.Nranks)
-                                        
+
             if i % self.Nranks == self.rank:
                 l2path = scan[-1]
                 # Cycle to next scan
@@ -426,8 +420,9 @@ class Mapmaker:
 
                 if self.params.verbose:
                     # Print in green forground color
-                    print(f"\033[92m Processing scan {scan[0]} ({i + 1} / {len(self.runlist)}) @ rank {self.rank}\033[00m")
-                
+                    print(
+                        f"\033[92m Processing scan {scan[0]} ({i + 1} / {len(self.runlist)}) @ rank {self.rank}\033[00m"
+                    )
 
                 ti = time.perf_counter()
 
@@ -493,17 +488,15 @@ class Mapmaker:
             if rejection_number_buffer[0] == len(self.runlist):
                 raise NoAcceptedScansError("There were no accepted scans found in this run!")
             # Get frequency bin centers and edges from last level2 file.
-            
+
             try:
                 l2data["freq_bin_centers_lowres"]
             except UnboundLocalError:    
                 l2data = L2file(path=l2path, id=scanid)
                 l2data.read_and_append(["freq_bin_centers_lowres", "freq_bin_edges_lowres", "is_sim"])
-                
+
             full_map["freq_centers"] = l2data["freq_bin_centers_lowres"]
             full_map["freq_edges"] = l2data["freq_bin_edges_lowres"]
-
-
 
         # Perform MPI reduce on map datasets
         self.reduce_maps(full_map)
@@ -511,7 +504,7 @@ class Mapmaker:
         if self.rank == 0:
 
             if self.params.verbose and self.params.t2m_rms_mask_factor > 0:
-                
+
                 print(
                     f"Masking all sigma_wn > {self.params.t2m_rms_mask_factor} times the mean bottom 100 noise on each (feed, frequency):"
                 )
@@ -534,7 +527,7 @@ class Mapmaker:
                 )
             if self.params.t2m_save_gif:
                 full_map.animate_map()
-                
+
             finish_time = time.perf_counter()
 
             # Check if last l2data object contained simualtion and assume all did and make map of cube data only:
@@ -645,12 +638,10 @@ class Mapmaker:
         else:
             tod[pixels, ...] = l2data["tod"]
 
-        
         ###########################################
         # l2data["sigma0"] = np.nanstd(l2data["tod"], axis = 3)
         ###########################################
-        
-        
+
         sigma0[pixels, ...] = l2data["sigma0"]
         freqmask[pixels, ...] = l2data["freqmask"]
         pointing[pixels, ...] = l2data["point_cel"][..., :2]
@@ -658,7 +649,7 @@ class Mapmaker:
             temporal_mask[:, pixels] = l2data["mask_temporal"].T
         except:
             pass
-        
+
         # Computing allowed limits of noise in l2 TODs
         self.sample_time = (l2data["time"][1] - l2data["time"][0]) * 24 * 3600 # seconds
         self.frequency_resolution = (
@@ -670,7 +661,7 @@ class Mapmaker:
         self.radiometer_limits = self.Tsys_limits / np.sqrt(
             self.sample_time * self.frequency_resolution
         )
-        
+
         # Check if noise level is above allowed limit
         if np.any(sigma0[sigma0 > 0] < self.radiometer_limits[0]):
             if self.params.verbose:
@@ -768,7 +759,6 @@ class Mapmaker:
             map_saddlebag_key = re.sub(r"numerator_map", "map_saddlebag", numerator_key)
             sigma_wn_saddlebag_key = re.sub(r"numerator_map", "sigma_wn_saddlebag", numerator_key)
             hit_saddlebag_key = re.sub(r"numerator_map", "nhit_saddlebag", numerator_key)
-
 
             if self.params.t2m_rms_mask_factor > 0:
                 if mapdata["n_ra"] * mapdata["n_dec"] > 100: # Need more than 100 pixels to make propper noise mask
@@ -870,17 +860,17 @@ class Mapmaker:
             # Deleting numerator and denominator from map object
             del mapdata[numerator_key]
             del mapdata[denominator_key]
-        
+
             mapdata[f"{map_saddlebag_key}"] = np.zeros((mapdata.saddlebag_feeds.shape[0], *mapdata["map_coadd"].shape))
             mapdata[f"{sigma_wn_saddlebag_key}"] = np.zeros((mapdata.saddlebag_feeds.shape[0],  *mapdata["sigma_wn_coadd"].shape))
-            
+
             if self.params.make_nhit:
                 mapdata[f"{hit_saddlebag_key}"] = np.zeros((mapdata.saddlebag_feeds.shape[0], *mapdata["nhit_coadd"].shape), dtype = np.int32)
 
             for i in range(mapdata.saddlebag_feeds.shape[0]):
                 # Current saddle bag feed indices
                 feeds_in_saddlebag = mapdata.saddlebag_feeds[i] - 1
-                
+
                 weights = 1 / mapdata[f"{sigma_wn_key}"][feeds_in_saddlebag, ...] ** 2 
                 data = mapdata[f"{map_key}"][feeds_in_saddlebag, ...] * weights
                 inv_var = np.nansum(weights, axis = 0)
@@ -889,11 +879,9 @@ class Mapmaker:
                 mapdata[f"{sigma_wn_saddlebag_key}"][i] = 1 / np.sqrt(inv_var)
                 if self.params.make_nhit:
                     mapdata[f"{hit_saddlebag_key}"][i] = np.sum( mapdata[f"{hit_key}"][feeds_in_saddlebag, ...], axis = 0)
-            
+
             where = ~np.isfinite(mapdata[f"{sigma_wn_saddlebag_key}"])
             mapdata[f"{sigma_wn_saddlebag_key}"][where] = np.nan
-            
-
 
     def mask_map(self, mapdata: COmap, numerator_key: str, denominator_key) -> None:
         """Method that takes in a map object and masks out the high noise regions. The masking is doing the following;
@@ -910,23 +898,18 @@ class Mapmaker:
             map_key (str): Key to map dataset to mask.
         """
 
-        
-        
-
         inv_var = mapdata[denominator_key]
-        
+
         # Make keys for rms and nhit datasets that corresponds to map dataset
         nhit_key = re.sub(r"numerator_map", "nhit", numerator_key)
-        
+
         feed_noise_freq_coadded = inv_var.copy()
         mask = ~np.isfinite(feed_noise_freq_coadded)
         feed_noise_freq_coadded[mask] = 0
 
         feed_noise_freq_coadded = 1 / np.sqrt(np.sum(feed_noise_freq_coadded, axis = 3))
 
-
         nfeed, nra, ndec, _ = mapdata[denominator_key].shape
-
 
         sorted_rms = feed_noise_freq_coadded.reshape(nfeed, nra * ndec)
 
@@ -951,11 +934,11 @@ class Mapmaker:
 
         sigma = 1 / np.sqrt(inv_var)
         sigma[~np.isfinite(sigma)] = np.nan
-        
+
         average_noise = np.nanmean(sigma)
-        
+
         average_noise_per_channel = np.nanmean(sigma, axis = (1, 2))
-        
+
         mask = average_noise_per_channel > (average_noise * self.params.t2m_rms_mask_factor)
 
         feeds_to_mask, channels_to_mask = np.where(mask)
@@ -1034,7 +1017,7 @@ class Mapmaker:
         elif "azdr1" in numerator_key:
             az = l2data["point_tel"][0,:,0]  # All pixels have same pointing behavior, so we simply use feed 1.
             temporal_mask = np.logical_and(temporal_mask, np.gradient(az)[:, None] < 0)
-        
+
         if "azmd0" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
@@ -1043,7 +1026,7 @@ class Mapmaker:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
             temporal_mask = np.logical_and(temporal_mask, (az > az_median)[:, None])
-            
+
         if "schf0" in numerator_key:
             Ntod = l2data["point_tel"][0,:,0][()].shape[-1]
             temporal_mask[Ntod//2:,:] = False
@@ -1102,7 +1085,7 @@ class Mapmaker:
             dtype=ctypes.c_bool, ndim=2, flags="contiguous"
         )  # 4D array 32-bit integer pointer object.
         scan_idx = np.where(self.splitdata["scan_list"] == l2data.id)[0][0]
-        
+
         # If no hit map is needed:
         if self.params.make_nhit:
 
@@ -1173,9 +1156,12 @@ class Mapmaker:
                         continue
 
                     freqmask = freqmask.reshape(NFEED, NFREQ)
-                
 
                 temporal_mask = self.get_temporal_mask(l2data, numerator_key)
+
+                if self.use_signal_tod:
+                    l2data["inv_var"][...] = 1
+                    freqmask[...] = 1
 
                 # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_nhit_and_map(
@@ -1196,7 +1182,7 @@ class Mapmaker:
                     self.OMP_NUM_THREADS,
                     l2data.id,
                 )
-            
+
         else:
             # If we want to make maps and hit maps
 
@@ -1258,6 +1244,10 @@ class Mapmaker:
                     freqmask = freqmask.reshape(NFEED, NFREQ)
 
                 temporal_mask = self.get_temporal_mask(l2data, numerator_key)
+
+                if self.use_signal_tod:
+                    l2data["inv_var"][...] = 1
+                    freqmask[...] = 1
 
                 # Calling C++ shared library to bin up maps
                 self.mapbinner.bin_map(
