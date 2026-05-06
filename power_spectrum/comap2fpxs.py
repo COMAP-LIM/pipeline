@@ -1724,7 +1724,7 @@ class COMAP2FPXS():
         if len(self.params.psx_subdir) > 0: 
             suptitle += f" | Plot subdir: {self.params.psx_subdir}"
 
-        fig.suptitle(suptitle, fontsize = 20, y = 0.92)
+        fig.suptitle(suptitle, fontsize=20, y=0.95)
 
         # lim1 = []
         # lim2 = []
@@ -1851,12 +1851,22 @@ class COMAP2FPXS():
                     if j > 0:
                         ylabels = []
                     else:
-                        ax.set_ylabel(f"Feed {i % N_feed + 1}", fontsize = fontsize)
+                        if self.params.psx_mode == "saddlebag":
+                            ax.set_ylabel(f"FG {i % N_feed + 1}", fontsize=fontsize)
+                        else:
+                            ax.set_ylabel(f"Feed {i % N_feed + 1}", fontsize=fontsize)
 
                     if i < (N_feed * 2) - 1:
                         xlabels = []
                     else:
-                        ax.set_xlabel(f"Feed {j % N_feed + 1}", rotation = 90, fontsize = fontsize)
+                        if self.params.psx_mode == "saddlebag":
+                            ax.set_xlabel(
+                                f"FG {j % N_feed + 1}", rotation=90, fontsize=fontsize
+                            )
+                        else:
+                            ax.set_xlabel(
+                                f"Feed {j % N_feed + 1}", rotation=90, fontsize=fontsize
+                            )
 
                     ax.set_xticks(ticks)
                     ax.set_xticklabels(xlabels, fontsize = fontsize, rotation = 90)
