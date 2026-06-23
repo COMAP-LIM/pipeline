@@ -39,7 +39,7 @@ def make_standard_geometries(patch_data):
         shape, wcs = enmap.geometry(boundaries * utils.degree, res = resolution[::-1] * utils.degree, proj = "car", force = True)
 
         omap = enmap.zeros(shape, wcs, np.float32)
-        print(name, omap.wcs, omap.shape)
+
         enmap.write_map(f"/mn/stornext/d5/data/nilsoles/nils/standard_geometries/{name}_standard_geometry_rectangular.fits", omap)
 
 

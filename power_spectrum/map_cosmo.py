@@ -46,11 +46,11 @@ class MapCosmo:
             ValueError: If no feed is specified and split key is provided.
             ValueError: If split key does not contain 'map'.
         """
-        
+
         self.params = params
         if feed is not None:
             self.feed = feed + 1
-        
+
         mapdata = COmap(mappath)
 
         key_list = [
@@ -81,11 +81,11 @@ class MapCosmo:
                     raise ValueError(
                     "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                 )
-                
+
                 if params.psx_mode == "saddlebag":
                     split1 = re.sub(r"map", "map_saddlebag", split1)
                     split2 = re.sub(r"map", "map_saddlebag", split2)
-                
+
                 sigma_key1 = re.sub(
                     r"map",
                     "sigma_wn",
@@ -101,7 +101,7 @@ class MapCosmo:
 
                 if params.psx_generate_white_noise_sim:
                     seed = params.psx_white_noise_sim_seed
-                    
+
                     if params.psx_null_diffmap:
                         split1, _ = split
                         split_number = split1.split("map_")[-1][5:]
@@ -131,7 +131,7 @@ class MapCosmo:
                     raise ValueError(
                         "Make sure to provide the split 'map' key, not the nhit or sigma_wn key."
                     )
-                
+
                 if params.psx_mode == "saddlebag":
                     split = re.sub(r"map", "map_saddlebag", split)
 
@@ -148,26 +148,26 @@ class MapCosmo:
 
         elif feed is not None and params.psx_mode == "feed":
             mapdata.read_and_append(["map", "sigma_wn"])
-            
+
             self.map = mapdata["map"][feed]
             self.rms = mapdata["sigma_wn"][feed]
-        
+
         elif feed is not None and params.psx_mode == "saddlebag":
             mapdata.read_and_append(["map_saddlebag", "sigma_wn_saddlebag"])
-            
+
             self.map = mapdata["map_saddlebag"][feed]
             self.rms = mapdata["sigma_wn_saddlebag"][feed]
-            
+
         else:
             mapdata.read_and_append(["map_coadd", "sigma_wn_coadd"])
 
             self.map = mapdata["map_coadd"][:]
             self.rms = mapdata["sigma_wn_coadd"][:]
-        
+
         # If wanted the maps can be substituted with pure white noise
         if params.psx_generate_white_noise_sim and not params.psx_null_diffmap:
             seed = params.psx_white_noise_sim_seed
-            
+
             if params.psx_null_diffmap:
                 split1, _ = split
                 split_number = split1.split("map_")[-1][5:]
@@ -182,7 +182,7 @@ class MapCosmo:
             self.white_noise_seed = seed
 
             self.map = np.random.randn(*self.rms.shape) * self.rms 
-        
+
         NSIDEBAND, NCHANNEL, NDEC, NRA = self.map.shape
 
         Z_MID = params.phy_center_redshift  # Middle of the redshift range of map
@@ -196,11 +196,11 @@ class MapCosmo:
         dredshift = (1 + Z_MID) ** 2 * dnu / NU_REST
 
         angle2Mpc = cosmology.kpc_comoving_per_arcmin(Z_MID).to(u.Mpc / u.arcmin)
-        
+
         self.angle2Mpc = angle2Mpc
 
         NRA, NDEC = self.x.size, self.y.size
-        
+
         # Centering RA and Dec relative to field centers before converting to cosmological distnace
         x = (
             (
@@ -258,7 +258,6 @@ class MapCosmo:
         self.min_k_x = np.sort(2 * np.pi * np.abs(np.fft.fftfreq(self.nx, self.dx)))[1]
         self.min_k_y = np.sort(2 * np.pi * np.abs(np.fft.fftfreq(self.ny, self.dy)))[1]
         self.min_k_z = np.sort(2 * np.pi * np.abs(np.fft.fftfreq(self.nz, self.dz)))[1]
-
 
         self.voxel_volume = voxel_volume.value
 

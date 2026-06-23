@@ -28,16 +28,15 @@ class Filter:
     run_when_masking = False  # If set to True, this filter will be applied to a local copy of the data before masking.
     has_corr_template = False # Set to True if the template impacts the correlation matrix and must be corrected (through the "get_corr_template" function).
     # def get_corr_template(l2, C, feed, sb):
-        # return np.zeros_like(C)
+    # return np.zeros_like(C)
     def run(self, l2):
         pass
-
 
 
 def mask_tsys(l2):
     l2.freqmask[l2.Tsys < l2.params.min_tsys] = False
     l2.freqmask_reason[l2.Tsys < l2.params.min_tsys] += 2**l2.freqmask_reason_num_dict["Tsys < min_tsys"]
-    
+
     ### Running median tsys cuts ###
     kernel_size1 = 400
     kernel_size2 = 150
@@ -73,10 +72,9 @@ def mask_tsys(l2):
             tsys_temp[ifeed, isb, tsys_temp[ifeed,isb] > (running_median2[ifeed,isb] + median_cut2)] = np.nan
     tsys_median_mask = np.isfinite(tsys_temp)
     tsys_median_mask[~np.isfinite(l2.Tsys)] = True  # Channels that have already been flagged as NaN or inf, don't need to double-flag them.
-    
+
     l2.freqmask[~tsys_median_mask] = False
     l2.freqmask_reason[~tsys_median_mask] += 2**l2.freqmask_reason_num_dict["Tsys > running median max"]
-
 
 
 class Subtract_Start_Exponential(Filter):
@@ -136,11 +134,11 @@ class Subtract_Start_Exponential(Filter):
 class Normalize_Gain_Gaussian(Filter):
     name = "norm3"
     name_long = "normalization_gaussian"
-    
+
     def __init__(self, params, use_ctypes=False, omp_num_threads=2):
         self.params = params
         self.deci_factor = 20
-    
+
     def run(self, l2):
         self.gauss_width_lowres = (self.params.gain_norm_gauss_sigma_seconds*l2.samprate)//self.deci_factor
         N_lowres = math.ceil(l2.Ntod/self.deci_factor)
@@ -166,26 +164,24 @@ class Normalize_Gain_Gaussian(Filter):
                 idx_highres = np.linspace(0, l2.Ntod-1, l2.Ntod)
                 lowpass_interp = interp1d(idx_lowres, lowpass_lowres)
                 lowpass = lowpass_interp(idx_highres)
-                
+
                 l2.tod[ifeed,isb] /= lowpass
                 l2.tod[ifeed,isb] /= np.nanmean(l2.tod[ifeed,isb], axis=-1)[:,None]
                 l2.tod[ifeed,isb] -= 1.0
 
 
-
 class Normalize_Gain_Mean(Filter):
     name = "norm2"
     name_long = "normalization2"
-    
+
     def __init__(self, params, use_ctypes=False, omp_num_threads=2):
         pass
-    
+
     def run(self, l2):
         for ifeed in range(l2.Nfeeds):
             for isb in range(l2.Nsb):
                 l2.tod[ifeed,isb] /= np.mean(l2.tod[ifeed,isb], axis=-1)[:,None]
                 l2.tod[ifeed,isb] -= 1
-
 
 
 class Normalize_Gain(Filter):
@@ -352,7 +348,7 @@ class Decimation(Filter):
         self.dnu = l2.Nfreqs//self.Nfreqs_lowres
         l2.Nfreqs_highres = l2.Nfreqs
         l2.Nfreqs = self.Nfreqs_lowres
-        
+
         if l2.params.determine_sigma0_from_data:
             weight = 1.0/np.nanvar(l2.tod, axis=-1)
         else:
@@ -370,7 +366,7 @@ class Decimation(Filter):
 
         if l2.is_sim:
             signal_tod_decimated = np.zeros((l2.tod.shape[0], l2.tod.shape[1], self.Nfreqs_lowres, l2.tod.shape[3]), dtype=l2.tod_dtype)
-            
+
         for isb in range(l2.Nsb):
             for ifreq in range(self.Nfreqs_lowres):
                 tod_decimated[:,isb,ifreq,:] = np.nansum(l2.tod[:,isb,freq_idxs_included[isb,ifreq],:]*weight[:,isb,freq_idxs_included[isb,ifreq],None], axis=1)
@@ -379,7 +375,7 @@ class Decimation(Filter):
                 if l2.is_sim:
                     signal_tod_decimated[:,isb,ifreq,:] = np.nansum(l2.signal_tod[:,isb,freq_idxs_included[isb,ifreq],:]*weight[:,isb,freq_idxs_included[isb,ifreq],None], axis=1)
                     signal_tod_decimated[:,isb,ifreq,:] /= np.nansum(weight[:,isb,freq_idxs_included[isb,ifreq]], axis=1)[:,None]
-                    
+
         l2.tod = tod_decimated
 
         if l2.is_sim:
@@ -405,7 +401,6 @@ class Decimation(Filter):
         l2.tofile_dict["freq_bin_edges_lowres"] = self.freq_bin_edges_lowres
         l2.tofile_dict["freq_bin_centers_lowres"] = self.freq_bin_centers_lowres
 
-        
 
 class DecimationOld(Filter):
     name = "dec"
@@ -439,7 +434,6 @@ class DecimationOld(Filter):
         l2.tofile_dict["Tsys_lowres"] = tsys_decimated
 
 
-
 class Pointing_Template_Subtraction_Bidirectional(Filter):
     name = "pnt_bi"
     name_long = "pointing template subtraction bidirectional"
@@ -447,7 +441,7 @@ class Pointing_Template_Subtraction_Bidirectional(Filter):
     def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
-    
+
     def run(self, l2):
         l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
         l2.tofile_dict["el_az_amp_bidir"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 4))
@@ -479,7 +473,6 @@ class Pointing_Template_Subtraction_Bidirectional(Filter):
                 l2.tofile_dict["el_az_amp_bidir"][feed,sb,:,2] = d2
 
 
-
 class Pointing_Template_Subtraction(Filter):
     name = "point"
     name_long = "pointing template subtraction"
@@ -487,7 +480,7 @@ class Pointing_Template_Subtraction(Filter):
     def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
         self.omp_num_threads = omp_num_threads
-    
+
     def run(self, l2):
         l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
         if l2.scantype != "ces":
@@ -499,7 +492,6 @@ class Pointing_Template_Subtraction(Filter):
                 d = np.sum(_az*_tod, axis=-1)/np.sum(_az**2)
                 l2.tod[feed,sb] -= d[:,None]*_az[None,:]
                 l2.tofile_dict["el_az_amp"][feed,sb,:,1] = 0, d, 0   # The two other amplitudes are 0 (kept for legacy reasons).
-
 
 
 class Polynomial_filter(Filter):
@@ -529,7 +521,6 @@ class Polynomial_filter(Filter):
     #                     _C_template[i,i+1] = 0
     #             C_template[k*l2.Nfreqs:(k+1)*l2.Nfreqs,k*l2.Nfreqs:(k+1)*l2.Nfreqs] = _C_template
     #     return C_template
-
 
     def __init__(self, params, use_ctypes=True, omp_num_threads=2):
         self.use_ctypes = use_ctypes
@@ -589,17 +580,40 @@ class Polynomial_filter(Filter):
                     b[:,1] = np.linspace(-1, 1, l2.Nfreqs)
                     b[~l2.freqmask[ifeed,isb],:] = 0
                     if (b != 0).any():
-                        template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
-                        template[:,~l2.freqmask[ifeed,isb]] = 0.0
-                        template[~l2.freqmask[ifeed,isb],:] = 0.0
-                        for i in range(l2.Nfreqs):
-                            template[i,i] = 0
-                            if i+1 < l2.Nfreqs:
-                                template[i+1,i] = 0
-                                template[i,i+1] = 0
-                        l2.corr_template[ifeed,l2.Nfreqs*isb:l2.Nfreqs*(isb+1),l2.Nfreqs*isb:l2.Nfreqs*(isb+1)] += template
-                        if self.params.write_C_matrix:
-                            l2.tofile_dict["C_template_polyfilter"][ifeed,isb//2, isb%2*l2.Nfreqs:(isb%2+1)*l2.Nfreqs,isb%2*l2.Nfreqs:(isb%2+1)*l2.Nfreqs] = template
+                        try:
+                            template = -b.dot(np.linalg.inv(b.T.dot(b)).dot(b.T))
+                            template[:, ~l2.freqmask[ifeed, isb]] = 0.0
+                            template[~l2.freqmask[ifeed, isb], :] = 0.0
+                            for i in range(l2.Nfreqs):
+                                template[i, i] = 0
+                                if i + 1 < l2.Nfreqs:
+                                    template[i + 1, i] = 0
+                                    template[i, i + 1] = 0
+                            l2.corr_template[
+                                ifeed,
+                                l2.Nfreqs * isb : l2.Nfreqs * (isb + 1),
+                                l2.Nfreqs * isb : l2.Nfreqs * (isb + 1),
+                            ] += template
+                            if self.params.write_C_matrix:
+                                l2.tofile_dict["C_template_polyfilter"][
+                                    ifeed,
+                                    isb // 2,
+                                    isb % 2 * l2.Nfreqs : (isb % 2 + 1) * l2.Nfreqs,
+                                    isb % 2 * l2.Nfreqs : (isb % 2 + 1) * l2.Nfreqs,
+                                ] = template
+                        except:
+                            print(
+                                "Error inverting matrix for polynomial filter template. This can happen when there are too few unmasked frequencies. Setting template to zero."
+                            )
+                            print("Debug infs", np.sum(~np.isfinite(template)))
+                            print("Debug nans", np.sum(np.isnan(template)))
+                            print("Debug all zeros", np.sum(template == 0))
+                            print("Debug unique values", np.unique(template))
+                            print("scanid", l2.scanid)
+                            l2.freqmask[ifeed, isb] = (
+                                False  # Mask the whole frequency if the template can't be calculated, to avoid problems with the mapmaker.
+                            )
+
             # print(np.sum(np.abs(l2.corr_template)))
 
 
@@ -655,7 +669,7 @@ class Frequency_filter(Filter):
     #             lx = Lfull.flatten()
     #             ly = Lreduced.flatten()
     #             alpha = (c.T.dot(lx) - c.T.dot(ly) - lx.T.dot(ly) + ly.T.dot(ly))/(lx.T.dot(lx) - 2*lx.T.dot(ly) + ly.T.dot(ly))
-            
+
     #             # print("c", np.sum(~np.isfinite(c)))
     #             # print("b", np.sum(~np.isfinite(b)))
     #             # print("lx", np.sum(~np.isfinite(lx)))
@@ -692,7 +706,6 @@ class Frequency_filter(Filter):
         self.use_prior = params.freqfilter_use_prior
         self.params = params
 
-
     def PS_1f(self, freqs, sigma0, fknee, alpha, wn=True, Wiener=False, fknee_W=0.01, alpha_W=-4.0):
         PS = np.zeros_like(freqs)
         if wn:
@@ -703,7 +716,6 @@ class Frequency_filter(Filter):
             PS[1:] /= 1 + (freqs[1:]/fknee_W)**alpha_W
         return PS
 
-    
     def binned_PS(self, data, samprate, Nbins=100):
         # data - XD TOD vector with time along the last axis.
         # Returns the log-binned frequencies and power spectrum of the data along the last axis.
@@ -724,7 +736,6 @@ class Frequency_filter(Filter):
         PS_binned = PS_binned[...,PS_binned_freqs != 0]
         PS_binned_freqs = PS_binned_freqs[PS_binned_freqs != 0]
         return PS_binned_freqs, PS_binned
-
 
     def gain_temp_sep(self, y, P, F, samprate, sigma0_g=None, fknee_g=None, alpha_g=None):
         Nfreqs, Ntod = y.shape
@@ -750,13 +761,12 @@ class Frequency_filter(Filter):
             m_bestfit = np.linalg.pinv(P.T.dot(P)).dot(P.T).dot(y - F*a_bestfit)
             return a_bestfit, m_bestfit
 
-
     def run(self, l2, masking_run=False):
         with h5py.File(self.prior_file, "r") as f:
             sigma0_prior = f["sigma0_prior"][l2.feeds-1]
             fknee_prior = f["fknee_prior"][l2.feeds-1]
             alpha_prior = f["alpha_prior"][l2.feeds-1]
-        
+
         if self.params.freqfilter_full_feed:  # Testing of all-sb instead of per-sb for gain.
             l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 2))
             l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb*l2.Nfreqs, 1))
@@ -790,7 +800,7 @@ class Frequency_filter(Filter):
                     F_reduced[:,-end_cut:] = 0
                 P_reduced[~np.isfinite(P_reduced)] = 0
                 F_reduced[~np.isfinite(F_reduced)] = 0
-                
+
                 P = P.reshape((l2.Nsb*l2.Nfreqs, 2))
                 F = F.reshape((l2.Nsb*l2.Nfreqs, 1))
                 P_reduced = P_reduced.reshape((l2.Nsb*l2.Nfreqs, 2))
@@ -846,7 +856,6 @@ class Frequency_filter(Filter):
                     else:
                         G = 1.0/z0
 
-
                     U = G*F0.T.dot(Z0)
                     L = (Z - Z.dot(F0).dot(U) + F1.dot(U))
                     template = L.dot(L.T)
@@ -855,7 +864,7 @@ class Frequency_filter(Filter):
                         if i < l2.Nfreqs*4-1:
                             template[i+1,i] = 0
                             template[i,i+1] = 0
-                    
+
                     l2.corr_template[feed,:,:] += template
             PS_freqs, PS_m = self.binned_PS(l2.tofile_dict["freqfilter_m"], l2.samprate)
             PS_freqs, PS_a = self.binned_PS(l2.tofile_dict["freqfilter_a"], l2.samprate)
@@ -863,9 +872,8 @@ class Frequency_filter(Filter):
             l2.tofile_dict["freqfilter_PS_m"] = PS_m
             l2.tofile_dict["freqfilter_PS_a"] = PS_a
 
-
         else:
-                
+
             l2.tofile_dict["freqfilter_P"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
             l2.tofile_dict["freqfilter_F"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 1))
             l2.tofile_dict["freqfilter_P_reduced"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 2))
@@ -906,7 +914,6 @@ class Frequency_filter(Filter):
                         F_reduced[:4] = 0
                         F_reduced[-end_cut:] = 0
 
-
                     if np.sum(P_reduced != 0) > 0 and np.sum(F_reduced != 0) > 0:
                         if self.use_prior:
                             a, m, Cf, z, Z = self.gain_temp_sep(y, P_reduced, F_reduced, l2.samprate, sigma0_prior[feed], fknee_prior[feed], alpha_prior[feed])
@@ -917,7 +924,6 @@ class Frequency_filter(Filter):
                         m = np.zeros((2, l2.Ntod))
 
                     l2.tod[feed,sb] = l2.tod[feed,sb] - F.dot(a) - P.dot(m)
-
 
                     # Corr template calculations:
                     if masking_run:
@@ -936,7 +942,7 @@ class Frequency_filter(Filter):
                         #         l2.corr_template[feed,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs] += template
                         #         if self.params.write_C_matrix:
                         #             l2.tofile_dict["C_template_freqfilter"][feed, sb//2, sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs,sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs] += template
-                                
+
                         # else:
                         if (a != 0).any() or (m != 0).any():
                             def var_est(fourier_func):
@@ -965,7 +971,6 @@ class Frequency_filter(Filter):
                             else:
                                 G = 1.0/z0
 
-
                             U = G*F0.T.dot(Z0)
                             L = (Z - Z.dot(F0).dot(U) + F1.dot(U))
                             template = L.dot(L.T)
@@ -974,7 +979,7 @@ class Frequency_filter(Filter):
                                 if i < l2.Nfreqs-1:
                                     template[i+1,i] = 0
                                     template[i,i+1] = 0
-                            
+
                             # template = Z - 2 * G * Z.dot(F_reduced.dot(F_reduced.T.dot(Z))) + G2 * z * Z.dot(F_reduced.dot(F_reduced.T.dot(Z)))
                             # template *= sigma ** 2
                             # variances = np.diag(template)
@@ -982,8 +987,12 @@ class Frequency_filter(Filter):
                             # template /= np.sqrt(np.outer(variances, variances))
                             l2.corr_template[feed,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs,sb*l2.Nfreqs:(sb+1)*l2.Nfreqs] += template
                             if self.params.write_C_matrix:
-                                l2.tofile_dict["C_template_freqfilter"][feed, sb//2, sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs,sb%2*l2.Nfreqs:(sb%2+1)*l2.Nfreqs] += template
-                            
+                                l2.tofile_dict["C_template_freqfilter"][
+                                    feed,
+                                    sb // 2,
+                                    sb % 2 * l2.Nfreqs : (sb % 2 + 1) * l2.Nfreqs,
+                                    sb % 2 * l2.Nfreqs : (sb % 2 + 1) * l2.Nfreqs,
+                                ] += template
 
                     # l2.tofile_dict["freqfilter_prior_alpha"][feed, sb] = alpha
                     l2.tofile_dict["freqfilter_P"][feed, sb] = P
@@ -998,8 +1007,6 @@ class Frequency_filter(Filter):
             l2.tofile_dict["freqfilter_PS_freqs"] = PS_freqs
             l2.tofile_dict["freqfilter_PS_m"] = PS_m
             l2.tofile_dict["freqfilter_PS_a"] = PS_a
-
-
 
 
 class PCA_filter(Filter):
@@ -1192,11 +1199,11 @@ class PCA_feed_filter(Filter):
     #         C_template[:,~mask] = 0.0
     #     return C_template
 
-            # b = pca_ampl[:,ifeed].reshape((self.max_pca_comp, l2.Nsb*l2.Nfreqs)).T
-            # b[~np.isfinite(b)] = 0
-            # for i in range(4):
-            #     b[:,i] /= np.linalg.norm(b[:,i])
-            # l2.corr_template[ifeed] += -b.dot(b.T)
+    # b = pca_ampl[:,ifeed].reshape((self.max_pca_comp, l2.Nsb*l2.Nfreqs)).T
+    # b[~np.isfinite(b)] = 0
+    # for i in range(4):
+    #     b[:,i] /= np.linalg.norm(b[:,i])
+    # l2.corr_template[ifeed] += -b.dot(b.T)
 
     def __init__(self, params, omp_num_threads=2, use_ctypes=False):
         self.omp_num_threads = omp_num_threads
@@ -1205,7 +1212,6 @@ class PCA_feed_filter(Filter):
         # self.deci_factor = 16
         self.params = params
         self.use_ctypes = use_ctypes
-    
 
     def run(self, l2, masking_run=False):
         if len(self.params.load_PCA_path) > 0:  # This parameter option indicates that we should not calculate PCA components, but gather them from the scans in this folder.
@@ -1248,10 +1254,10 @@ class PCA_feed_filter(Filter):
         l2.tofile_dict["n_pca_feed_comp"] = np.zeros((l2.Nfeeds), dtype=int)
         l2.tofile_dict["pca_feed_eigvals"] = np.zeros((l2.Nfeeds, self.max_pca_comp))
         l2.tofile_dict["pca_feed_lambda_threshold"] = np.zeros((l2.Nfeeds))
-        
+
         N = l2.Nsb*self.N_deci_freqs
         P = l2.Ntod
-        
+
         if masking_run and self.params.write_C_matrix:
             l2.tofile_dict["C_template_pcaf"] = np.zeros((l2.Nfeeds, 2, 2*l2.Nfreqs, 2*l2.Nfreqs))
 
@@ -1287,7 +1293,7 @@ class PCA_feed_filter(Filter):
                 self.n_pca_comp = max(self.n_pca_comp, self.params.min_feed_pca_comp)
                 comps = comps
                 del(M, pca)
-                
+
                 ak = np.nansum(l2.tod[ifeed,:,:,:,None]*comps[:,:self.n_pca_comp], axis=2)
                 l2.tod[ifeed] = l2.tod[ifeed] - np.nansum(ak[:,:,None,:]*comps[None,None,:,:self.n_pca_comp], axis=-1)
                 l2.tofile_dict["pca_feed_ampl"][:self.n_pca_comp,ifeed] = np.transpose(ak, (2,0,1))
@@ -1365,7 +1371,6 @@ class PCA_feed_filter(Filter):
             #         ak = np.zeros((l2.Nsb, l2.Nfreqs))
             #         PCAlib.subtract_eigcomp(l2.tod[ifeed], r, ak, l2.Nsb*l2.Nfreqs, l2.Ntod)
 
-
             #         # pca_ampl[icomp,ifeed] = ak
             #         # pca_comp[icomp,ifeed] = r
             #         l2.tofile_dict["PCAf_err"][icomp,ifeed] = err
@@ -1378,7 +1383,6 @@ class PCA_feed_filter(Filter):
             # l2.tofile_dict["pca_feed_eigval"] = pca_eigval
             # l2.tofile_dict["n_pca_feed_comp"] = self.n_pca_comp
             # # print("num PCAf comp: ", self.n_pca_comp)
-
 
         if masking_run:
             for ifeed in range(l2.Nfeeds):
@@ -1397,9 +1401,6 @@ class PCA_feed_filter(Filter):
                     l2.tofile_dict["C_template_pcaf"][ifeed,0] += template[l2.Nfreqs*0:l2.Nfreqs*2,l2.Nfreqs*0:l2.Nfreqs*2]
                     l2.tofile_dict["C_template_pcaf"][ifeed,1] += template[l2.Nfreqs*2:l2.Nfreqs*4,l2.Nfreqs*2:l2.Nfreqs*4]
 
-
-
-        
 
 class Masking(Filter):
     name = "mask"
@@ -1790,7 +1791,7 @@ class Masking(Filter):
 class Tsys_calc(Filter):
     name = "tsys"
     name_long = "Tsys calculation"
-    
+
     def __init__(self, params, omp_num_threads=2):
         self.omp_num_threads = omp_num_threads
         self.cal_database_dir = params.cal_database_dir
@@ -1804,7 +1805,7 @@ class Tsys_calc(Filter):
         l2.Gain = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs)) + np.nan
         Pcold = np.nanmean(l2.tod, axis=-1)
         Phot_interp = np.zeros(l2.Nfeeds)
-        
+
         try:
             with h5py.File(os.path.join(self.cal_database_dir, obsid + ".h5"), "r") as f:
                 Phot = f[f"Phot"][()]
@@ -1864,7 +1865,6 @@ class Tsys_calc(Filter):
             mask_tsys(l2)
 
 
-
 class Calibration(Filter):
     name = "calib"
     name_long = "calibrations"
@@ -1880,7 +1880,6 @@ class Calibration(Filter):
             mask_tsys(l2)
 
         l2.tod *= l2.Tsys[:,:,:,None]
-
 
 
 class Mask_Az_Edges(Filter):
@@ -1923,21 +1922,20 @@ class Mask_Az_Edges(Filter):
                 cut_start = max(0, cut_start)
                 cut_stop = min(l2.Ntod, cut_stop)
                 # cut_length = cut_stop - cut_start
-                
+
                 l2.mask_temporal[ifeed, cut_start:cut_stop] = False
-                
+
             l2.tod[ifeed,:,:,~l2.mask_temporal[ifeed]] = np.nan
-                # mean_start = np.mean(l2.tod[ifeed,:,:,cut_start-15:cut_start], axis=-1)
-                # mean_stop = np.mean(l2.tod[ifeed,:,:,cut_stop:cut_stop+15], axis=-1)
-                # mean = (mean_start + mean_stop)/2.0
-                
-                # for isb in range(l2.Nsb):
-                #     for ifreq in range(l2.Nfreqs):
-                #         l2.tod[ifeed,isb,ifreq,cut_start:cut_stop] = mean[isb,ifreq] + np.random.normal(0, sigma0[isb,ifreq], (cut_length,))
-                # az_mask[ifeed,cut_start:cut_stop] = False
+            # mean_start = np.mean(l2.tod[ifeed,:,:,cut_start-15:cut_start], axis=-1)
+            # mean_stop = np.mean(l2.tod[ifeed,:,:,cut_stop:cut_stop+15], axis=-1)
+            # mean = (mean_start + mean_stop)/2.0
+
+            # for isb in range(l2.Nsb):
+            #     for ifreq in range(l2.Nfreqs):
+            #         l2.tod[ifeed,isb,ifreq,cut_start:cut_stop] = mean[isb,ifreq] + np.random.normal(0, sigma0[isb,ifreq], (cut_length,))
+            # az_mask[ifeed,cut_start:cut_stop] = False
         # l2.tofile_dict["az_edge_mask"] = az_mask
         # l2.az_mask = az_mask
-
 
 
 class Highpass(Filter):
