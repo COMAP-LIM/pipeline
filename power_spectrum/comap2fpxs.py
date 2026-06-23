@@ -502,9 +502,10 @@ class COMAP2FPXS():
 
             all_rnd_spectra[all_rnd_spectra == 0] = np.nan
 
+            rnd_fraction = all_rnd_spectra.shape[0] // 4
             ### 60-120 ###
-            all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
-            all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 4:]
+            all_rnd_std = np.nanstd(all_rnd_spectra[:rnd_fraction], axis=0, ddof=1)
+            all_rnd_spectra = all_rnd_spectra[rnd_fraction:]
 
             ### 90-90 ###
             # all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 2], axis = 0, ddof = 1)
@@ -919,7 +920,6 @@ class COMAP2FPXS():
                     / inv_var_nmodes_1d[None, np.where(nmodes_1d > 0)]
                 )
 
-                print(Ck_wn_1d.shape)
                 rms_1d[k_1d < self.params.psx_mask_k_1d_min] = np.nan
                 Ck_1d[k_1d < self.params.psx_mask_k_1d_min] = np.nan
                 Ck_wn_1d[:, k_1d < self.params.psx_mask_k_1d_min] = np.nan
@@ -1129,6 +1129,12 @@ class COMAP2FPXS():
                 outfile.create_dataset("k_edges_perp", data = k_bin_edges_perp)     
                 outfile.create_dataset("xs_mean_1d", data = xs_mean_1d)       
                 outfile.create_dataset("xs_mean_2d", data = xs_mean / transfer_function[None, ...])
+
+                outfile.create_dataset("xs_wn_mean_1d", data=xs_wn_mean_1d)
+                outfile.create_dataset(
+                    "xs_wn_mean_2d", data=xs_wn_mean / transfer_function[None, ...]
+                )
+
                 outfile.create_dataset("xs_sigma_1d", data = xs_error_1d)      
                 outfile.create_dataset("xs_sigma_2d", data = xs_error / transfer_function[None, ...])
                 outfile.create_dataset("cross_variable_names", data = cross_variable_names)                
@@ -1295,10 +1301,11 @@ class COMAP2FPXS():
 
             all_rnd_spectra[all_rnd_spectra == 0] = np.nan
 
+            rnd_fraction = all_rnd_spectra.shape[0] // 4
             ### 60-120 ###
-            all_rnd_std = np.nanstd(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0, ddof = 1)
-            all_rnd_mean = np.nanmean(all_rnd_spectra[:all_rnd_spectra.shape[0] // 4], axis = 0)
-            all_rnd_spectra = all_rnd_spectra[all_rnd_spectra.shape[0] // 4:]
+            all_rnd_std = np.nanstd(all_rnd_spectra[:rnd_fraction], axis=0, ddof=1)
+            all_rnd_mean = np.nanmean(all_rnd_spectra[:rnd_fraction], axis=0)
+            all_rnd_spectra = all_rnd_spectra[rnd_fraction:]
 
             self.params.psx_noise_sim_number = all_rnd_spectra.shape[0]
 
@@ -3598,8 +3605,8 @@ if __name__ == "__main__":
     comap2fpxs.params.psx_mode = "saddlebag"
     comap2fpxs.run()
 
-    comap2fpxs.params.psx_mode = "feed"
-    comap2fpxs.run()
+    # comap2fpxs.params.psx_mode = "feed"
+    # comap2fpxs.run()
 
     # if run_wn_sim:
     #     comap2fpxs.params.psx_generate_white_noise_sim = True
