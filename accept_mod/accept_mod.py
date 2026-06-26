@@ -358,14 +358,13 @@ def get_scan_stats(filepath, map_grid=None):
         # n_nan_ind = my_file['n_nan'][()]
         # n_nan_ind = my_file['n_nans'][()]
 
-        # pixels = np.array(my_file['pixels'][:]) - 1 
+        # pixels = np.array(my_file['pixels'][:]) - 1
         pixels = np.array(my_file['feeds'][:]) - 1 
         # pix2ind = my_file['pix2ind'][:]
         pix2ind = my_file['pix2ind_fortran'][:]
         scanid = my_file['scanid'][()]
         feat = my_file['feature'][()]
-        
-        
+
         airtemp = np.mean(my_file['hk_airtemp'][()])
         dewtemp = np.mean(my_file['hk_dewtemp'][()])
         humidity = np.mean(my_file['hk_humidity'][()])
@@ -373,14 +372,14 @@ def get_scan_stats(filepath, map_grid=None):
         rain = np.mean(my_file['hk_rain'][()])
         winddir = np.mean(my_file['hk_winddir'][()])
         windspeed = np.mean(my_file['hk_windspeed'][()])
-        
+
         try:
             point_amp_ind = my_file['el_az_amp'][:,:,:,:2]
             # point_amp_ind = np.nanmean(my_file['el_az_stats'][()], axis=3) #### mean over chunk axis
             # 3, 19, 4, 1024 => 19, 4, 1024, 2
         except:
             point_amp_ind = np.zeros((n_det_ind, n_sb, 1024, 2))
-        # try: 
+        # try:
         #     sd_ind = np.array(my_file['spike_data'])
         #     if (sd_ind.shape[0] == 0):
         #         sd_ind = np.zeros((3, n_det_ind, n_sb, 4, 1000))
@@ -388,7 +387,7 @@ def get_scan_stats(filepath, map_grid=None):
         sd_ind = np.zeros((3, n_det_ind, n_sb, 4, 1000))
         # use_freq_filter = my_file['use_freq_filter'][()]
         # if not use_freq_filter:
-            # tod_poly_ind = my_file['tod_poly'][()]
+        # tod_poly_ind = my_file['tod_poly'][()]
         # try:
         if "poly_coeff" in my_file:
             tod_poly_ind = np.transpose(my_file['poly_coeff'][()], (1,2,0,3))
@@ -396,7 +395,7 @@ def get_scan_stats(filepath, map_grid=None):
             tod_poly_ind = np.zeros((n_det_ind, n_sb, 2, n_samp))
         # except KeyError:
         #     tod_poly_ind = np.zeros((n_det_ind, n_sb, 2, n_samp))
-        # try: 
+        # try:
         chi2_ind = np.array(my_file['chi2'])
         # except KeyError:
         #     chi2_ind = np.zeros_like(tod_ind[:,:,:,0])
@@ -416,8 +415,7 @@ def get_scan_stats(filepath, map_grid=None):
                                                  "Feed 20", "NaN or inf in TOD", "Marked channels"]:
                 specific_freqmask *= _freqmask
         acc_ind_specific = np.mean(specific_freqmask, axis=-1)
-        
-        
+
         try:
             time = np.array(my_file['tod_time'])
         except:
@@ -440,7 +438,7 @@ def get_scan_stats(filepath, map_grid=None):
             pca = np.zeros((4, 10000))
             # eigv = np.zeros(0)
             # print('Found no pca comps', scanid)
-        
+
         pcaf_ampl_ind = my_file['pca_feed_ampl'][:4]
 
         npca_ind = np.zeros((n_det_ind, n_sb))
@@ -465,12 +463,12 @@ def get_scan_stats(filepath, map_grid=None):
     #     data[:] = np.nan
     #     indices = np.zeros((20, 2, 2)).astype(int)
     #     map_list = [[None for _ in range(4)] for _ in range(20)]
-        
+
     #     return data, [map_list, indices]
 
     t0 = time[0]
     time = (time - time[0]) * (24 * 60)  # minutes
- 
+
     obsid = int(str(scanid)[:-2])
 
     n_freq_hr = len(mask_full_ind[0,0])
@@ -526,13 +524,12 @@ def get_scan_stats(filepath, map_grid=None):
     az_amp = point_amp[:, :, :, 1]
     el_amp = point_amp[:, :, :, 0]
 
-
     mask_sum = np.nansum(mask_full.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3)
     az_amp = az_amp * mask_full
     el_amp = el_amp * mask_full
 
     az_amp_lowres = np.nansum(az_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3) / mask_sum
-    
+
     el_amp_lowres = np.nansum(el_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3) / mask_sum
 
     mask_sb_sum = np.nansum(mask_full, axis=2)
@@ -553,7 +550,7 @@ def get_scan_stats(filepath, map_grid=None):
     n_spikes_sb = (np.array([s.sbs for s in sortedlists[0]]) > 0.0015 * n_sigma_spikes).sum(0)
     n_jumps_sb = (np.array([s.sbs for s in sortedlists[1]]) > 0.0015 * n_sigma_spikes).sum(0)
     n_anom_sb = (np.array([s.sbs for s in sortedlists[2]]) > 0.0015 * n_sigma_spikes).sum(0)
-    
+
     mask_sb_sum_lowres = np.nansum(mask, axis=2)
     tsys_sb = np.nansum((tsys * mask), axis=2) / mask_sb_sum_lowres
 
@@ -583,7 +580,7 @@ def get_scan_stats(filepath, map_grid=None):
 
     # sidereal time in degrees (up to a phase)
     insert_data_in_array(data, get_sid(scan_mjd), 'sidereal')
-    
+
     # By default, no errors.
     insert_data_in_array(data, 0, 'acceptmod_error')
 
@@ -597,14 +594,11 @@ def get_scan_stats(filepath, map_grid=None):
                              )[:, None] * 180 / np.pi
     mean_az[:, :] = (mean_az[:, :] + 360) % 360
     mean_el[:, :] = np.mean(point_tel[:, :, 1], axis=1)[:, None]
-    
-
-
 
     insert_data_in_array(data, mean_az, 'az')
     insert_data_in_array(data, mean_el, 'el')
 
-    # chi2 
+    # chi2
     chi2_sb = np.zeros((*chi2.shape[:2],))
     for ifeed in range(chi2.shape[0]):
         for isb in range(chi2.shape[1]):
@@ -615,10 +609,10 @@ def get_scan_stats(filepath, map_grid=None):
     wh = np.where(n_freq_sb == 0.0)
     chi2_sb[wh] = np.nan
     insert_data_in_array(data, chi2_sb, 'chi2')
- 
+
     # acceptrate
     insert_data_in_array(data, acc, 'acceptrate')
-    
+
     # acceptrate specific
     insert_data_in_array(data, acc_specific, 'acceptrate_specific')
 
@@ -650,11 +644,11 @@ def get_scan_stats(filepath, map_grid=None):
                         freq_chi2[k] = (np.sum(normhist ** 2) - nbins) / np.sqrt(2 * nbins)
                         # if freq_chi2[k] > 4.0:
                         #     file = open('diag_az_bins.txt', 'a')
-                        #     print(scanid, i+1, j+1, k+1, freq_chi2[k], scan_mjd, mean_az, mean_el, 
+                        #     print(scanid, i+1, j+1, k+1, freq_chi2[k], scan_mjd, mean_az, mean_el,
                         #           chi2[i,j,k], chi2_sb[i,j], tsys[i,j,k], feat, az_amp_lowres[i,j,k],
                         #           az_amp_sb[i,j], np.argmax(normhist ** 2),
                         #           file=file)
-                        #     file.close()        
+                        #     file.close()
                 full_az_chi2[i, j] = np.sum(freq_chi2) / np.sqrt(np.sum(mask[i,j]))
                 max_az_chi2[i, j] = np.max(freq_chi2)
                 med_az_chi2[i, j] = np.median(freq_chi2)
@@ -682,11 +676,11 @@ def get_scan_stats(filepath, map_grid=None):
     # n_nan_sb[where] = (n_nan * mask_full).sum(2)[where] / mask_sb_sum[where]
 
     # insert_data_in_array(data, n_nan_sb, 'n_nan')
-    
+
     # tsys averaged over sb
     insert_data_in_array(data, tsys_sb, 'tsys')
 
-    # pca modes 
+    # pca modes
     insert_data_in_array(data, npca, 'npca')
     insert_data_in_array(data, npcaf, 'npcaf')
     insert_data_in_array(data, ampl[0], 'pca1')
@@ -710,7 +704,7 @@ def get_scan_stats(filepath, map_grid=None):
 
         i_start  = int((mjd[0] - weather[0, 3]) // ten_min_in_mjd)
         i_end    = int((mjd[-1] - weather[0, 3]) // ten_min_in_mjd)
-        
+
         n_chunks = len(weather[:, 2])
         i_start  = min(i_start, n_chunks - 1)
         i_end    = min(i_end, n_chunks - 1)
@@ -749,7 +743,6 @@ def get_scan_stats(filepath, map_grid=None):
     d_dec = 8.0 / 60 
     d_ra = d_dec / np.cos(centre[1] / 180 * np.pi) # arcmin
 
-
     n_pix = 16
 
     ra_bins2 = np.linspace(centre[0] - d_ra * n_pix / 2, centre[0] + d_ra * n_pix / 2, n_pix + 1)
@@ -766,7 +759,6 @@ def get_scan_stats(filepath, map_grid=None):
     # dec = dx + field_centre[1]
 
     # map_grid = np.array([ra, dec])
-    
 
     indices = np.zeros((n_det, 2, 2)).astype(int)
     ps_chi2 = np.zeros((n_det, n_sb))
@@ -807,9 +799,9 @@ def get_scan_stats(filepath, map_grid=None):
                 rms = np.zeros_like(nhit)
                 rms[where] = (sigma0[i, j][None, None, :]/ np.sqrt(nhit))[where]
                 # if i == 0 and j == 0:
-                    # print(f"{scanid:9d}, {ra[i].min():2f}, {ra[i].max():.2f}, {dec[i].min():.2f}, {dec[i].max():.2f}, {ra_bins.shape[0]:3d}, {dec_bins.shape[0]:3d}, {ra_bins[0]:.2f}, {ra_bins[-1]:.2f}, {dec_bins[0]:.2f}, {dec_bins[-1]:.2f}, {np.nanmin(rms[rms!=0]):.5f}, {np.nanmax(nhit):.0f}")
-                #print(np.nanstd((tod[i, j, :, :] / sigma0[i, j, :, None]).flatten()))
-                #print(np.std(map[where] / rms[where]))
+                # print(f"{scanid:9d}, {ra[i].min():2f}, {ra[i].max():.2f}, {dec[i].min():.2f}, {dec[i].max():.2f}, {ra_bins.shape[0]:3d}, {dec_bins.shape[0]:3d}, {ra_bins[0]:.2f}, {ra_bins[-1]:.2f}, {dec_bins[0]:.2f}, {dec_bins[-1]:.2f}, {np.nanmin(rms[rms!=0]):.5f}, {np.nanmax(nhit):.0f}")
+                # print(np.nanstd((tod[i, j, :, :] / sigma0[i, j, :, None]).flatten()))
+                # print(np.std(map[where] / rms[where]))
                 map_list[i][j] = [map, rms]
                 ps_chi2[i, j], Pk, ps_mean, ps_std, transfer, map, rms = get_sb_ps(ra[0], dec[0], ra_bins2, dec_bins2, tod[i, j], mask[i, j], sigma0[i, j], d_dec)
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_chi2.npy", ps_chi2)
@@ -817,13 +809,13 @@ def get_scan_stats(filepath, map_grid=None):
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_map_rms.npy", rms)
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_misc.npy", np.array([n_k, d_th, dz]))
 
-    #np.save('ps_chi2_scan', ps_chi2)
+    # np.save('ps_chi2_scan', ps_chi2)
     insert_data_in_array(data, ps_chi2, 'ps_chi2')
-    
+
     # add length of scan
     duration = (mjd[-1] - mjd[0]) * 24 * 60  # in minutes
     insert_data_in_array(data, duration, 'scan_length')
-    
+
     # saddlebags
     saddlebags = np.zeros((n_det, n_sb))
     saddlebags[(0, 3, 4, 11, 12), :] = 1  # feeds 1, 4, 5, 13, 14
@@ -831,7 +823,7 @@ def get_scan_stats(filepath, map_grid=None):
     saddlebags[(1, 6, 17, 18, 19), :] = 3  # feeds 2, 7, 18, 19, (20)
     saddlebags[(2, 7, 8, 9, 10), :] = 4  # feeds 3, 8, 9, 10, 11
     insert_data_in_array(data, saddlebags, 'saddlebag')
-    
+
     # add one over f of polyfilter components
     sigma_poly = np.zeros((n_det, n_sb, 2))
     fknee_poly = np.zeros((n_det, n_sb, 2))
@@ -857,7 +849,7 @@ def get_scan_stats(filepath, map_grid=None):
     insert_data_in_array(data, fknee_poly[:,:,1], 'fknee_poly1')
     insert_data_in_array(data, alpha_poly[:,:,1], 'alpha_poly1')
 
-    # sb_mean 
+    # sb_mean
     power_mean = np.zeros((n_det, n_sb))
     sigma_mean = np.zeros((n_det, n_sb))
     fknee_mean = np.zeros((n_det, n_sb))
@@ -878,7 +870,6 @@ def get_scan_stats(filepath, map_grid=None):
                     print(np.argwhere(np.isnan(sb_mean[i,j])))
                     print('nan in timestream', scanid, i, j)
 
-
     insert_data_in_array(data, power_mean[:,:], 'power_mean')
     insert_data_in_array(data, sigma_mean[:,:], 'sigma_mean')
     insert_data_in_array(data, fknee_mean[:,:], 'fknee_mean')
@@ -892,7 +883,6 @@ def get_scan_stats(filepath, map_grid=None):
     insert_data_in_array(data, rain, 'rain')
     insert_data_in_array(data, winddir, 'winddir')
     insert_data_in_array(data, windspeed, 'windspeed')
-
 
     # sun and moon position
     mean_el = mean_el[:, 0]
@@ -940,7 +930,7 @@ def get_scan_stats(filepath, map_grid=None):
         lat, lon = move_to_frame(pole, [cm.alt.deg, cm.az.deg])
         theta_moon = 90 - lat
         phi_moon = lon
-        
+
         moon_dist[:, :] = theta_moon[:, None]
         moon_angle[:, :] = phi_moon[:, None]
         moon_angle_mod90 = moon_angle % 90
@@ -963,15 +953,15 @@ def get_scan_stats(filepath, map_grid=None):
     insert_data_in_array(data, sun_elevation, 'sun_el')
 
     ### perhaps a ps_xy and ps_z to distinguish frequency residuals from angular ones
-    
+
     filename = '/mn/stornext/d22/cmbco/comap/d16/protodir/sw_complete_' + fieldname + '.h5'
     i_scan = int(str(scanid)[-2:]) - 2  # goes from 0 to n_scan
-    #print(scanid, i_scan)
+    # print(scanid, i_scan)
     n_sw = 14
     sw_array = np.zeros((n_det, n_sw, n_sb))
     try:
         with h5py.File(filename, mode="r") as my_file:
-             sw = my_file['%07i/sw_stats' % obsid][()][:, i_scan]
+            sw = my_file['%07i/sw_stats' % obsid][()][:, i_scan]
         sw_array[:, :, :] = sw[:, :, None]
     except:
         # print('problems with standing waves')
@@ -980,11 +970,9 @@ def get_scan_stats(filepath, map_grid=None):
     for i in range(n_sw):
         sw_str = 'sw_%02i' % (i + 1)
         insert_data_in_array(data, sw_array[:, i, :], sw_str)
-   
 
-     ######## Here you can add new statistics  ##########
-   
-    
+    ######## Here you can add new statistics  ##########
+
     return data, [map_list, indices]
 
 def move_to_frame(ang_cent, ang):
