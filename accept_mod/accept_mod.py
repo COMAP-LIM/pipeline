@@ -439,7 +439,10 @@ def get_scan_stats(filepath, map_grid=None):
             # eigv = np.zeros(0)
             # print('Found no pca comps', scanid)
 
-        pcaf_ampl_ind = my_file['pca_feed_ampl'][:4]
+        if "pca_feed_ampl" in my_file:
+            pcaf_ampl_ind = my_file["pca_feed_ampl"][:4]
+        else:
+            pcaf_ampl_ind = np.zeros((4, *mask_full_ind.shape))
 
         npca_ind = np.zeros((n_det_ind, n_sb))
         npcaf_ind = np.zeros((n_det_ind, n_sb))
