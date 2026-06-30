@@ -114,9 +114,9 @@ extern "C" void bin_nhit_and_map(
                 continue;
             }
 
-            int pixel_index = idx_dec_pix[nfeed * t + d] * nside_ra + idx_ra_pix[nfeed * t + d];
-            int feed_px_idx = npix * d + pixel_index;
-            int time_det_idx = nsamp * d + t;
+            long pixel_index = idx_dec_pix[nfeed * t + d] * nside_ra + idx_ra_pix[nfeed * t + d];
+            long feed_px_idx = npix * d + pixel_index;
+            long time_det_idx = nsamp * d + t;
 
             for (int f = 0; f < nfreq; f++)
             {
@@ -124,9 +124,9 @@ extern "C" void bin_nhit_and_map(
 
                 float inv_var = sigma[freq_feed_idx];
 
-                int idx_map = nfreq * feed_px_idx + f;
+                long idx_map = nfreq * feed_px_idx + f;
 
-                int idx_tod = nfreq * time_det_idx + f;
+                long idx_tod = nfreq * time_det_idx + f;
 
                 numerator[idx_map] += tod[idx_tod] * inv_var * freqmask[freq_feed_idx];
                 denominator[idx_map] += inv_var * freqmask[freq_feed_idx];
