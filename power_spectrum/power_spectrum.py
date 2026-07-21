@@ -20,6 +20,44 @@ class PowerSpectrum:
             self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), number_of_k_bin_edges)
             self.k_bin_edges_perp = np.logspace(-2.0 + np.log10(2), np.log10(1.5), number_of_k_bin_edges)
 
+            if self.map.params.psx_nyquist_bin_limit:
+                self.k_bin_edges_par = np.logspace(
+                    # np.log10(self.map.min_k_z),
+                    np.log10(0.09),
+                    np.log10(self.map.nyquist_z),
+                    number_of_k_bin_edges,
+                )
+
+                spacial_bin_max_limit = np.min(
+                    (
+                        self.map.nyquist_x,
+                        self.map.nyquist_y,
+                    )
+                )
+                spacial_bin_min_limit = np.max(
+                    (
+                        self.map.min_k_x,
+                        self.map.min_k_y,
+                    )
+                )
+
+                self.k_bin_edges_perp = np.logspace(
+                    np.log10(spacial_bin_min_limit),
+                    np.log10(spacial_bin_max_limit),
+                    number_of_k_bin_edges,
+                )
+            else:
+                self.k_bin_edges_par = np.logspace(
+                    np.log10(self.map.params.psx_k_spectral_bin_min),
+                    np.log10(self.map.params.psx_k_spectral_bin_max),
+                    number_of_k_bin_edges,
+                )
+                self.k_bin_edges_perp = np.logspace(
+                    np.log10(self.map.params.psx_k_angular_bin_min),
+                    np.log10(self.map.params.psx_k_angular_bin_max),
+                    number_of_k_bin_edges,
+                )
+
             self.ps_2d, self.k, self.nmodes = tools.compute_power_spec_perp_vs_par(
                 self.map.map * self.map.w,
                 (self.k_bin_edges_perp, self.k_bin_edges_par),
@@ -101,14 +139,14 @@ class CrossSpectrum:
         self.weights_are_normalized = True
 
     def calculate_xs(self, number_of_k_bin_edges = 15):
-        
+
         self.k_bin_edges = np.logspace(-2.0, np.log10(1.5), number_of_k_bin_edges)
 
         if not self.weights_are_normalized:
             self.normalize_weights()
 
         w = np.sqrt(self.maps[0].w * self.maps[1].w)
-        
+
         self.xs, self.k, self.nmodes = tools.compute_cross_spec3d(
             (self.maps[0].map * w, self.maps[1].map * w),
             self.k_bin_edges,
@@ -118,9 +156,8 @@ class CrossSpectrum:
         )
         return self.xs, self.k, self.nmodes
 
-
     def calculate_xs_ra_dec_nu(self, number_of_k_bin_edges = 15):
-        
+
         if self.maps[0].params.psx_nyquist_bin_limit:
             self.k_bin_edges_par = np.logspace(np.log10(self.maps[0].min_k_z), np.log10(self.maps[0].nyquist_z), number_of_k_bin_edges)
             spacial_bin_max_limit = np.min(
@@ -149,7 +186,7 @@ class CrossSpectrum:
 
         if not self.weights_are_normalized:
             self.normalize_weights()
-        
+
         w = np.sqrt(self.maps[0].w * self.maps[1].w)
 
         self.xs, self.k, self.nmodes = tools.compute_cross_spec_angular2d_vs_par(
@@ -162,40 +199,51 @@ class CrossSpectrum:
         return self.xs, self.k, self.nmodes
 
     def calculate_xs_2d(self, number_of_k_bin_edges = 15):
-        
 
         self.k_bin_edges_par = np.logspace(-2.0, np.log10(1.0), number_of_k_bin_edges)
         self.k_bin_edges_perp = np.logspace(-2.0 + np.log10(2), np.log10(1.5), number_of_k_bin_edges)
-        
-        # if self.maps[0].params.psx_nyquist_bin_limit:
-        #     self.k_bin_edges_par = np.logspace(np.log10(self.maps[0].min_k_z), np.log10(self.maps[0].nyquist_z), number_of_k_bin_edges)
-        #     spacial_bin_max_limit = np.min(
-        #                             (np.min((self.maps[0].nyquist_x, self.maps[1].nyquist_x)),
-        #                             np.min((self.maps[0].nyquist_y, self.maps[1].nyquist_y)),)
-        #     )
-        #     spacial_bin_min_limit = np.max(
-        #                             (np.max((self.maps[0].min_k_x, self.maps[1].min_k_x)),
-        #                             np.max((self.maps[0].min_k_y, self.maps[1].min_k_y)),)
-        #     )
 
-        #     self.k_bin_edges_perp = np.logspace(np.log10(spacial_bin_min_limit), np.log10(spacial_bin_max_limit), number_of_k_bin_edges)
-        # else:
-        #     self.k_bin_edges_par = np.logspace(
-        #         np.log10(self.maps[0].params.psx_k_spectral_bin_min), 
-        #         np.log10(self.maps[0].params.psx_k_spectral_bin_max), 
-        #         number_of_k_bin_edges
-        #     )
-        #     self.k_bin_edges_perp = np.logspace(
-        #         np.log10(self.maps[0].params.psx_k_angular_bin_min), 
-        #         np.log10(self.maps[0].params.psx_k_angular_bin_max), 
-        #         number_of_k_bin_edges
-        #     )
+        if self.maps[0].params.psx_nyquist_bin_limit:
+            self.k_bin_edges_par = np.logspace(
+                np.log10(self.maps[0].min_k_z),
+                np.log10(self.maps[0].nyquist_z),
+                number_of_k_bin_edges,
+            )
+            spacial_bin_max_limit = np.min(
+                (
+                    np.min((self.maps[0].nyquist_x, self.maps[1].nyquist_x)),
+                    np.min((self.maps[0].nyquist_y, self.maps[1].nyquist_y)),
+                )
+            )
+            spacial_bin_min_limit = np.max(
+                (
+                    np.max((self.maps[0].min_k_x, self.maps[1].min_k_x)),
+                    np.max((self.maps[0].min_k_y, self.maps[1].min_k_y)),
+                )
+            )
+
+            self.k_bin_edges_perp = np.logspace(
+                np.log10(spacial_bin_min_limit),
+                np.log10(spacial_bin_max_limit),
+                number_of_k_bin_edges,
+            )
+        else:
+            self.k_bin_edges_par = np.logspace(
+                np.log10(self.maps[0].params.psx_k_spectral_bin_min),
+                np.log10(self.maps[0].params.psx_k_spectral_bin_max),
+                number_of_k_bin_edges,
+            )
+            self.k_bin_edges_perp = np.logspace(
+                np.log10(self.maps[0].params.psx_k_angular_bin_min),
+                np.log10(self.maps[0].params.psx_k_angular_bin_max),
+                number_of_k_bin_edges,
+            )
 
         if not self.weights_are_normalized:
             self.normalize_weights() 
 
         w = np.sqrt(self.maps[0].w * self.maps[1].w)
-        
+
         self.xs, self.k, self.nmodes = tools.compute_cross_spec_perp_vs_par(
             (self.maps[0].map * w, self.maps[1].map * w),
             (self.k_bin_edges_perp, self.k_bin_edges_par),
