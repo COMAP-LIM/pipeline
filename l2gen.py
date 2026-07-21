@@ -36,7 +36,6 @@ class Printing:
         self.verbose = params.verbose
         self.debug = params.debug
 
-
     def verbose_print(self, string):
         """ Dual purpose function for normal verbose prints:
             1. Writes the prints to the log.
@@ -46,7 +45,6 @@ class Printing:
         if self.verbose:
             print(string)
 
-
     def debug_print(self, string):
         """ Dual purpose function for debug prints:
             1. Writes the prints to the log.
@@ -55,7 +53,6 @@ class Printing:
         logging.debug(string)
         if self.debug:
             print(string)
-
 
 
 class Terminal_print:
@@ -76,7 +73,6 @@ class Terminal_print:
         self.pt0 = time.process_time()
         self.rewrite_lines = 0
 
-
     def get_color(self, value):
         if value > 85:
             return "\033[96m"
@@ -86,7 +82,6 @@ class Terminal_print:
             return "\033[93m"
         else:            
             return "\033[91m"
-
 
     def scan_done_update(self, info):
         self.N_finished_scans += 1
@@ -99,10 +94,8 @@ class Terminal_print:
             self.accumulated_filter_runtime[filter] += info["filter_runtimes"][filter]
             self.total_filter_runtime += self.accumulated_filter_runtime[filter]
 
-
     def scan_progress_update(self, info):
         self.rank_progress[info["rank"]] = info["status"]
-
 
     def rewrite_terminal(self):
         Nfeeds = 19
@@ -159,7 +152,6 @@ class Terminal_print:
         self.rewrite_lines = lines + 1
 
 
-
 class l2gen_runner:
     def __init__(self, omp_num_threads=2):
         self.comm = MPI.COMM_WORLD
@@ -176,8 +168,6 @@ class l2gen_runner:
         self.read_runlist(self.params)
         if self.rank == 0:
             print("######## Done initializing l2gen ########\n")
-
-
 
     def run(self):
         self.comm.Barrier()
@@ -285,7 +275,6 @@ class l2gen_runner:
                 return_dict["feeds"] = l2.l2file.feeds
                 self.comm.send(return_dict, dest=0, tag=DONE_TAG)
 
-
     def clean_up(self):
         # Function called when all scans are finished processing. Creates a database and ensures all files were successfully created.
         if self.rank == 0:
@@ -369,9 +358,6 @@ class l2gen_runner:
 
             print("L2gen finished!")
 
-
-
-
     def read_params(self):
         self.params = 0
         if self.rank == 0:
@@ -384,14 +370,12 @@ class l2gen_runner:
                 print(f"{i}. {self.params.filters[i]}")
         self.params = self.comm.bcast(self.params, root=0)
 
-
-
     def configure_logging(self):
         runID = 0
         if self.rank == 0:
             runID = str(datetime.datetime.now())[2:].replace(" ", "-").replace(":", "-")
         runID = self.comm.bcast(runID, root=0)
-        
+
         self.params.runID = int(runID.replace("-", "").replace(".", ""))
         os.makedirs(self.params.log_dir, exist_ok=True)
         logfilepath = os.path.join(self.params.log_dir, f"l2gen-{runID}.log")
@@ -399,8 +383,6 @@ class l2gen_runner:
         if self.rank == 0:
             logging.info(f"Log initialized for runID {runID}")
             print(f"Log initialized for runID {runID}")
-
-
 
     def configure_filters(self):
         self.filter_list = []
@@ -410,16 +392,12 @@ class l2gen_runner:
                 self.filter_list.append(filter)
         self.filter_list = self.comm.bcast(self.filter_list, root=0)
 
-
-
     def read_runlist(self, params, ignore_existing=True, only_existing=False):
         self.runlist = []
         if self.rank == 0:
             self.runlist = read_runlist(params, ignore_existing=ignore_existing, only_existing=only_existing)
 
         self.runlist = self.comm.bcast(self.runlist, root=0)
-
-
 
 
 class l2gen:
@@ -436,7 +414,6 @@ class l2gen:
         self.filter_names = [filter.name for filter in filter_list]
         self.filter_runtimes = {}
         self.filter_processtimes = {}
-
 
     def run(self):
         self.printer.debug_print(f"[{self.rank}] Reading level1 data...")
@@ -475,7 +452,6 @@ class l2gen:
                 self.l2file.write_level2_data(name_extension=f"_{str(i+1)}_{filter.name}")
             del(filter)
 
-
         self.printer.debug_print(f"[{self.rank}] Writing level2 file...")
         info = {}
         info["rank"] = self.rank
@@ -487,8 +463,6 @@ class l2gen:
         self.filter_runtimes["l2_write"] = t1 - t0
         self.filter_processtimes["l2_write"] = pt1 - pt0
         self.printer.debug_print(f"[{self.rank}] Finished l2 file write.")
-
-
 
 
 if __name__ == "__main__":
