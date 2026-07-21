@@ -218,16 +218,16 @@ class MapCosmo:
         y_edges = (y_edges * u.deg * angle2Mpc).to(u.Mpc)
 
         # Cosmological distance corresponding to redshift width in middle of box
-        dz = cosmology.comoving_distance(Z_MID + dredshift / 2) - cosmology.comoving_distance(
-            Z_MID - dredshift / 2
-        )
+        dz = cosmology.comoving_distance(
+            Z_MID + dredshift / 2
+        ) - cosmology.comoving_distance(Z_MID - dredshift / 2)
 
         # Generating equispaced cosmological grid from redshifts, relative to first frequency
         z = np.arange(0, N_FREQ) * dz
 
         # Spacial resolutions
-        dx = np.abs(x_edges[1] - x_edges[0]) 
-        dy = np.abs(y_edges[1] - y_edges[0]) 
+        dx = np.abs(x_edges[1] - x_edges[0])
+        dy = np.abs(y_edges[1] - y_edges[0])
         dz = np.abs(z[1] - z[0])
 
         # Grid sizes
