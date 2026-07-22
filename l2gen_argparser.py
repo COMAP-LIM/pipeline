@@ -219,7 +219,6 @@ parser.add_argument(
 )
 
 
-
 ###### FILTER SETTINGS ######
 ### Start-of-scan exponential subtraction filter
 parser.add_argument(
@@ -652,8 +651,8 @@ parser.add_argument(
 parser.add_argument(
     "--psx_mode",
     type=str,
-    default="feed",
-    help="(comap2fpxs) What the top-level branching in the splits should be. The default is 'feed', current other options are 'saddlebag'"
+    default="both",
+    help="(comap2fpxs) What the top-level branching in the splits should be. The default is 'both', current other options are 'saddlebag', 'feed' or 'both",
 )
 
 parser.add_argument(
@@ -989,8 +988,6 @@ parser.add_argument(
     default="/mn/stornext/d16/cmbco/comap/defaults/models",
     help="(comap2fpxs) Path to theoretical model power spectra.",
 )
-
-
 
 
 ###### Physics ######
@@ -1362,7 +1359,6 @@ parser.add_argument(
     default=None,
     help="(Replace_TOD_with_WN) What seed to use for white noise TOD replacement. None = no seed.",
 )
-
 
 
 ###### pca_subtractor/clean_maps.py stuff ######
