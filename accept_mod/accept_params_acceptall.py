@@ -1,0 +1,106 @@
+stats_cut = {
+    ### Non-data derived statistics ###
+    # High-level info
+    'obsid': [float("nan"), float("nan")],
+    'scanid': [float("nan"), float("nan")],
+    'mjd': [float("nan"), float("nan")],
+    'fbit': [float("nan"), float("nan")],
+    'scan_length': [float("nan"), float("nan")],
+    'saddlebag': [float("nan"), float("nan")],
+    'acceptmod_error': [float("nan"), float("nan")],
+    'blacklisted' : [float("nan"), float("nan")],
+
+    # Time and pointing related info
+    'night': [float("nan"), float("nan")],
+    'sidereal': [float("nan"), float("nan")],
+    'az': [float("nan"), float("nan")],
+    'el': [float("nan"), float("nan")],
+    'moon_dist': [float("nan"), float("nan")],
+    'moon_angle': [float("nan"), float("nan")],
+    'moon_cent_sl': [float("nan"), float("nan")],
+    'moon_outer_sl': [float("nan"), float("nan")],
+    'sun_dist': [float("nan"), float("nan")],
+    'sun_angle': [float("nan"), float("nan")],
+    'sun_cent_sl': [float("nan"), float("nan")],
+    'sun_outer_sl': [float("nan"), float("nan")],
+    'sun_el': [float("nan"), float("nan")],
+
+    # Weather related info
+    'weather': [float("nan"), float("nan")],
+    'airtemp': [float("nan"), float("nan")],
+    'dewtemp': [float("nan"), float("nan")],
+    'humidity': [float("nan"), float("nan")],
+    'pressure': [float("nan"), float("nan")],
+    'rain': [float("nan"), float("nan")],
+    'winddir': [float("nan"), float("nan")],
+    'windspeed': [float("nan"), float("nan")],
+
+    ### Data derived statistics ###
+    'acceptrate': [float("nan"), float("nan")],
+    'acceptrate_specific': [float("nan"), float("nan")],
+
+    # High-level sanity checks
+    'tsys': [float("nan"), float("nan")],
+    'power_mean': [float("nan"), float("nan")],
+    'sigma_mean': [float("nan"), float("nan")],
+    'fknee_mean': [float("nan"), float("nan")],
+    'alpha_mean': [float("nan"), float("nan")],
+    'n_spikes': [float("nan"), float("nan")],
+    'n_jumps': [float("nan"), float("nan")],
+    'n_anomalies': [float("nan"), float("nan")],
+    'n_nan': [float("nan"), float("nan")],
+
+    # Data statistics
+    'chi2': [float("nan"), float("nan")],
+    'az_chi2': [float("nan"), float("nan")],
+    'max_az_chi2': [float("nan"), float("nan")],
+    'med_az_chi2': [float("nan"), float("nan")],
+    'az_amp': [float("nan"), float("nan")],
+    'el_amp': [float("nan"), float("nan")],
+    'kurtosis': [float("nan"), float("nan")],
+    'skewness': [float("nan"), float("nan")],
+
+    # Tests on L2gen filter parameters
+    'npca' : [float("nan"), float("nan")],
+    'npcaf' : [float("nan"), float("nan")],
+    'pca1': [float("nan"), float("nan")],
+    'pca2': [float("nan"), float("nan")],
+    'pca3': [float("nan"), float("nan")],
+    'pca4': [float("nan"), float("nan")],
+    'pcf1' : [float("nan"), float("nan")],
+    'pcf2' : [float("nan"), float("nan")],
+    'pcsm' : [float("nan"), float("nan")],
+    'sigma_poly0': [float("nan"), float("nan")],
+    'fknee_poly0': [float("nan"), float("nan")],
+    'alpha_poly0': [float("nan"), float("nan")],
+    'sigma_poly1': [float("nan"), float("nan")],
+    'fknee_poly1': [float("nan"), float("nan")],
+    'alpha_poly1': [float("nan"), float("nan")],
+
+    # PS chi2 statistics
+    'ps_chi2': [float("nan"), float("nan")],
+    'ps_s_sb_chi2': [float("nan"), float("nan")],
+    'ps_s_feed_chi2': [float("nan"), float("nan")],
+    'ps_s_chi2': [float("nan"), float("nan")],
+    'ps_o_sb_chi2': [float("nan"), float("nan")],
+    'ps_o_feed_chi2': [float("nan"), float("nan")],
+    'ps_o_chi2': [float("nan"), float("nan")],
+    'ps_z_s_sb_chi2': [float("nan"), float("nan")],
+    'ps_xy_s_sb_chi2': [float("nan"), float("nan")],
+    
+    # Standing waves (not used)
+    'sw_01': [float("nan"), float("nan")],
+    'sw_02': [float("nan"), float("nan")],
+    'sw_03': [float("nan"), float("nan")],
+    'sw_04': [float("nan"), float("nan")],
+    'sw_05': [float("nan"), float("nan")],
+    'sw_06': [float("nan"), float("nan")],
+    'sw_07': [float("nan"), float("nan")],
+    'sw_08': [float("nan"), float("nan")],
+    'sw_09': [float("nan"), float("nan")],
+    'sw_10': [float("nan"), float("nan")],
+    'sw_11': [float("nan"), float("nan")],
+    'sw_12': [float("nan"), float("nan")],
+    'sw_13': [float("nan"), float("nan")],
+    'sw_14': [float("nan"), float("nan")],
+}
