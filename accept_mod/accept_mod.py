@@ -301,7 +301,7 @@ def read_runlist_old(params):
             scans[obsid] = o_scans
             i = i + n_scans + 1 
         fields[fieldname] = [obsids, scans, n_scans_tot]
-        print(fieldname, n_scans_tot)
+        print(fieldname, n_scans_tot) 
     return fields
 
 
@@ -312,7 +312,7 @@ def insert_data_in_array(data, indata, stats_string, obsid=False):
             data[:, :, :, index] = indata
         else:
             data[:, :, index] = indata
-    except ValueError:
+    except ValueError: 
         print('Did not find statistic "' + stats_string + '" in stats list.')
 
 
@@ -325,6 +325,69 @@ def extract_data_from_array(data, stats_string):
         print('Did not find statistic "' + stats_string + '" in stats list.')
         return 0
 
+def get_farsidelobe_azalt(time):
+
+def get_farsidelobe_in_galactic(time, ra, dec):
+    """Return the galactic coordinate of the four 65 degree
+    far-sidelobes of the COMAP Pathfinder/wide telescopes
+
+    Args:
+        time (astropy.Time): Time of a given scan in astropy.Time
+        ra (float): Mean scan RA coordinate
+        dec (float): Mean scan Dec coordinate
+
+    Returns:
+        dict: Dictionary of SkyCoords of each of the four far-sidelobes
+        of the COMAP Pathfinder/wide telescope
+    """
+    from astropy.time import Time
+    from astropy.coordinates import EarthLocation, AltAz, SkyCoord
+    from pixell import utils
+
+    loc = EarthLocation.of_site("OVRO")
+    altaz = AltAz(obstime=time, location=loc)
+
+    mean_pointing = SkyCoord(ra=ra, dec=dec, frame="icrs", unit=(u.deg, u.deg))
+
+    comap_fields_altaz = mean_pointing.transform_to(altaz)
+
+    sidelobe_angle = 65
+    sidelobe1 = np.array([0, 90 - sidelobe_angle]) * u.deg
+    sidelobe2 = np.array([180, 90 - sidelobe_angle]) * u.deg
+    sidelobe3 = np.array([90, 90 - sidelobe_angle]) * u.deg
+    sidelobe4 = np.array([270, 90 - sidelobe_angle]) * u.deg
+
+    vector_sidelobe1 = utils.ang2rect((sidelobe1.to(u.rad)).value)
+    vector_sidelobe2 = utils.ang2rect((sidelobe2.to(u.rad)).value)
+    vector_sidelobe3 = utils.ang2rect((sidelobe3.to(u.rad)).value)
+    vector_sidelobe4 = utils.ang2rect((sidelobe4.to(u.rad)).value)
+
+    sidelobes = [vector_sidelobe1, vector_sidelobe2, vector_sidelobe3, vector_sidelobe4]
+    new_sidelobes = []
+
+    new_sidelobes_galactic = []
+
+    rotation_y = utils.rotmatrix(np.pi / 2 - comap_fields_altaz.alt.radian, raxis="y")
+
+    rotation_z = utils.rotmatrix(comap_fields_altaz.az.radian, raxis="z")
+
+    rotation = rotation_z @ rotation_y
+
+    for sidelobe in sidelobes:
+
+        new_sidelobe = np.einsum("kij,j->ki", rotation, sidelobe).T
+        new_sidelobe_ang = np.rad2deg(utils.rect2ang(new_sidelobe))
+        new_sidelobes.append(new_sidelobe_ang)
+        new_coords = SkyCoord(
+            az=new_sidelobe_ang[0, :] * u.deg,
+            alt=new_sidelobe_ang[1, :] * u.deg,
+            frame=comap_fields_altaz.frame,
+        )
+        new_sidelobes_galactic.append(new_coords.transform_to("galactic"))
+
+    return new_sidelobes_galactic
+
+
 def get_scan_stats(filepath, map_grid=None):
     n_stats = len(stats_list)
     try:
@@ -333,54 +396,56 @@ def get_scan_stats(filepath, map_grid=None):
     except:
         print(f"CANNOT OPEN CORRUPT OR NON-EXISTING FILE: {filepath}")
     with h5py.File(filepath, mode="r") as my_file:
-        tod_ind = np.array(my_file['tod'][:])
+        tod_ind = np.array(my_file["tod"][:])
         tod_ind[~np.isfinite(tod_ind)] = 0
         # print(np.sum(np.isfinite(tod_ind)), np.size(tod_ind), tod_ind.shape)
         n_det_ind, n_sb, n_freq, n_samp = tod_ind.shape
         freq_decimation_factor = my_file["decimation_nu"][()]
         try:
-            freq_bin_sizes_lowres_MHz = (my_file["freq_bin_centers_lowres"][0,1] - my_file["freq_bin_centers_lowres"][0,0])*1000
+            freq_bin_sizes_lowres_MHz = (
+                my_file["freq_bin_centers_lowres"][0, 1]
+                - my_file["freq_bin_centers_lowres"][0, 0]
+            ) * 1000
         except:
             freq_bin_sizes_lowres_MHz = 31.25
-        sb_mean_ind = np.array(my_file['sb_mean'][:])
-        point_tel_ind = np.array(my_file['point_tel'][:])
-        point_radec_ind = np.array(my_file['point_cel'][:])
+        sb_mean_ind = np.array(my_file["sb_mean"][:])
+        point_tel_ind = np.array(my_file["point_tel"][:])
+        point_radec_ind = np.array(my_file["point_cel"][:])
         # mask_ind = my_file['freqmask'][:]
         # mask_full_ind = my_file['freqmask_full'][:]
         try:
-            temporal_mask_ind = my_file['mask_temporal'][()]
+            temporal_mask_ind = my_file["mask_temporal"][()]
         except:
             temporal_mask_ind = np.ones((n_det_ind, n_samp), dtype=bool)
-        mask_ind = my_file['freqmask'][:]
-        mask_full_ind = my_file['freqmask_full'][:]
-        reason_ind = my_file['freqmask_reason'][:]
-        sigma0_ind = my_file['sigma0'][()]
+        mask_ind = my_file["freqmask"][:]
+        mask_full_ind = my_file["freqmask_full"][:]
+        reason_ind = my_file["freqmask_reason"][:]
+        sigma0_ind = my_file["sigma0"][()]
         # n_nan_ind = my_file['n_nan'][()]
         # n_nan_ind = my_file['n_nans'][()]
 
-        # pixels = np.array(my_file['pixels'][:]) - 1 
-        pixels = np.array(my_file['feeds'][:]) - 1 
+        # pixels = np.array(my_file['pixels'][:]) - 1
+        pixels = np.array(my_file["feeds"][:]) - 1
         # pix2ind = my_file['pix2ind'][:]
-        pix2ind = my_file['pix2ind_fortran'][:]
-        scanid = my_file['scanid'][()]
-        feat = my_file['feature'][()]
-        
-        
-        airtemp = np.mean(my_file['hk_airtemp'][()])
-        dewtemp = np.mean(my_file['hk_dewtemp'][()])
-        humidity = np.mean(my_file['hk_humidity'][()])
-        pressure = np.mean(my_file['hk_pressure'][()])
-        rain = np.mean(my_file['hk_rain'][()])
-        winddir = np.mean(my_file['hk_winddir'][()])
-        windspeed = np.mean(my_file['hk_windspeed'][()])
-        
+        pix2ind = my_file["pix2ind_fortran"][:]
+        scanid = my_file["scanid"][()]
+        feat = my_file["feature"][()]
+
+        airtemp = np.mean(my_file["hk_airtemp"][()])
+        dewtemp = np.mean(my_file["hk_dewtemp"][()])
+        humidity = np.mean(my_file["hk_humidity"][()])
+        pressure = np.mean(my_file["hk_pressure"][()])
+        rain = np.mean(my_file["hk_rain"][()])
+        winddir = np.mean(my_file["hk_winddir"][()])
+        windspeed = np.mean(my_file["hk_windspeed"][()])
+
         try:
-            point_amp_ind = my_file['el_az_amp'][:,:,:,:2]
+            point_amp_ind = my_file["el_az_amp"][:, :, :, :2]
             # point_amp_ind = np.nanmean(my_file['el_az_stats'][()], axis=3) #### mean over chunk axis
             # 3, 19, 4, 1024 => 19, 4, 1024, 2
         except:
             point_amp_ind = np.zeros((n_det_ind, n_sb, 1024, 2))
-        # try: 
+        # try:
         #     sd_ind = np.array(my_file['spike_data'])
         #     if (sd_ind.shape[0] == 0):
         #         sd_ind = np.zeros((3, n_det_ind, n_sb, 4, 1000))
@@ -388,40 +453,46 @@ def get_scan_stats(filepath, map_grid=None):
         sd_ind = np.zeros((3, n_det_ind, n_sb, 4, 1000))
         # use_freq_filter = my_file['use_freq_filter'][()]
         # if not use_freq_filter:
-            # tod_poly_ind = my_file['tod_poly'][()]
+        # tod_poly_ind = my_file['tod_poly'][()]
         # try:
         if "poly_coeff" in my_file:
-            tod_poly_ind = np.transpose(my_file['poly_coeff'][()], (1,2,0,3))
+            tod_poly_ind = np.transpose(my_file["poly_coeff"][()], (1, 2, 0, 3))
         else:
             tod_poly_ind = np.zeros((n_det_ind, n_sb, 2, n_samp))
         # except KeyError:
         #     tod_poly_ind = np.zeros((n_det_ind, n_sb, 2, n_samp))
-        # try: 
-        chi2_ind = np.array(my_file['chi2'])
+        # try:
+        chi2_ind = np.array(my_file["chi2"])
         # except KeyError:
         #     chi2_ind = np.zeros_like(tod_ind[:,:,:,0])
         try:
-            acc_ind = np.array(my_file['acceptrate'])
+            acc_ind = np.array(my_file["acceptrate"])
         except KeyError:
-            acc_ind = np.zeros_like(tod_ind[:,:,0,0])
+            acc_ind = np.zeros_like(tod_ind[:, :, 0, 0])
             print("Found no acceptrate")
 
-        freqmask_reason = my_file['freqmask_reason'][()]
-        freqmask_reason_string = my_file['freqmask_reason_string'][()]
+        freqmask_reason = my_file["freqmask_reason"][()]
+        freqmask_reason_string = my_file["freqmask_reason_string"][()]
         specific_freqmask = np.ones_like(mask_full_ind)
         for k in range(len(freqmask_reason_string)):
             _freqmask = (freqmask_reason == 2**k) == 0
-            if freqmask_reason_string[k] not in ["Aliasing suppression (AB_mask)", "Aliasing suppression (leak_mask)",
-                                                 "Tsys NaN or inf", "Tsys < min_tsys", "Tsys > running median max",
-                                                 "Feed 20", "NaN or inf in TOD", "Marked channels"]:
+            if freqmask_reason_string[k] not in [
+                "Aliasing suppression (AB_mask)",
+                "Aliasing suppression (leak_mask)",
+                "Tsys NaN or inf",
+                "Tsys < min_tsys",
+                "Tsys > running median max",
+                "Feed 20",
+                "NaN or inf in TOD",
+                "Marked channels",
+            ]:
                 specific_freqmask *= _freqmask
         acc_ind_specific = np.mean(specific_freqmask, axis=-1)
-        
-        
+
         try:
-            time = np.array(my_file['tod_time'])
+            time = np.array(my_file["tod_time"])
         except:
-            time = np.array(my_file['time'])
+            time = np.array(my_file["time"])
         mjd = time
 
         ampl_ind = np.zeros((4, *mask_full_ind.shape))
@@ -429,33 +500,40 @@ def get_scan_stats(filepath, map_grid=None):
         # try:
         if "pca_comp" in my_file:
             # eigv = np.array(my_file['pca_eigv'])
-            if np.array(my_file['pca_comp']).shape[0] >= 4:
-                ampl_ind[:] = np.array(my_file['pca_ampl'])[:4]
-                pca[:] = np.array(my_file['pca_comp'])[:4]
+            if np.array(my_file["pca_comp"]).shape[0] >= 4:
+                ampl_ind[:] = np.array(my_file["pca_ampl"])[:4]
+                pca[:] = np.array(my_file["pca_comp"])[:4]
             else:
-                ampl_ind[:np.array(my_file['pca_comp']).shape[0]] = np.array(my_file['pca_ampl'])[:np.array(my_file['pca_comp']).shape[0]]
-                pca[:np.array(my_file['pca_comp']).shape[0]] = np.array(my_file['pca_comp'])[:]
+                ampl_ind[: np.array(my_file["pca_comp"]).shape[0]] = np.array(
+                    my_file["pca_ampl"]
+                )[: np.array(my_file["pca_comp"]).shape[0]]
+                pca[: np.array(my_file["pca_comp"]).shape[0]] = np.array(
+                    my_file["pca_comp"]
+                )[:]
         # except KeyError:
         else:
             pca = np.zeros((4, 10000))
             # eigv = np.zeros(0)
             # print('Found no pca comps', scanid)
-        
-        pcaf_ampl_ind = my_file['pca_feed_ampl'][:4]
+
+        if "pca_feed_ampl" in my_file:
+            pcaf_ampl_ind = my_file["pca_feed_ampl"][:4]
+        else:
+            pcaf_ampl_ind = np.zeros((4, *mask_full_ind.shape))
 
         npca_ind = np.zeros((n_det_ind, n_sb))
         npcaf_ind = np.zeros((n_det_ind, n_sb))
         for feed in range(n_det_ind):
             try:
-                npca_ind[feed,:] = my_file['n_pca_comp'][()]
-                npcaf_ind[feed,:] = my_file['n_pca_feed_comp'][feed]
+                npca_ind[feed, :] = my_file["n_pca_comp"][()]
+                npcaf_ind[feed, :] = my_file["n_pca_feed_comp"][feed]
             except:
                 pass
 
         try:
-            tsys_ind = np.array(my_file['Tsys_lowres'])
+            tsys_ind = np.array(my_file["Tsys_lowres"])
         except KeyError:
-            tsys_ind = np.zeros_like(tod_ind[:,:,:,0]) + 40
+            tsys_ind = np.zeros_like(tod_ind[:, :, :, 0]) + 40
             # print("Found no tsys")
     # except KeyboardInterrupt:
     #     sys.exit()
@@ -465,15 +543,15 @@ def get_scan_stats(filepath, map_grid=None):
     #     data[:] = np.nan
     #     indices = np.zeros((20, 2, 2)).astype(int)
     #     map_list = [[None for _ in range(4)] for _ in range(20)]
-        
+
     #     return data, [map_list, indices]
 
     t0 = time[0]
     time = (time - time[0]) * (24 * 60)  # minutes
- 
+
     obsid = int(str(scanid)[:-2])
 
-    n_freq_hr = len(mask_full_ind[0,0])
+    n_freq_hr = len(mask_full_ind[0, 0])
     n_det = 20
 
     data = np.zeros((n_det, n_sb, n_stats), dtype=np.float32)
@@ -520,23 +598,30 @@ def get_scan_stats(filepath, map_grid=None):
     sigma0[pixels] = sigma0_ind
     point_amp[pixels] = point_amp_ind
     tod_poly[pixels] = tod_poly_ind
-    point_tel[pixels,:,:2] = point_tel_ind
-    point_radec[pixels,:,:2] = point_radec_ind
+    point_tel[pixels, :, :2] = point_tel_ind
+    point_radec[pixels, :, :2] = point_radec_ind
 
     az_amp = point_amp[:, :, :, 1]
     el_amp = point_amp[:, :, :, 0]
 
-
-    mask_sum = np.nansum(mask_full.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3)
+    mask_sum = np.nansum(
+        mask_full.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3
+    )
     az_amp = az_amp * mask_full
     el_amp = el_amp * mask_full
 
-    az_amp_lowres = np.nansum(az_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3) / mask_sum
-    
-    el_amp_lowres = np.nansum(el_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3) / mask_sum
+    az_amp_lowres = (
+        np.nansum(az_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3)
+        / mask_sum
+    )
+
+    el_amp_lowres = (
+        np.nansum(el_amp.reshape((n_det, n_sb, n_freq, freq_decimation_factor)), axis=3)
+        / mask_sum
+    )
 
     mask_sb_sum = np.nansum(mask_full, axis=2)
-    where = (mask_sb_sum > 0)
+    where = mask_sb_sum > 0
     az_amp_sb = np.zeros_like(mask_sb_sum)
     el_amp_sb = np.zeros_like(mask_sb_sum)
     az_amp_sb[where] = np.nansum(az_amp, axis=2)[where] / mask_sb_sum[where]
@@ -546,84 +631,94 @@ def get_scan_stats(filepath, map_grid=None):
     sortedlists = my_spikes.sorted()
     n_spikes = len(sortedlists[0])
     n_jumps = len(sortedlists[1])
-    n_anom = len(sortedlists[2]) 
+    n_anom = len(sortedlists[2])
 
     # cutoff = 0.0015 * 8.0
-    n_sigma_spikes = 5         # Get from param file   ########################
-    n_spikes_sb = (np.array([s.sbs for s in sortedlists[0]]) > 0.0015 * n_sigma_spikes).sum(0)
-    n_jumps_sb = (np.array([s.sbs for s in sortedlists[1]]) > 0.0015 * n_sigma_spikes).sum(0)
-    n_anom_sb = (np.array([s.sbs for s in sortedlists[2]]) > 0.0015 * n_sigma_spikes).sum(0)
-    
+    n_sigma_spikes = 5  # Get from param file   ########################
+    n_spikes_sb = (
+        np.array([s.sbs for s in sortedlists[0]]) > 0.0015 * n_sigma_spikes
+    ).sum(0)
+    n_jumps_sb = (
+        np.array([s.sbs for s in sortedlists[1]]) > 0.0015 * n_sigma_spikes
+    ).sum(0)
+    n_anom_sb = (
+        np.array([s.sbs for s in sortedlists[2]]) > 0.0015 * n_sigma_spikes
+    ).sum(0)
+
     mask_sb_sum_lowres = np.nansum(mask, axis=2)
     tsys_sb = np.nansum((tsys * mask), axis=2) / mask_sb_sum_lowres
 
     dt = (time[1] - time[0]) * 60  # seconds
-    radiometer = 1 / np.sqrt(freq_bin_sizes_lowres_MHz * 10 ** 6 * dt)
+    radiometer = 1 / np.sqrt(freq_bin_sizes_lowres_MHz * 10**6 * dt)
     ampl = np.nanmean(np.abs(ampl), axis=3)
-    ampl = 100 * np.sqrt(ampl ** 2 * pca.std(1)[:, None, None] ** 2 / radiometer ** 2)
+    ampl = 100 * np.sqrt(ampl**2 * pca.std(1)[:, None, None] ** 2 / radiometer**2)
     # ampl[np.where(ampl == 0)] = np.nan
     pcaf_ampl = np.nanmean(np.abs(pcaf_ampl), axis=3)
-    pcaf_ampl = 100 * np.sqrt(pcaf_ampl ** 2 * pca.std(1)[:, None, None] ** 2 / radiometer ** 2)
+    pcaf_ampl = 100 * np.sqrt(
+        pcaf_ampl**2 * pca.std(1)[:, None, None] ** 2 / radiometer**2
+    )
 
     # Here comes the different diagnostic data that is calculated
     # Obsid
-    insert_data_in_array(data, obsid, 'obsid')
+    insert_data_in_array(data, obsid, "obsid")
 
     # Scanid
-    insert_data_in_array(data, scanid, 'scanid')
+    insert_data_in_array(data, scanid, "scanid")
 
     # MJD
-    scan_mjd = 0.5 * (mjd[0] + mjd[-1]) 
-    insert_data_in_array(data, scan_mjd, 'mjd')
+    scan_mjd = 0.5 * (mjd[0] + mjd[-1])
+    insert_data_in_array(data, scan_mjd, "mjd")
 
     # night
     hours = (scan_mjd * 24 - 7) % 24
     close_to_night = np.minimum(np.abs(2.0 - hours), np.abs(26.0 - hours))
-    insert_data_in_array(data, close_to_night, 'night')
+    insert_data_in_array(data, close_to_night, "night")
 
     # sidereal time in degrees (up to a phase)
-    insert_data_in_array(data, get_sid(scan_mjd), 'sidereal')
-    
+    insert_data_in_array(data, get_sid(scan_mjd), "sidereal")
+
     # By default, no errors.
-    insert_data_in_array(data, 0, 'acceptmod_error')
+    insert_data_in_array(data, 0, "acceptmod_error")
 
     # Mean az/el per feed
     mean_el = np.zeros((n_det, n_sb))
     mean_az = np.zeros((n_det, n_sb))
 
     # mean_az[:, :] = np.mean(point_tel[:, :, 0], axis=1)[:, None]
-    mean_az[:, :] = np.arctan2(np.mean(np.sin(point_tel[:, :, 0] * np.pi / 180), axis=1), 
-                             np.mean(np.cos(point_tel[:, :, 0] * np.pi / 180), axis=1)
-                             )[:, None] * 180 / np.pi
+    mean_az[:, :] = (
+        np.arctan2(
+            np.mean(np.sin(point_tel[:, :, 0] * np.pi / 180), axis=1),
+            np.mean(np.cos(point_tel[:, :, 0] * np.pi / 180), axis=1),
+        )[:, None]
+        * 180
+        / np.pi
+    )
     mean_az[:, :] = (mean_az[:, :] + 360) % 360
     mean_el[:, :] = np.mean(point_tel[:, :, 1], axis=1)[:, None]
-    
 
+    insert_data_in_array(data, mean_az, "az")
+    insert_data_in_array(data, mean_el, "el")
 
-
-    insert_data_in_array(data, mean_az, 'az')
-    insert_data_in_array(data, mean_el, 'el')
-
-    # chi2 
+    # chi2
     chi2_sb = np.zeros((*chi2.shape[:2],))
     for ifeed in range(chi2.shape[0]):
         for isb in range(chi2.shape[1]):
-            chi2_sb[ifeed,isb] = np.nansum(chi2[ifeed,isb, mask[ifeed,isb] != 0])
+            chi2_sb[ifeed, isb] = np.nansum(chi2[ifeed, isb, mask[ifeed, isb] != 0])
     n_freq_sb = np.nansum(mask, axis=2)
     wh = np.where(n_freq_sb != 0.0)
     chi2_sb[wh] = chi2_sb[wh] / np.sqrt(n_freq_sb[wh])
     wh = np.where(n_freq_sb == 0.0)
     chi2_sb[wh] = np.nan
-    insert_data_in_array(data, chi2_sb, 'chi2')
- 
+    insert_data_in_array(data, chi2_sb, "chi2")
+
     # acceptrate
-    insert_data_in_array(data, acc, 'acceptrate')
-    
+    insert_data_in_array(data, acc, "acceptrate")
+
     # acceptrate specific
-    insert_data_in_array(data, acc_specific, 'acceptrate_specific')
+    insert_data_in_array(data, acc_specific, "acceptrate_specific")
 
     # azimuth binning
-    nbins = 15                                ##### azimuth bins
+    nbins = 15  ##### azimuth bins
     full_az_chi2 = np.zeros((n_det, n_sb))
     max_az_chi2 = np.zeros((n_det, n_sb))
     med_az_chi2 = np.zeros((n_det, n_sb))
@@ -635,11 +730,13 @@ def get_scan_stats(filepath, map_grid=None):
         for j in range(n_sb):
             if acc[i, j]:
                 freq_chi2 = np.zeros(n_freq)
-                for k in range(n_freq): 
+                for k in range(n_freq):
                     if mask[i, j, k]:
-                        _az = az[i,temporal_mask[i]]
-                        _tod = tod[i,j,k,temporal_mask[i]]
-                        histsum, bins = np.histogram(_az, bins=nbins, weights=(_tod/sigma0[i,j,k]))
+                        _az = az[i, temporal_mask[i]]
+                        _tod = tod[i, j, k, temporal_mask[i]]
+                        histsum, bins = np.histogram(
+                            _az, bins=nbins, weights=(_tod / sigma0[i, j, k])
+                        )
                         nhit = np.histogram(_az, bins=nbins)[0]
                         normhist = histsum / nhit * np.sqrt(nhit)
 
@@ -647,55 +744,57 @@ def get_scan_stats(filepath, map_grid=None):
                         #     print(scanid)
                         #     plt.errorbar(bins[1:], normhist, yerr=1/np.sqrt(nhit), fmt='-o')
                         #     plt.show()
-                        freq_chi2[k] = (np.sum(normhist ** 2) - nbins) / np.sqrt(2 * nbins)
+                        freq_chi2[k] = (np.sum(normhist**2) - nbins) / np.sqrt(
+                            2 * nbins
+                        )
                         # if freq_chi2[k] > 4.0:
                         #     file = open('diag_az_bins.txt', 'a')
-                        #     print(scanid, i+1, j+1, k+1, freq_chi2[k], scan_mjd, mean_az, mean_el, 
+                        #     print(scanid, i+1, j+1, k+1, freq_chi2[k], scan_mjd, mean_az, mean_el,
                         #           chi2[i,j,k], chi2_sb[i,j], tsys[i,j,k], feat, az_amp_lowres[i,j,k],
                         #           az_amp_sb[i,j], np.argmax(normhist ** 2),
                         #           file=file)
-                        #     file.close()        
-                full_az_chi2[i, j] = np.sum(freq_chi2) / np.sqrt(np.sum(mask[i,j]))
+                        #     file.close()
+                full_az_chi2[i, j] = np.sum(freq_chi2) / np.sqrt(np.sum(mask[i, j]))
                 max_az_chi2[i, j] = np.max(freq_chi2)
                 med_az_chi2[i, j] = np.median(freq_chi2)
-    insert_data_in_array(data, full_az_chi2, 'az_chi2')
-    insert_data_in_array(data, max_az_chi2, 'max_az_chi2')
-    insert_data_in_array(data, med_az_chi2, 'med_az_chi2')
+    insert_data_in_array(data, full_az_chi2, "az_chi2")
+    insert_data_in_array(data, max_az_chi2, "max_az_chi2")
+    insert_data_in_array(data, med_az_chi2, "med_az_chi2")
 
     # featurebit
-    insert_data_in_array(data, feat, 'fbit')
+    insert_data_in_array(data, feat, "fbit")
 
     # az-amplitude
-    insert_data_in_array(data, az_amp_sb, 'az_amp')
+    insert_data_in_array(data, az_amp_sb, "az_amp")
 
     # el-amplitude
-    insert_data_in_array(data, el_amp_sb, 'el_amp')
+    insert_data_in_array(data, el_amp_sb, "el_amp")
 
     # number of spikes, jumps, and anomalies
-    insert_data_in_array(data, n_spikes_sb, 'n_spikes')
-    insert_data_in_array(data, n_jumps_sb, 'n_jumps')
-    insert_data_in_array(data, n_anom_sb, 'n_anomalies')
+    insert_data_in_array(data, n_spikes_sb, "n_spikes")
+    insert_data_in_array(data, n_jumps_sb, "n_jumps")
+    insert_data_in_array(data, n_anom_sb, "n_anomalies")
 
     # number of nans
-    where = (mask_sb_sum > 0)
+    where = mask_sb_sum > 0
     # n_nan_sb = np.zeros_like(mask_sb_sum)
     # n_nan_sb[where] = (n_nan * mask_full).sum(2)[where] / mask_sb_sum[where]
 
     # insert_data_in_array(data, n_nan_sb, 'n_nan')
-    
-    # tsys averaged over sb
-    insert_data_in_array(data, tsys_sb, 'tsys')
 
-    # pca modes 
-    insert_data_in_array(data, npca, 'npca')
-    insert_data_in_array(data, npcaf, 'npcaf')
-    insert_data_in_array(data, ampl[0], 'pca1')
-    insert_data_in_array(data, ampl[1], 'pca2')
-    insert_data_in_array(data, ampl[2], 'pca3')
-    insert_data_in_array(data, ampl[3], 'pca4')
-    insert_data_in_array(data, pcaf_ampl[0], 'pcf1')
-    insert_data_in_array(data, pcaf_ampl[1], 'pcf2')
-    insert_data_in_array(data, np.sum(ampl+pcaf_ampl, axis=0), 'pcsm')
+    # tsys averaged over sb
+    insert_data_in_array(data, tsys_sb, "tsys")
+
+    # pca modes
+    insert_data_in_array(data, npca, "npca")
+    insert_data_in_array(data, npcaf, "npcaf")
+    insert_data_in_array(data, ampl[0], "pca1")
+    insert_data_in_array(data, ampl[1], "pca2")
+    insert_data_in_array(data, ampl[2], "pca3")
+    insert_data_in_array(data, ampl[3], "pca4")
+    insert_data_in_array(data, pcaf_ampl[0], "pcf1")
+    insert_data_in_array(data, pcaf_ampl[1], "pcf2")
+    insert_data_in_array(data, np.sum(ampl + pcaf_ampl, axis=0), "pcsm")
 
     # Observerlog blacklisting
     obslog_blacklist = np.load(observerlog_blacklist_filepath)
@@ -704,16 +803,16 @@ def get_scan_stats(filepath, map_grid=None):
 
     # weather statistic
     try:
-        weather  = np.loadtxt(weather_filepath)
-        weather  = weather[np.where(np.isclose(obsid, weather))[0]]
+        weather = np.loadtxt(weather_filepath)
+        weather = weather[np.where(np.isclose(obsid, weather))[0]]
         ten_min_in_mjd = 1 / 24.0 / 6.0
 
-        i_start  = int((mjd[0] - weather[0, 3]) // ten_min_in_mjd)
-        i_end    = int((mjd[-1] - weather[0, 3]) // ten_min_in_mjd)
-        
+        i_start = int((mjd[0] - weather[0, 3]) // ten_min_in_mjd)
+        i_end = int((mjd[-1] - weather[0, 3]) // ten_min_in_mjd)
+
         n_chunks = len(weather[:, 2])
-        i_start  = min(i_start, n_chunks - 1)
-        i_end    = min(i_end, n_chunks - 1)
+        i_start = min(i_start, n_chunks - 1)
+        i_end = min(i_end, n_chunks - 1)
 
         forecast = max(weather[i_start, 2], weather[i_end, 2])
     except IndexError:
@@ -721,7 +820,7 @@ def get_scan_stats(filepath, map_grid=None):
         # print('no weather data for obsid:', obsid)
         forecast = np.nan
         # insert_data_in_array(data, 1, 'acceptmod_error')
-    insert_data_in_array(data, forecast, 'weather')
+    insert_data_in_array(data, forecast, "weather")
 
     # add kurtosis etc of data histogram
     kurtosis = np.zeros((n_det, n_sb))
@@ -729,31 +828,37 @@ def get_scan_stats(filepath, map_grid=None):
 
     for i in range(n_det):
         for j in range(n_sb):
-            if acc[i,j]:
+            if acc[i, j]:
                 where = np.where(mask[i, j] > 0.0)
 
-                normtod = (tod[i,j]/sigma0[i,j,:,None])[where].flatten()
+                normtod = (tod[i, j] / sigma0[i, j, :, None])[where].flatten()
                 normtod = normtod[normtod != 0]
-                kurtosis[i,j] = stats.kurtosis(normtod)
-                skewness[i,j] = stats.skew(normtod)
+                kurtosis[i, j] = stats.kurtosis(normtod)
+                skewness[i, j] = stats.skew(normtod)
 
-    insert_data_in_array(data, kurtosis, 'kurtosis')
-    insert_data_in_array(data, skewness, 'skewness')
+    insert_data_in_array(data, kurtosis, "kurtosis")
+    insert_data_in_array(data, skewness, "skewness")
 
     # ps_chi2
     ra = point_radec[:, :, 0]
     dec = point_radec[:, :, 1]
 
-    centre = [(np.max(ra[0]) + np.min(ra[0])) / 2, (np.max(dec[0]) + np.min(dec[0])) / 2]
+    centre = [
+        (np.max(ra[0]) + np.min(ra[0])) / 2,
+        (np.max(dec[0]) + np.min(dec[0])) / 2,
+    ]
 
-    d_dec = 8.0 / 60 
-    d_ra = d_dec / np.cos(centre[1] / 180 * np.pi) # arcmin
-
+    d_dec = 8.0 / 60
+    d_ra = d_dec / np.cos(centre[1] / 180 * np.pi)  # arcmin
 
     n_pix = 16
 
-    ra_bins2 = np.linspace(centre[0] - d_ra * n_pix / 2, centre[0] + d_ra * n_pix / 2, n_pix + 1)
-    dec_bins2 = np.linspace(centre[1] - d_dec * n_pix / 2, centre[1] + d_dec * n_pix / 2, n_pix + 1)
+    ra_bins2 = np.linspace(
+        centre[0] - d_ra * n_pix / 2, centre[0] + d_ra * n_pix / 2, n_pix + 1
+    )
+    dec_bins2 = np.linspace(
+        centre[1] - d_dec * n_pix / 2, centre[1] + d_dec * n_pix / 2, n_pix + 1
+    )
 
     if feat == 128:
         field_centre = [np.mean(ra[0]), np.mean(dec[0])]
@@ -766,23 +871,26 @@ def get_scan_stats(filepath, map_grid=None):
     # dec = dx + field_centre[1]
 
     # map_grid = np.array([ra, dec])
-    
 
     indices = np.zeros((n_det, 2, 2)).astype(int)
     ps_chi2 = np.zeros((n_det, n_sb))
-    ps_chi2[:] = np.nan 
+    ps_chi2[:] = np.nan
     map_list = [[None for _ in range(n_sb)] for _ in range(n_det)]
     for i in range(n_det):
         indices[i, 0, :] = np.digitize((np.min(ra[i]), np.max(ra[i])), ra_grid)
         indices[i, 1, :] = np.digitize((np.min(dec[i]), np.max(dec[i])), dec_grid)
         # prevent overshooting
         indices[i, 0, 0] = max(1, indices[i, 0, 0])
-        indices[i, 0, 1] = max(min(len(ra_grid) - 1, indices[i, 0, 1]), indices[i, 0, 0])
+        indices[i, 0, 1] = max(
+            min(len(ra_grid) - 1, indices[i, 0, 1]), indices[i, 0, 0]
+        )
         indices[i, 1, 0] = max(1, indices[i, 1, 0])
-        indices[i, 1, 1] = max(min(len(dec_grid) - 1, indices[i, 1, 1]), indices[i, 1, 0])
+        indices[i, 1, 1] = max(
+            min(len(dec_grid) - 1, indices[i, 1, 1]), indices[i, 1, 0]
+        )
 
-        ra_bins = ra_grid[indices[i, 0, 0] - 1:indices[i, 0, 1] + 1]
-        dec_bins = dec_grid[indices[i, 1, 0] - 1:indices[i, 1, 1] + 1]
+        ra_bins = ra_grid[indices[i, 0, 0] - 1 : indices[i, 0, 1] + 1]
+        dec_bins = dec_grid[indices[i, 1, 0] - 1 : indices[i, 1, 1] + 1]
         # print(indices[0])
         # print(map_grid)
         # print(ra_bins)
@@ -791,7 +899,7 @@ def get_scan_stats(filepath, map_grid=None):
         if (len(ra_bins) <= 1) or (len(dec_bins) <= 1):
             continue
 
-        if (len(dec_bins) - 1 != indices[i, 1, 1] - indices[i, 1, 0] + 1):
+        if len(dec_bins) - 1 != indices[i, 1, 1] - indices[i, 1, 0] + 1:
             print(indices[i])
             print(dec_bins)
             print(len(dec_bins))
@@ -800,38 +908,49 @@ def get_scan_stats(filepath, map_grid=None):
             print(dec[i])
             # sys.exit(1)
 
-        for j in range(n_sb): ### should not need to be done per sideband.
+        for j in range(n_sb):  ### should not need to be done per sideband.
             if acc[i, j]:
-                map, nhit = make_map(ra[i], dec[i], ra_bins, dec_bins, tod[i, j], mask[i, j])
+                map, nhit = make_map(
+                    ra[i], dec[i], ra_bins, dec_bins, tod[i, j], mask[i, j]
+                )
                 where = np.where(nhit > 0)
                 rms = np.zeros_like(nhit)
-                rms[where] = (sigma0[i, j][None, None, :]/ np.sqrt(nhit))[where]
+                rms[where] = (sigma0[i, j][None, None, :] / np.sqrt(nhit))[where]
                 # if i == 0 and j == 0:
-                    # print(f"{scanid:9d}, {ra[i].min():2f}, {ra[i].max():.2f}, {dec[i].min():.2f}, {dec[i].max():.2f}, {ra_bins.shape[0]:3d}, {dec_bins.shape[0]:3d}, {ra_bins[0]:.2f}, {ra_bins[-1]:.2f}, {dec_bins[0]:.2f}, {dec_bins[-1]:.2f}, {np.nanmin(rms[rms!=0]):.5f}, {np.nanmax(nhit):.0f}")
-                #print(np.nanstd((tod[i, j, :, :] / sigma0[i, j, :, None]).flatten()))
-                #print(np.std(map[where] / rms[where]))
+                # print(f"{scanid:9d}, {ra[i].min():2f}, {ra[i].max():.2f}, {dec[i].min():.2f}, {dec[i].max():.2f}, {ra_bins.shape[0]:3d}, {dec_bins.shape[0]:3d}, {ra_bins[0]:.2f}, {ra_bins[-1]:.2f}, {dec_bins[0]:.2f}, {dec_bins[-1]:.2f}, {np.nanmin(rms[rms!=0]):.5f}, {np.nanmax(nhit):.0f}")
+                # print(np.nanstd((tod[i, j, :, :] / sigma0[i, j, :, None]).flatten()))
+                # print(np.std(map[where] / rms[where]))
                 map_list[i][j] = [map, rms]
-                ps_chi2[i, j], Pk, ps_mean, ps_std, transfer, map, rms = get_sb_ps(ra[0], dec[0], ra_bins2, dec_bins2, tod[i, j], mask[i, j], sigma0[i, j], d_dec)
+                ps_chi2[i, j], Pk, ps_mean, ps_std, transfer, map, rms = get_sb_ps(
+                    ra[0],
+                    dec[0],
+                    ra_bins2,
+                    dec_bins2,
+                    tod[i, j],
+                    mask[i, j],
+                    sigma0[i, j],
+                    d_dec,
+                )
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_chi2.npy", ps_chi2)
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_map.npy", map)
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_map_rms.npy", rms)
                 # np.save(f"data_test_WN/{obsid_info.scans[l]}_ps_misc.npy", np.array([n_k, d_th, dz]))
 
-    #np.save('ps_chi2_scan', ps_chi2)
-    insert_data_in_array(data, ps_chi2, 'ps_chi2')
-    
+    # np.save('ps_chi2_scan', ps_chi2)
+    insert_data_in_array(data, ps_chi2, "ps_chi2")
+
     # add length of scan
     duration = (mjd[-1] - mjd[0]) * 24 * 60  # in minutes
-    insert_data_in_array(data, duration, 'scan_length')
-    
+    insert_data_in_array(data, duration, "scan_length")
+
     # saddlebags
     saddlebags = np.zeros((n_det, n_sb))
     saddlebags[(0, 3, 4, 11, 12), :] = 1  # feeds 1, 4, 5, 13, 14
     saddlebags[(5, 13, 14, 15, 16), :] = 2  # feeds 6, 14, 15, 16, 17
     saddlebags[(1, 6, 17, 18, 19), :] = 3  # feeds 2, 7, 18, 19, (20)
     saddlebags[(2, 7, 8, 9, 10), :] = 4  # feeds 3, 8, 9, 10, 11
-    insert_data_in_array(data, saddlebags, 'saddlebag')
-    
+    insert_data_in_array(data, saddlebags, "saddlebag")
+
     # add one over f of polyfilter components
     sigma_poly = np.zeros((n_det, n_sb, 2))
     fknee_poly = np.zeros((n_det, n_sb, 2))
@@ -843,21 +962,23 @@ def get_scan_stats(filepath, map_grid=None):
         for j in range(n_sb):
             if acc[i, j]:
                 for l in range(2):
-                    sigma_poly[i,j,l], fknee_poly[i,j,l], alpha_poly[i,j,l] = get_noise_params(tod_poly[i,j,l])
-                    if np.isinf(sigma_poly[i,j,l]):
+                    sigma_poly[i, j, l], fknee_poly[i, j, l], alpha_poly[i, j, l] = (
+                        get_noise_params(tod_poly[i, j, l])
+                    )
+                    if np.isinf(sigma_poly[i, j, l]):
                         pass
                         # print('unable to fit noise params', scanid, i, j, l)
-                    elif np.isnan(sigma_poly[i,j,l]):
-                        print('nan in timestream', scanid, i, j, l)
+                    elif np.isnan(sigma_poly[i, j, l]):
+                        print("nan in timestream", scanid, i, j, l)
 
-    insert_data_in_array(data, sigma_poly[:,:,0], 'sigma_poly0')
-    insert_data_in_array(data, fknee_poly[:,:,0], 'fknee_poly0')
-    insert_data_in_array(data, alpha_poly[:,:,0], 'alpha_poly0')
-    insert_data_in_array(data, sigma_poly[:,:,1], 'sigma_poly1')
-    insert_data_in_array(data, fknee_poly[:,:,1], 'fknee_poly1')
-    insert_data_in_array(data, alpha_poly[:,:,1], 'alpha_poly1')
+    insert_data_in_array(data, sigma_poly[:, :, 0], "sigma_poly0")
+    insert_data_in_array(data, fknee_poly[:, :, 0], "fknee_poly0")
+    insert_data_in_array(data, alpha_poly[:, :, 0], "alpha_poly0")
+    insert_data_in_array(data, sigma_poly[:, :, 1], "sigma_poly1")
+    insert_data_in_array(data, fknee_poly[:, :, 1], "fknee_poly1")
+    insert_data_in_array(data, alpha_poly[:, :, 1], "alpha_poly1")
 
-    # sb_mean 
+    # sb_mean
     power_mean = np.zeros((n_det, n_sb))
     sigma_mean = np.zeros((n_det, n_sb))
     fknee_mean = np.zeros((n_det, n_sb))
@@ -869,30 +990,30 @@ def get_scan_stats(filepath, map_grid=None):
     for i in range(n_det):
         for j in range(n_sb):
             if acc[i, j]:
-                power_mean[i,j] = np.mean(sb_mean[i,j])
-                sigma_mean[i,j], fknee_mean[i,j], alpha_mean[i,j] = get_noise_params(sb_mean[i,j])
-                if np.isinf(sigma_mean[i,j]):
+                power_mean[i, j] = np.mean(sb_mean[i, j])
+                sigma_mean[i, j], fknee_mean[i, j], alpha_mean[i, j] = get_noise_params(
+                    sb_mean[i, j]
+                )
+                if np.isinf(sigma_mean[i, j]):
                     pass
                     # print('unable to fit noise params', scanid, i, j)
-                elif np.isnan(sigma_mean[i,j]):
-                    print(np.argwhere(np.isnan(sb_mean[i,j])))
-                    print('nan in timestream', scanid, i, j)
+                elif np.isnan(sigma_mean[i, j]):
+                    print(np.argwhere(np.isnan(sb_mean[i, j])))
+                    print("nan in timestream", scanid, i, j)
 
-
-    insert_data_in_array(data, power_mean[:,:], 'power_mean')
-    insert_data_in_array(data, sigma_mean[:,:], 'sigma_mean')
-    insert_data_in_array(data, fknee_mean[:,:], 'fknee_mean')
-    insert_data_in_array(data, alpha_mean[:,:], 'alpha_mean')
+    insert_data_in_array(data, power_mean[:, :], "power_mean")
+    insert_data_in_array(data, sigma_mean[:, :], "sigma_mean")
+    insert_data_in_array(data, fknee_mean[:, :], "fknee_mean")
+    insert_data_in_array(data, alpha_mean[:, :], "alpha_mean")
 
     # Housekeeping data
-    insert_data_in_array(data, airtemp, 'airtemp')
-    insert_data_in_array(data, dewtemp, 'dewtemp')
-    insert_data_in_array(data, humidity, 'humidity')
-    insert_data_in_array(data, pressure, 'pressure')
-    insert_data_in_array(data, rain, 'rain')
-    insert_data_in_array(data, winddir, 'winddir')
-    insert_data_in_array(data, windspeed, 'windspeed')
-
+    insert_data_in_array(data, airtemp, "airtemp")
+    insert_data_in_array(data, dewtemp, "dewtemp")
+    insert_data_in_array(data, humidity, "humidity")
+    insert_data_in_array(data, pressure, "pressure")
+    insert_data_in_array(data, rain, "rain")
+    insert_data_in_array(data, winddir, "winddir")
+    insert_data_in_array(data, windspeed, "windspeed")
 
     # sun and moon position
     mean_el = mean_el[:, 0]
@@ -910,13 +1031,13 @@ def get_scan_stats(filepath, map_grid=None):
 
     sun_elevation = np.zeros((n_det, n_sb))
 
-    with solar_system_ephemeris.set('builtin'):
+    with solar_system_ephemeris.set("builtin"):
         loc = coord.EarthLocation(lon=-118.283 * u.deg, lat=37.2313 * u.deg)
-        time = Time(scan_mjd, format='mjd')
+        time = Time(scan_mjd, format="mjd")
         pole = np.array([mean_el, mean_az])
         aa = AltAz(location=loc, obstime=time)
 
-        sun = get_body('sun', time, loc)
+        sun = get_body("sun", time, loc)
         cs = sun.transform_to(aa)
         sun_elevation[:, :] = cs.alt.deg
 
@@ -932,15 +1053,17 @@ def get_scan_stats(filepath, map_grid=None):
         cond_2 = (sun_dist > 58.0) * (sun_dist < 75.0) * (sun_angle_mod90 < 15.0)
         cond_3 = (sun_dist > 63.0) * (sun_dist < 70.0) * (sun_angle_mod90 > 82.0)
         cond_4 = (sun_dist > 63.0) * (sun_dist < 70.0) * (sun_angle_mod90 < 8.0)
-        sun_outer_sl = 1.0 * cond_1 + 1.0 * cond_2 + 1.0 * cond_3 + 1.0 * cond_4  # can never be more than 2.0
+        sun_outer_sl = (
+            1.0 * cond_1 + 1.0 * cond_2 + 1.0 * cond_3 + 1.0 * cond_4
+        )  # can never be more than 2.0
 
-        moon = get_body('moon', time, loc)
+        moon = get_body("moon", time, loc)
         cm = moon.transform_to(aa)
 
         lat, lon = move_to_frame(pole, [cm.alt.deg, cm.az.deg])
         theta_moon = 90 - lat
         phi_moon = lon
-        
+
         moon_dist[:, :] = theta_moon[:, None]
         moon_angle[:, :] = phi_moon[:, None]
         moon_angle_mod90 = moon_angle % 90
@@ -949,29 +1072,72 @@ def get_scan_stats(filepath, map_grid=None):
         cond_2 = (moon_dist > 58.0) * (moon_dist < 75.0) * (moon_angle_mod90 < 15.0)
         cond_3 = (moon_dist > 63.0) * (moon_dist < 70.0) * (moon_angle_mod90 > 82.0)
         cond_4 = (moon_dist > 63.0) * (moon_dist < 70.0) * (moon_angle_mod90 < 8.0)
-        moon_outer_sl = 1.0 * cond_1 + 1.0 * cond_2 + 1.0 * cond_3 + 1.0 * cond_4  # can never be more than 2.0
+        moon_outer_sl = (
+            1.0 * cond_1 + 1.0 * cond_2 + 1.0 * cond_3 + 1.0 * cond_4
+        )  # can never be more than 2.0
 
-    insert_data_in_array(data, moon_dist, 'moon_dist')
-    insert_data_in_array(data, moon_angle, 'moon_angle')
-    insert_data_in_array(data, moon_central_sl, 'moon_cent_sl')
-    insert_data_in_array(data, moon_outer_sl, 'moon_outer_sl')
-    insert_data_in_array(data, sun_dist, 'sun_dist')
-    insert_data_in_array(data, sun_angle, 'sun_angle')
-    insert_data_in_array(data, sun_central_sl, 'sun_cent_sl')
-    insert_data_in_array(data, sun_outer_sl, 'sun_outer_sl')
+    insert_data_in_array(data, moon_dist, "moon_dist")
+    insert_data_in_array(data, moon_angle, "moon_angle")
+    insert_data_in_array(data, moon_central_sl, "moon_cent_sl")
+    insert_data_in_array(data, moon_outer_sl, "moon_outer_sl")
+    insert_data_in_array(data, sun_dist, "sun_dist")
+    insert_data_in_array(data, sun_angle, "sun_angle")
+    insert_data_in_array(data, sun_central_sl, "sun_cent_sl")
+    insert_data_in_array(data, sun_outer_sl, "sun_outer_sl")
 
-    insert_data_in_array(data, sun_elevation, 'sun_el')
+    insert_data_in_array(data, sun_elevation, "sun_el")
+
+
+    mean_ra = np.mean(ra, axis=1)
+    mean_dec = np.mean(dec, axis=1)
+
+    galaxy_sl1_lon = np.ones((n_det, n_sb))
+    galaxy_sl2_lon = np.ones((n_det, n_sb))
+    galaxy_sl3_lon = np.ones((n_det, n_sb))
+    galaxy_sl4_lon = np.ones((n_det, n_sb))
+
+    galaxy_sl1_lat = np.ones((n_det, n_sb))
+    galaxy_sl2_lat = np.ones((n_det, n_sb))
+    galaxy_sl3_lat = np.ones((n_det, n_sb))
+    galaxy_sl4_lat = np.ones((n_det, n_sb))
+
+    sidelobe_coord_galactic = get_farsidelobe_in_galactic(time, mean_ra, mean_dec)
+
+    galaxy_sl1_lon = galaxy_sl1_lon * sidelobe_coord_galactic[0].l.degree[:, None]
+    galaxy_sl2_lon = galaxy_sl2_lon * sidelobe_coord_galactic[1].l.degree[:, None]
+    galaxy_sl3_lon = galaxy_sl3_lon * sidelobe_coord_galactic[2].l.degree[:, None]
+    galaxy_sl4_lon = galaxy_sl4_lon * sidelobe_coord_galactic[3].l.degree[:, None]
+
+    galaxy_sl1_lat = galaxy_sl1_lat * sidelobe_coord_galactic[0].b.degree[:, None]
+    galaxy_sl2_lat = galaxy_sl2_lat * sidelobe_coord_galactic[1].b.degree[:, None]
+    galaxy_sl3_lat = galaxy_sl3_lat * sidelobe_coord_galactic[2].b.degree[:, None]
+    galaxy_sl4_lat = galaxy_sl4_lat * sidelobe_coord_galactic[3].b.degree[:, None]
+
+    galactic_center_dist_sl1 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl1_lon), np.deg2rad(galaxy_sl1_lat), 0, 0))
+    galactic_center_dist_sl2 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl2_lon), np.deg2rad(galaxy_sl2_lat), 0, 0))
+    galactic_center_dist_sl3 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl3_lon), np.deg2rad(galaxy_sl3_lat), 0, 0))
+    galactic_center_dist_sl4 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl4_lon), np.deg2rad(galaxy_sl4_lat), 0, 0))
+
+    insert_data_in_array(data, galaxy_sl1_lon, "galaxy_sl1_lon")
+    insert_data_in_array(data, galaxy_sl2_lon, "galaxy_sl2_lon")
+    insert_data_in_array(data, galaxy_sl3_lon, "galaxy_sl3_lon")
+    insert_data_in_array(data, galaxy_sl4_lon, "galaxy_sl4_lon")
+
+    insert_data_in_array(data, galactic_center_dist_sl1, "galactic_center_dist_sl1") 
+    insert_data_in_array(data, galactic_center_dist_sl2, "galactic_center_dist_sl2")
+    insert_data_in_array(data, galactic_center_dist_sl3, "galactic_center_dist_sl3")
+    insert_data_in_array(data, galactic_center_dist_sl4, "galactic_center_dist_sl4")
 
     ### perhaps a ps_xy and ps_z to distinguish frequency residuals from angular ones
-    
+
     filename = '/mn/stornext/d22/cmbco/comap/d16/protodir/sw_complete_' + fieldname + '.h5'
     i_scan = int(str(scanid)[-2:]) - 2  # goes from 0 to n_scan
-    #print(scanid, i_scan)
+    # print(scanid, i_scan)
     n_sw = 14
     sw_array = np.zeros((n_det, n_sw, n_sb))
     try:
         with h5py.File(filename, mode="r") as my_file:
-             sw = my_file['%07i/sw_stats' % obsid][()][:, i_scan]
+            sw = my_file['%07i/sw_stats' % obsid][()][:, i_scan]
         sw_array[:, :, :] = sw[:, :, None]
     except:
         # print('problems with standing waves')
@@ -980,12 +1146,11 @@ def get_scan_stats(filepath, map_grid=None):
     for i in range(n_sw):
         sw_str = 'sw_%02i' % (i + 1)
         insert_data_in_array(data, sw_array[:, i, :], sw_str)
-   
 
-     ######## Here you can add new statistics  ##########
-   
-    
+    ######## Here you can add new statistics  ##########
+
     return data, [map_list, indices]
+
 
 def move_to_frame(ang_cent, ang):
     # ang = {theta, phi}
@@ -2113,6 +2278,72 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         ######## Here you can add new jack-knives  ############
         ### elif .......:
         ###
+
+    elif string == 'gab1':
+        # Sidelobe 1 high vs low galactic lat
+        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl1_lat'))
+        glat[~accept_list] = np.nan
+        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        set_bit(jk_list, np.where(glat > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'gab2':
+        # Sidelobe 2 high vs low galactic lat
+        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl2_lat'))
+        glat[~accept_list] = np.nan
+        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        set_bit(jk_list, np.where(glat > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+    
+    elif string == 'gab3':
+        # Sidelobe 3 high vs low galactic lat
+        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl3_lat'))
+        glat[~accept_list] = np.nan
+        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        set_bit(jk_list, np.where(glat > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'gab4':
+        # Sidelobe 4 high vs low galactic lat
+        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl4_lat'))
+        glat[~accept_list] = np.nan
+        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        set_bit(jk_list, np.where(glat > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'gdi1':
+        # Sidelobe 1 high vs low galactic lat
+        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl1').copy()
+        gdist[~accept_list] = np.nan
+        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        set_bit(jk_list, np.where(gdist > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'gdi2':
+        # Sidelobe 2 high vs low galactic lat
+        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl2').copy()
+        gdist[~accept_list] = np.nan
+        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        set_bit(jk_list, np.where(gdist > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'gdi3':
+        # Sidelobe 3 high vs low galactic lat
+        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl3').copy()
+        gdist[~accept_list] = np.nan
+        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        set_bit(jk_list, np.where(gdist > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+    elif string == 'gdi4':
+        # Sidelobe 4 high vs low galactic lat
+        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl4').copy()
+        gdist[~accept_list] = np.nan
+        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        set_bit(jk_list, np.where(gdist > cutoff), check_bit)
+        cutoff_list[n-1] = cutoff
+
+
     else:
         print('Unknown split type: ', string)
     return jk_list

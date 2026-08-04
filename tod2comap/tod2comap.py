@@ -391,9 +391,14 @@ class Mapmaker:
                 # Cycle to next scan
                 scan_idx = np.where(self.splitdata["scan_list"] == scanid)[0]
                 if len(scan_idx) == 0:
-                    print(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
-                    # raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
-                    rejection_number += 1
+                    if (scanid < self.params.obsid_stop) and (
+                        scanid > self.params.obsid_start
+                    ):
+                        print(
+                            f"Scan {scanid} in runlist but missing from accept_mod scanlist."
+                        )
+                        # raise ValueError(f"Scan {scanid} in runlist but missing from accept_mod scanlist.")
+                        rejection_number += 1
                     continue
 
                 scan_idx = scan_idx[0]

@@ -142,7 +142,7 @@ def compute_power_spec_perp_vs_par(
     x, k_bin_edges, dx=1, dy=1, dz=1
 ):  # for each k-vec get absolute value in parallel (redshift) and perp (angle) direction
     n_x, n_y, n_z = x.shape
-   
+
     if os.environ.get("OMP_NUM_THREADS") is None:
         Pk_3D = np.abs(fft.fftn(x)) ** 2 * dx * dy * dz / (n_x * n_y * n_z)
     else:

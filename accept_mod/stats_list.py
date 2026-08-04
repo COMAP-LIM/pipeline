@@ -24,7 +24,16 @@ stats_list = [
     'sun_cent_sl',   # is the sun close to the central sidelobe
     'sun_outer_sl',  # is the msun close to the outer sidelobes (from feedlegs)
     'sun_el',        # elevation of sun
-    
+    'galaxy_sl1_lon', # 1st sidelobe pointing in galactic lon
+    'galaxy_sl2_lon', # 2nd sidelobe pointing in galactic lon
+    'galaxy_sl3_lon', # 3rd sidelobe pointing in galactic lon
+    'galaxy_sl4_lon', # 4th sidelobe pointing in galactic lon
+    'galactic_center_dist_sl1', # 1st sidelobe distance to galactic center
+    'galactic_center_dist_sl2', # 2nd sidelobe distance to galactic center
+    'galactic_center_dist_sl3', # 3rd sidelobe distance to galactic center
+    'galactic_center_dist_sl4', # 4th sidelobe distance to galactic center
+
+
     # Weather related info
     'weather',       # probability of bad weather
     'airtemp',       # hk: airtemp, C
