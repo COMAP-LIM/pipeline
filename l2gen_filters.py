@@ -5,6 +5,7 @@ import ctypes
 from scipy.fft import fft, ifft, rfft, irfft, fftfreq, rfftfreq, next_fast_len
 # from pixell import fft as pfft
 from scipy.optimize import curve_fit
+from scipy.signal import iirnotch, filtfilt, find_peaks
 import h5py
 from tqdm import trange
 import time
@@ -1984,3 +1985,114 @@ class Highpass(Filter):
                 lowpass = irfft(rfft(data_padded)*W)[:,l2.Ntod:2*l2.Ntod]
                 
                 l2.tod[ifeed,isb] -= lowpass
+
+
+class Notch(Filter):
+    name = "notch"
+    name_long = "Notch-filter"
+
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.params = params
+
+    def run(self, l2):
+        freqs_to_notch = np.array(self.params.notch_filter_freqs)
+        half_width = self.params.notch_filter_width  # Hz
+
+        # Pre-compute notch transfer function on padded frequency axis.
+        # Padded length is 3x to reduce edge effects via mirrored boundaries.
+        # Uses a raised-cosine roll-off to avoid Gibbs ringing from a brick-wall notch.
+        freq_padded = rfftfreq(3 * l2.Ntod) * l2.samprate
+        W = np.ones(len(freq_padded))
+        for f_notch in freqs_to_notch:
+            dist = np.abs(freq_padded - f_notch)
+            # Fully suppressed inside half_width/2, cosine taper from half_width/2 to half_width.
+            inner = half_width / 2.0
+            mask_zero = dist < inner
+            mask_taper = (dist >= inner) & (dist < half_width)
+            W[mask_zero] = 0.0
+            W[mask_taper] *= 0.5 * (1.0 + np.cos(np.pi * (dist[mask_taper] - inner) / (half_width - inner)))
+
+        data_padded = np.zeros((l2.Nfreqs, 3 * l2.Ntod))
+        weights = np.linspace(1, 0, 100)
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                # Mirror-pad to suppress discontinuity at boundaries.
+                data_padded[:, l2.Ntod:2 * l2.Ntod] = l2.tod[ifeed, isb]
+                data_padded[:, :l2.Ntod] = (
+                    -l2.tod[ifeed, isb, :, ::-1]
+                    + 2 * np.average(l2.tod[ifeed, isb, :, :100], weights=weights, axis=-1)[:, None]
+                )
+                data_padded[:, 2 * l2.Ntod:] = (
+                    -l2.tod[ifeed, isb, :, ::-1]
+                    + 2 * np.average(l2.tod[ifeed, isb, :, -100:], weights=weights[::-1], axis=-1)[:, None]
+                )
+                l2.tod[ifeed, isb] = irfft(rfft(data_padded) * W, n=3 * l2.Ntod)[:, l2.Ntod:2 * l2.Ntod]
+
+
+class NotchFiltFilt(Filter):
+    name = "notch-ff"
+    name_long = "FiltFilt Notch-filter"
+
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.params = params
+
+    def run(self, l2):
+        freqs_to_notch = np.array(self.params.notch_filter_freqs)
+        half_width = self.params.notch_filter_width  # Hz
+
+        # Quality factor Q = f_center / bandwidth.
+        # bandwidth = 2 * half_width, so Q = f_center / (2 * half_width).
+        # Design one second-order IIR notch per target frequency and cascade them.
+        b_all, a_all = np.array([1.0]), np.array([1.0])
+        for f_notch in freqs_to_notch:
+            Q = f_notch / (2.0 * half_width)
+            b, a = iirnotch(f_notch, Q, fs=l2.samprate)
+            b_all = np.convolve(b_all, b)
+            a_all = np.convolve(a_all, a)
+
+        for ifeed in range(l2.Nfeeds):
+            for isb in range(l2.Nsb):
+                # filtfilt applies the filter forward and backward (zero phase),
+                # with automatic odd-extension padding to reduce edge transients.
+                l2.tod[ifeed, isb] = filtfilt(b_all, a_all, l2.tod[ifeed, isb], axis=-1)
+
+
+class NotchFiltFiltTA(Filter):
+    name = "notch_ta"
+    name_long = "Notch-filter at turn-arounds (filtfilt)"
+
+    def __init__(self, params, omp_num_threads=2):
+        self.omp_num_threads = omp_num_threads
+        self.params = params
+        self.window_half = 500  # Samples on each side of a turn-around point.
+
+    def run(self, l2):
+        freqs_to_notch = np.array(self.params.notch_filter_freqs)
+        half_width = self.params.notch_filter_width  # Hz
+
+        # Design cascaded IIR notch filter (same as NotchFiltFilt).
+        b_all, a_all = np.array([1.0]), np.array([1.0])
+        for f_notch in freqs_to_notch:
+            Q = f_notch / (2.0 * half_width)
+            b, a = iirnotch(f_notch, Q, fs=l2.samprate)
+            b_all = np.convolve(b_all, b)
+            a_all = np.convolve(a_all, a)
+
+        for ifeed in range(l2.Nfeeds):
+            # Find turn-around points from azimuth extremes.
+            az = l2.az[ifeed]
+            az_abs = np.abs(az - np.median(az))
+            peak_idxs = find_peaks(az_abs, distance=100)[0]
+
+            for isb in range(l2.Nsb):
+                for idx in peak_idxs:
+                    start = idx - self.window_half
+                    stop = idx + self.window_half
+                    if start < 0 or stop >= l2.tod.shape[-1]:
+                        continue
+                    segment = l2.tod[ifeed, isb, :, start:stop].copy()
+                    l2.tod[ifeed, isb, :, start:stop] = filtfilt(
+                        b_all, a_all, segment, axis=-1
+                    )

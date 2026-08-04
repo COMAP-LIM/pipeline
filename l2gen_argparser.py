@@ -276,6 +276,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--freqfilter_prior_strength",
+    type=float,
+    default=1.0,
+    help="(freq) Value to divide the empirical freqfilter power spectrum prior by. Higher number will give a stricter prior.",
+)
+
+parser.add_argument(
     "--freqfilter_prior_file",
     type=str,
     default="/mn/stornext/d16/cmbco/comap/data/aux_data/Cf_prior.h5",
@@ -353,6 +360,22 @@ parser.add_argument(
     default=1.033,
     help="(pca) Singular value threshold for which to stop subtracting per-feed PCA components, relative to expected white noise value.",
 )
+
+parser.add_argument(
+    "--notch_filter_freqs",
+    type=float,
+    nargs="+",
+    default = [],#default=[1.975, 2.9625, 3.95, 5.925, 7.9],
+    help="(notch)",
+)
+
+parser.add_argument(
+    "--notch_filter_width",
+    type=float,
+    default=0.05,
+    help="(notch)",
+)
+
 
 # parser.add_argument(
 #     "--pca_max_iter",
