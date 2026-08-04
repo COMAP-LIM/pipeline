@@ -482,16 +482,38 @@ class Pointing_Template_Subtraction(Filter):
         self.omp_num_threads = omp_num_threads
 
     def run(self, l2):
+        """Fit and subtract the ground/atmosphere pointing template from every frequency channel.
+
+        The template is the standard model
+            d(t) = g/sin(el(t)) + a*az(t) + c,
+        where 1/sin(el) is the airmass, i.e. the line-of-sight path length through a plane-parallel
+        atmosphere. In a CES the elevation is constant, making the airmass term degenerate with the
+        constant offset, so only the azimuth slope is fitted. For scantypes where the elevation
+        varies (circular, Lissajous) both terms are fitted jointly by linear least squares.
+
+        Both templates are centered on their mean over the temporally unmasked samples, which makes
+        them orthogonal to a constant term. The fitted (g, a) are therefore identical to those of a
+        fit which also includes c, and only the constant offset is left in the TOD (it carries no
+        information, and c is written to file as zero for legacy reasons). The fit uses the
+        temporally unmasked samples only, while the template is subtracted from the full timestream.
+        """
         l2.tofile_dict["el_az_amp"] = np.zeros((l2.Nfeeds, l2.Nsb, l2.Nfreqs, 3))
-        if l2.scantype != "ces":
-            raise ValueError("non-CES scantypes not supported by the azimuth pointing filter.")
         for feed in range(l2.Nfeeds):
-            _az = l2.az[feed][l2.mask_temporal[feed]] - np.mean(l2.az[feed][l2.mask_temporal[feed]])
+            mask = l2.mask_temporal[feed]
+            az = l2.az[feed] - np.mean(l2.az[feed][mask])
+            if l2.scantype == "ces":   # Amplitude ordering below follows el_az_amp = (g, a, c).
+                amp_idx, templates = [1], az[None,:]
+            else:
+                airmass = 1.0/np.sin(np.radians(l2.el[feed]))
+                amp_idx, templates = [0, 1], np.array([airmass - np.mean(airmass[mask]), az])
+            # The templates are shared by all channels, so the least-squares solution operator (the
+            # pseudo-inverse of the template matrix) is formed only once per feed. The pseudo-
+            # inverse also degrades gracefully to zero amplitudes if the templates are degenerate.
+            template_pinv = np.linalg.pinv(templates[:,mask].T)
             for sb in range(l2.Nsb):
-                _tod = l2.tod[feed, sb][l2.mask_temporal[feed]]
-                d = np.sum(_az*_tod, axis=-1)/np.sum(_az**2)
-                l2.tod[feed,sb] -= d[:,None]*_az[None,:]
-                l2.tofile_dict["el_az_amp"][feed,sb,:,1] = 0, d, 0   # The two other amplitudes are 0 (kept for legacy reasons).
+                amp = template_pinv.dot(l2.tod[feed,sb][:,mask].T)  # Amplitudes, (Ntemplate, Nfreqs)
+                l2.tod[feed,sb] -= amp.T.dot(templates)
+                l2.tofile_dict["el_az_amp"][feed,sb,:,amp_idx] = amp
 
 
 class Polynomial_filter(Filter):
@@ -743,6 +765,7 @@ class Frequency_filter(Filter):
             freqs = np.fft.rfftfreq(Ntod, 1/samprate)
             freqs[0] = freqs[1]/2
             Cf = self.PS_1f(freqs, sigma0_g, fknee_g, alpha_g, wn=False, Wiener=True)
+            Cf /= self.params.freqfilter_prior_strength
             sigma0_est = np.std(y[:,1:] - y[:,:-1], axis=1)/np.sqrt(2)
             sigma0_est = np.mean(sigma0_est[sigma0_est != 0])
             Z = np.eye(Nfreqs, Nfreqs) - P.dot(np.linalg.pinv(P.T.dot(P))).dot(P.T)
