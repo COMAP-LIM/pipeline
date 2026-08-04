@@ -12,7 +12,7 @@ import astropy.coordinates as coord
 import astropy.units as u 
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import solar_system_ephemeris, EarthLocation                                                                                                    
-from astropy.coordinates import get_body_barycentric, get_body, get_moon
+from astropy.coordinates import get_body_barycentric, get_body
 from astropy.coordinates import AltAz
 from scipy.interpolate import CubicSpline
 import glob
@@ -325,7 +325,6 @@ def extract_data_from_array(data, stats_string):
         print('Did not find statistic "' + stats_string + '" in stats list.')
         return 0
 
-def get_farsidelobe_azalt(time):
 
 def get_farsidelobe_in_galactic(time, ra, dec):
     """Return the galactic coordinate of the four 65 degree
@@ -1345,7 +1344,6 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
         while True:
             status = MPI.Status()
             obsid_info = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
-            # print(f"Worker {rank} recieved work with tag {status.Get_tag()}.", flush=True)
             if status.Get_tag() == DIE_TAG:
                 break
             scan_data_list = get_obsid_data(obsid_info)
