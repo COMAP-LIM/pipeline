@@ -1026,7 +1026,7 @@ class Mapmaker:
         if "azmd0" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
-            temporal_mask = np.logical_and(temporal_mask, (az > az_median)[:, None])
+            temporal_mask = np.logical_and(temporal_mask, (az < az_median)[:, None])
         elif "azmd1" in numerator_key:
             az = l2data["point_tel"][0,:,0]
             az_median = np.median(az)
