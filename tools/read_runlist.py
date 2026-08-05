@@ -43,7 +43,9 @@ def read_runlist(params, ignore_existing, only_existing=False):
     existing_scans = []
     # if ignore_existing:
     for dir in os.listdir(params.level2_dir):
-        if dir[-3:] in ["co2", "co6", "co7", "ncp"]:
+        # Level2 files live in one sub-directory per field, so only the fields included in
+        # this run can contribute already-processed scans.
+        if dir in params.fields:
             if os.path.isdir(os.path.join(params.level2_dir, dir)):
                 for file in os.listdir(os.path.join(params.level2_dir, dir)):
                     if file[0] == ".":  # Delete any left-over hidden files from previously aborted runs.
