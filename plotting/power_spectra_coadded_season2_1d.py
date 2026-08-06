@@ -275,6 +275,23 @@ with h5py.File(f"/mn/stornext/d16/cmbco/comap/nils/data/power_spectra/current_po
     infile["k"] = k_1d_s3[:-1]
     infile["k_bin_widths"] = dk_edges_1d_s3[:-1]
 
+with h5py.File(f"/mn/stornext/d16/cmbco/comap/nils/data/power_spectra/current_power_spectrum_results_s1-s2_paper_version.h5", "w") as infile:
+#with h5py.File("/mn/stornext/d5/data/nilsoles/comap/data/power_spectrum/current_power_spectrum_results_s1-s3_v11va8.h5", "w") as infile:
+    infile["co2/saddlebag-saddlebag/power_spectrum"] = xs_mean_1d_coadd_per_field[0, :-1]
+    infile["co2/saddlebag-saddlebag/power_spectrum_error"] = xs_error_1d_coadd_per_field[0, :-1]
+    
+    infile["co7/saddlebag-saddlebag/power_spectrum"] = xs_mean_1d_coadd_per_field[1, :-1]
+    infile["co7/saddlebag-saddlebag/power_spectrum_error"] = xs_error_1d_coadd_per_field[1, :-1]
+    
+    infile["co6/saddlebag-saddlebag/power_spectrum"] = xs_mean_1d_coadd_per_field[2, :-1]
+    infile["co6/saddlebag-saddlebag/power_spectrum_error"] = xs_error_1d_coadd_per_field[2, :-1]
+    
+    infile["field_coadded/saddlebag-saddlebag/power_spectrum"] = xs_mean_1d_coadd[:-1]
+    infile["field_coadded/saddlebag-saddlebag/power_spectrum_error"] = xs_error_1d_coadd[:-1]
+    
+    infile["k"] = k_1d[:-1]
+    infile["k_bin_widths"] = dk_edges_1d[:-1]
+
 
     
 
@@ -289,8 +306,8 @@ s1_names = [
 ]
 
 
-tf_full = np.loadtxt("full_TF_CES_S1.txt")
-k_2D = np.loadtxt("k_2D_S1.txt")
+tf_full = np.loadtxt("/mn/stornext/d16/cmbco/comap/defaults/S1/transfer_functions/full_tf_CES.txt")
+k_2D = np.loadtxt("/mn/stornext/d16/cmbco/comap/defaults/S1/transfer_functions/k_2D.txt")
 
 k_perp, k_par = k_2D
 
