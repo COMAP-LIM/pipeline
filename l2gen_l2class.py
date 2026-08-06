@@ -107,14 +107,13 @@ class level2_file:
             self.mask_temporal = np.ones((self.Nfeeds, self.Ntod), dtype=bool)
             self.freqmask = np.ones((self.Nfeeds, self.Nsb, self.Nfreqs), dtype=bool)
             self.freqmask_reason = np.zeros_like(self.freqmask, dtype=int)
-            self.freqmask_counter = 0
             self.n_nans = np.sum(~np.isfinite(self.tod), axis=-1)
             self.freqmask[self.n_nans > 0] = False
             self.freqmask_reason[self.n_nans > 0] += 2**self.freqmask_reason_num_dict["NaN or inf in TOD"]
             self.freqmask[:,:,:2] = False
             self.freqmask[:,:,512] = False
-            self.freqmask_reason[:,:,:2] += 2**self.freqmask_counter
-            self.freqmask_reason[:,:,512] += 2**self.freqmask_counter
+            self.freqmask_reason[:,:,:2] += 2**self.freqmask_reason_num_dict["Marked channels"]
+            self.freqmask_reason[:,:,512] += 2**self.freqmask_reason_num_dict["Marked channels"]
             if self.params.sbA_num_masked_channels != 0:
                 self.freqmask[:,(0,1),-self.params.sbA_num_masked_channels:] = False
                 self.freqmask_reason[:,(0,1),-self.params.sbA_num_masked_channels:] += 2**self.freqmask_reason_num_dict["Marked channels"]

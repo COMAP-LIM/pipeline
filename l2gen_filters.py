@@ -1464,7 +1464,7 @@ class Masking(Filter):
                 freqmask = freqmask[feedmask, ...]
 
             l2.freqmask[~freqmask] = False
-            l2.freqmask_reason[freqmask] += 2**l2.freqmask_reason_num_dict["Imported freqmask"]
+            l2.freqmask_reason[~freqmask] += 2**l2.freqmask_reason_num_dict["Imported freqmask"]
         else:
             ### Aliasing masking ###
             if int(l2.obsid) < 28136:  # Newer obsids have different (overlapping) frequency grid which alleviates the aliasing problem.
