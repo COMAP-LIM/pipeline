@@ -279,18 +279,19 @@ class l2gen_runner:
         # Function called when all scans are finished processing. Creates a database and ensures all files were successfully created.
         if self.rank == 0:
             print(f"Finished all scans. Starting cleanup...")
-        self.read_runlist(self.params, ignore_existing=False, only_existing=True)  # Creating runlist of all existing scans.
+        self.read_runlist(self.params, ignore_existing=False)  # Creating runlist of all selected scans.
 
         if self.rank == 0:
             print(f"Checking that all l2 files exist...")
+            corrupt_files = []
+            missing_files = []
             for iscan in trange(len(self.runlist)):
                 scanid, mjd_start, mjd_stop, scantype, fieldname, l1_filename, l2_filename = self.runlist[iscan]
-                corrupt_files = []
-                missing_files = []
                 if os.path.isfile(l2_filename):
                     try:
-                        f = h5py.File(l2_filename, "r")
-                    except:
+                        with h5py.File(l2_filename, "r"):
+                            pass
+                    except OSError:
                         corrupt_files.append(l2_filename)
                 else:
                     missing_files.append(l2_filename)

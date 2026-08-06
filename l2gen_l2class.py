@@ -231,14 +231,13 @@ class level2_file:
             if self.params.determine_sigma0_from_data:
                 self.sigma0[ifeed] = np.std(tod_local[:,:,1:] - tod_local[:,:,:-1], axis=-1)/np.sqrt(2)
             else:
-                dnu = np.abs(self.freqs[0,1] - self.freqs[0,0])
-                try:
-                    self.sigma0[ifeed] = self.Tsys_lowres[ifeed]/np.sqrt(self.samprate*dnu*1e9)  # Tsys in K, dnu in GHz, samprate in Hz
-                except:
-                    try:
-                        self.sigma0[ifeed] = self.Tsys[ifeed]/np.sqrt(self.samprate*dnu*1e9)  # Tsys in K, dnu in GHz, samprate in Hz
-                    except:
-                        pass
+                dnu = np.abs(self.freqs[0,1] - self.freqs[0,0])*1e9
+                if hasattr(self, "Tsys_lowres"):
+                    dnu *= self.Nfreqs_highres/self.Nfreqs
+                    tsys = self.Tsys_lowres[ifeed]
+                else:
+                    tsys = self.Tsys[ifeed]
+                self.sigma0[ifeed] = tsys/np.sqrt(dnu/self.samprate)
 
             self.chi2[ifeed] = (np.sum(tod_local**2, axis=-1)/self.sigma0[ifeed]**2 - self.Ntod_effective[ifeed])/np.sqrt(2*self.Ntod_effective[ifeed])
         
