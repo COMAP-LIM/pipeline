@@ -458,12 +458,6 @@ parser.add_argument(
     help="(mask) Sigma tolerance of product stripe cuts.",
 )
 parser.add_argument(
-    "--prod_offset",
-    type=int,
-    default=16,
-    help="(mask) Offset length in box and stripe product test.",
-)
-parser.add_argument(
     "--write_C_matrix",
     type=str2bool,
     default=False,
