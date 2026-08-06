@@ -1,0 +1,25 @@
+Name:          RA:       Dec:     Radius_ra:    Radius_dec:     Resolution:         Field type:
+co1            217.50    61.75    2             2               2                   cosmo
+co2            25.435    0.000    2             2               2                   cosmo
+co4            214.25    52.50    2             2               2                   cosmo
+co6            226.00    55.00    2             2               2                   cosmo
+co7            170.00    52.50    2             2               2                   cosmo
+edfn           268.000   66.561   12            10              2                   cosmo
+NCP               x      90.0     2             2               2                   cosmo
+NCP_VANE          x      90.0     2             2               2                   cosmo
+jupiter           x        x      0.5           2               1                   gal
+mars              x        x      0.5           2               1                   gal
+fg1            286.095   6.287    10            10              2                   gal
+fg2            88.00     -4.00    10            10              2                   gal
+fg4            10.685    41.269   10            10              2                   gal
+fg5            83.822    -5.38    10            10              2                   gal
+fg6            282.050   -2.000   4.6           2.1             2                   gal
+fg7            55.204    31.911   10            10              2                   gal
+TauA           83.50     22.00    1             2               2                   gal
+CasA           350.85    58.815   1             2               2                   gal
+CygA           299.868   40.734   1             2               2                   gal
+ambient_load      x        x      2             2               4                   calib
+sky_dip           x        x      2             2               4                   calib
+other             x        x      2             2               4                   calib
+stationary        x        x      2             2               4                   calib
+ 
