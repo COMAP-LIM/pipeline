@@ -150,50 +150,37 @@ class level2_file:
                     self.n_nans[:,isb,:] = self.n_nans[:,isb,::-1]
                 for ifreq in range(self.freqs.shape[1]):
                     self.freq_bin_centers[isb,ifreq] = np.mean(self.freq_bin_edges[isb,ifreq:ifreq+2])
-                
-            self.find_spikes()
 
     def find_spikes(self):
-        # define gaussian function to fit
+        # TODO: Consider elevating to an actual filter, or otherwise reconsider how spikes should
+        # be handled. 
         def gauss(x, a, b, c, d):
             return a * np.exp(-(x - b)**2 / (2 * c**2)) + d
-        time = self.tod_times_seconds  # seconds
-        n_fit = 70  # half the length of region used to fit gaussian
-        window_size = 151  # window size for savgol_filter
-        distance = 50  # closest allowed distance between peaks
+
+        time = self.tod_times_seconds
+        n_fit = 70
+        window_size = 151
+        distance = 50
         height = 0.01  # amplitude of spike
-        
 
-        
-
-        dt = time[1] - time[0]
+        spike_mask = np.zeros((self.Nfeeds, self.Nsb, self.Ntod), dtype=bool)
+    # Keep synthetic gap noise reproducible for a given scan.
+        rng = np.random.default_rng(self.scanid)
 
         self.n_spikes = np.zeros((self.Nfeeds, self.Nsb)).astype(int)
         self.spike_data = np.zeros((self.Nfeeds, self.Nsb, 50, 5))
-
         for i in range(self.Nfeeds):
             for j in range(self.Nsb):
                 data = self.sb_mean[i, j]
                 data = data / np.mean(data) - 1
-                if np.isnan(data.mean()):
-                    continue 
-                smoothed_data = savgol_filter(data, window_size, 3) # smooth data
-                data_detrended = data - smoothed_data # subtract smoothed data
-
-                # detect spikes
-                peaks, _ = find_peaks(data_detrended, height=height, distance=distance)  # adjust the height parameter as per your data
-                # print(i, j, peaks)
-                n_time = len(time)
-
-                
+                if not np.isfinite(data).all():
+                    continue
+                smoothed_data = savgol_filter(data, window_size, 3)
+                data_detrended = data - smoothed_data
+                peaks, _ = find_peaks(data_detrended, height=height, distance=distance)
                 self.n_spikes[i, j] = len(peaks)
-
-                # if self.n_spikes[i, j] > 0:
-                #     plt.plot(time, data)  # plot original data
-
-                std = data_detrended.std() #(data[1:] - data[:-1]).std() / np.sqrt(2)
-
-                # fit gaussians and save parameters
+                std = data_detrended.std()
+                n_time = len(time)
                 for k, peak in enumerate(peaks[:50]):
                     try:
                         bounds = ((0, time[peak]-0.5, 0, -1), (5000, time[peak]+0.5, 2, 1))
@@ -207,19 +194,61 @@ class level2_file:
                         self.spike_data[i, j, k, 1] = popt[1]  # position
                         self.spike_data[i, j, k, 2] = popt[2]  # standard deviation
                         self.spike_data[i, j, k, 3] = popt[3]  # offset
-                        
                         n_time_fit = latest_ind - earliest_ind
                         chi2 = (np.sum(((data[earliest_ind:latest_ind] - gauss(time[earliest_ind:latest_ind], *popt))/ std) ** 2) - n_time_fit) / np.sqrt(2 * n_time_fit)
-                        
                         self.spike_data[i, j, k, 4] = chi2  # chi2 goodness-of-fit
-                        # plt.plot(time[earliest_ind:latest_ind], gauss(time[earliest_ind:latest_ind], *popt), 'r')  # plot fitted gaussians
+                        # Fill the Gaussian's central 99.7% interval when it has anchors on both sides.
+                        start = np.searchsorted(time, popt[1] - 3*popt[2], side="left")
+                        stop = np.searchsorted(time, popt[1] + 3*popt[2], side="right")
+                        if start > 0 and stop < self.Ntod:
+                            spike_mask[i, j, start:stop] = True
                     except:  # in case the fitting fails
-                        # print(f"Couldn't fit a Gaussian on the spike at position {time[peak]}, feed {self.feeds[i]}, sb {j+1}")
                         self.spike_data[i, j, k, 1] = time[peak]
-                
-                # if self.n_spikes[i, j] > 0:
-                #     plt.show()
-                
+
+                gap_mask = spike_mask[i, j]
+                channel_data = self.tod[i, j]/np.nanmean(self.tod[i, j], axis=-1)[:,None] - 1
+                channel_valid = np.isfinite(channel_data).all(axis=-1)
+                channel_detrended = np.full_like(channel_data, np.nan)
+                channel_detrended[channel_valid] = channel_data[channel_valid] - savgol_filter(
+                    channel_data[channel_valid], window_size, 3, axis=-1
+                )
+                edges = np.flatnonzero(np.diff(np.r_[0, gap_mask.astype(int), 0]))
+                for start, stop in zip(edges[::2], edges[1::2]):
+                    channel_spike_mask = np.zeros(self.Nfreqs, dtype=bool)
+                    channel_spike_mask[channel_valid] = (
+                        np.max(channel_detrended[channel_valid, start:stop], axis=-1) >= height
+                    )
+                    # A shared event fills the whole sideband; otherwise preserve clean channels.
+                    if np.count_nonzero(channel_spike_mask)*2 >= self.Nfreqs:
+                        fill_channels = np.ones(self.Nfreqs, dtype=bool)
+                    else:
+                        fill_channels = channel_spike_mask
+                    if not fill_channels.any():
+                        continue
+
+                    local_start = max(0, start - n_fit)
+                    local_stop = min(self.Ntod, stop + n_fit)
+                    local_mask = ~gap_mask[local_start:local_stop]
+                    valid_pairs = local_mask[:-1] & local_mask[1:]
+                    tod_local = self.tod[i, j, :, local_start:local_stop]
+                    # Difference RMS estimates per-channel white noise without using the spike itself.
+                    noise_rms = np.nanstd(np.diff(tod_local, axis=-1)[:, valid_pairs], axis=-1)/np.sqrt(2)
+                    if not np.isfinite(noise_rms).all():
+                        valid_pairs = ~gap_mask[:-1] & ~gap_mask[1:]
+                        noise_rms = np.nanstd(np.diff(self.tod[i, j], axis=-1)[:, valid_pairs], axis=-1)/np.sqrt(2)
+                    noise_rms[~np.isfinite(noise_rms)] = 0.0
+
+                    left = self.tod[i, j, :, start - 1]
+                    right = self.tod[i, j, :, stop]
+                    valid_channels = fill_channels & np.isfinite(left) & np.isfinite(right)
+                    fractions = np.arange(1, stop - start + 1)/(stop - start + 1)
+                    filled = left[:,None] + (right - left)[:,None]*fractions
+                    filled += rng.normal(0.0, noise_rms[:,None], size=filled.shape)
+                    self.tod[i, j, valid_channels, start:stop] = filled[valid_channels]
+
+        self.sb_mean = np.nanmean(self.tod, axis=2)
+        self.tod_mean = np.nanmean(self.tod, axis=-1)
+
     def write_level2_data(self, name_extension=""):
         self.acceptrate = np.mean(self.freqmask, axis=(-1))
         self.sigma0 = np.zeros((self.Nfeeds, self.Nsb, self.Nfreqs))

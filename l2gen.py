@@ -425,6 +425,7 @@ class l2gen:
         t0 = time.time(); pt0 = time.process_time()
         self.l2file.load_level1_data()
         self.l2file.printer = self.printer
+        self.l2file.find_spikes()
         t1 = time.time(); pt1 = time.process_time()
         self.filter_runtimes["l1_read"] = t1 - t0
         self.filter_processtimes["l1_read"] = pt1 - pt0
