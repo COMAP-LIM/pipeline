@@ -9,6 +9,7 @@ import os
 import time
 import random
 from copy import copy
+import numpy as np
 
 def read_runlist(params, ignore_existing, only_existing=False):
     """ Given a argparse parameter file object, returns the runlist specified (in the object), within the cut parameters set.
@@ -18,6 +19,7 @@ def read_runlist(params, ignore_existing, only_existing=False):
             * obsid_stop
             * time_start_cut
             * time_stop_cut
+            * observerlog_blacklist_filepath
         ignore_existing - Whether to not include scans that already have existing level 2 files.
         only_existing - Whether to ignore files that do NOT already have axisting level 2 files. Can (obviously) not be set to True while ignore_existing is also True.
     Returns:
@@ -55,6 +57,15 @@ def read_runlist(params, ignore_existing, only_existing=False):
                         if len(file) == 16 or len(file) == 17:  # In order to not catch the intermediate debug files.
                             existing_scans.append(int(file.strip(".").split(".")[0].split("_")[1]))
 
+    # Observer-log blacklist. The mask has shape (obsid, feed, sideband), and we can only act on
+    # whole obsids here, so we drop the obsids where every feed and sideband is flagged. Obsids
+    # with only individual feeds flagged are still processed, and their bad feeds are cut later,
+    # in accept_mod.
+    blacklisted_obsids = set()
+    if params.observerlog_blacklist_filepath:
+        blacklist_mask = np.load(params.observerlog_blacklist_filepath)
+        blacklisted_obsids = set(np.flatnonzero(blacklist_mask.all(axis=(1, 2))).tolist())
+
     with open(params.runlist) as my_file:
         lines = [line.split() for line in my_file]
     i = 0
@@ -67,6 +78,7 @@ def read_runlist(params, ignore_existing, only_existing=False):
         n_scans_outside_range = 0
         n_scans_already_processed = 0
         n_scans_too_short = 0
+        n_scans_blacklisted = 0
         n_right_scantype = 0
         n_scans_included = 0
         fieldname = lines[i][0]
@@ -90,7 +102,11 @@ def read_runlist(params, ignore_existing, only_existing=False):
                             for exclude_range in params.exclude_obsid_range:  # Loop over the pairs containing (start, stop) of excluded ranges.
                                 if exclude_range[0] <= int(obsid) <= exclude_range[1]:
                                     to_skip = True
-                            if not to_skip:
+                            if to_skip:
+                                n_scans_outside_range += 1
+                            elif int(obsid) in blacklisted_obsids:
+                                n_scans_blacklisted += 1
+                            else:
                                 scanid = int(lines[i+k+1][0])
                                 l2_filename = f"{fieldname}_{scanid:09}.h5"
                                 l2_filename = os.path.join(params.level2_dir, fieldname, l2_filename)
@@ -105,8 +121,6 @@ def read_runlist(params, ignore_existing, only_existing=False):
                                         n_scans_included += 1
                                 else:
                                     n_scans_too_short += 1
-                            else:
-                                n_scans_outside_range += 1
                         else:
                             n_scans_outside_range += 1
             i = i + n_scans + 1
@@ -117,6 +131,7 @@ def read_runlist(params, ignore_existing, only_existing=False):
             print(f"Scans in runlist file:      {n_scans_tot}")
             print(f"Scans of right scantype:    {n_right_scantype}")
             print(f"Scans too short:            {n_scans_too_short}")
+            print(f"Scans blacklisted:          {n_scans_blacklisted}")
             print(f"Scans outside obsid range:  {n_scans_outside_range}")
             print(f"Scans already processed:    {n_scans_already_processed}")
             print(f"Scans included in run:      {n_scans_included}")
