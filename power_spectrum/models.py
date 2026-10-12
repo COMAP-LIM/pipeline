@@ -13,7 +13,7 @@ class Model:
         """Method reading in theoretical model from file and
         loads them into class attributes,
         """
-        with np.load(self.path) as infile:
+        with np.load(self.path) as infile: 
             for key, value in infile.items():
                 setattr(self, key, value)
     
@@ -21,9 +21,13 @@ class Model:
         """Method generating interpolation of theoretical model spectrum
         """
         import scipy.interpolate as interpolate
-        power_spectrum_noatt = np.trapezoid(self.Pkmu_noatt, self.mu)
-        
+
+        if "Pkmu_noatt" not in self.__dict__:
+            power_spectrum = self.Pk 
+        else:        
+            power_spectrum = np.trapezoid(self.Pkmu_noatt, self.mu)
+
         self.interpolation = interpolate.CubicSpline(
             self.k, 
-            power_spectrum_noatt,
+            power_spectrum,
         ) 
