@@ -1524,8 +1524,6 @@ class COMAP2FPXS():
             f"null_pte",
         )
 
-        print("hei pte", PTE_numeric_1d.shape, PTE_numeric_1d.shape)
-
         table = Table(
             [
                 null_names,
@@ -3571,7 +3569,7 @@ class COMAP2FPXS():
         """
         from models import Model
 
-        self.models = {}
+        self.models = {} 
         for model_name in os.listdir(self.params.psx_model_path):
             model = Model(os.path.join(self.params.psx_model_path, model_name))
             model.read_model()
@@ -3603,16 +3601,14 @@ if __name__ == "__main__":
 
     comap2fpxs.params.psx_white_noise_sim_seed = None
 
-    
     if comap2fpxs.params.psx_mode != "both":
         comap2fpxs.run()
-    
+
     elif comap2fpxs.params.psx_mode == "both":
         comap2fpxs.params.psx_mode = "saddlebag"
         comap2fpxs.run()
-
         comap2fpxs.params.psx_mode = "feed"
-
+        comap2fpxs.run()
 
     # comap2fpxs.params.psx_mode = "feed"
     # comap2fpxs.run()
