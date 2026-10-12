@@ -23,15 +23,25 @@ stats_cut = {
     'sun_angle': [-180, 360], 
     'sun_cent_sl': [0, 0.5],
     'sun_outer_sl': [0, 0.5],
-    'sun_el': [-90, 90],
-    'galaxy_sl1_lon': [float("nan"), float("nan")], # 1st sidelobe pointing in galactic lon
-    'galaxy_sl2_lon': [float("nan"), float("nan")], # 2nd sidelobe pointing in galactic lon
-    'galaxy_sl3_lon': [float("nan"), float("nan")], # 3rd sidelobe pointing in galactic lon
-    'galaxy_sl4_lon': [float("nan"), float("nan")], # 4th sidelobe pointing in galactic lon
-    'galactic_center_dist_sl1': [float("nan"), float("nan")], # 1st sidelobe distance to galactic center
+    'sun_el': [-90, 90], 
+
+    'galaxy_sl2_lat': [float("nan"), float("nan")], # 2nd sidelobe pointing in galactic lat
+    'galaxy_sl3_lat': [float("nan"), float("nan")], # 3rd sidelobe pointing in galactic lat
+    'galaxy_sl4_lat': [float("nan"), float("nan")], # 4th sidelobe pointing in galactic lat
+
     'galactic_center_dist_sl2': [float("nan"), float("nan")], # 2nd sidelobe distance to galactic center
     'galactic_center_dist_sl3': [float("nan"), float("nan")], # 3rd sidelobe distance to galactic center
     'galactic_center_dist_sl4': [float("nan"), float("nan")], # 4th sidelobe distance to galactic center
+
+    "galactic_sl_signal": [float("nan"), float("nan")], # approximate galactic sidelobe signal 
+
+    'sun_dist_sl2': [float("nan"), float("nan")], # 2nd sidelobe distance to sun
+    'sun_dist_sl3': [float("nan"), float("nan")], # 3rd sidelobe distance to sun
+    'sun_dist_sl4': [float("nan"), float("nan")], # 4th sidelobe distance to sun
+
+    'moon_dist_sl2': [float("nan"), float("nan")], # 2nd sidelobe distance to moon
+    'moon_dist_sl3': [float("nan"), float("nan")], # 3rd sidelobe distance to moon
+    'moon_dist_sl4': [float("nan"), float("nan")], # 4th sidelobe distance to moon
 
     # Weather related info
     'weather': [float("nan"), float("nan")], # [0.0, 1.0],
