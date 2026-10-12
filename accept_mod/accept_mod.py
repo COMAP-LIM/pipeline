@@ -470,22 +470,25 @@ def get_scan_stats(filepath, map_grid=None):
             acc_ind = np.zeros_like(tod_ind[:, :, 0, 0])
             print("Found no acceptrate")
 
+        # Acceptrate counting only the "specific" cuts, i.e. ignoring the broad cuts below, which are
+        # expected to remove large, well-understood parts of the band. freqmask_reason is a bitmask,
+        # so reason k applies to a channel when bit k is set.
+        generic_freqmask_reasons = [
+            "Aliasing suppression (AB_mask)",
+            "Aliasing suppression (leak_mask)",
+            "Tsys NaN or inf",
+            "Tsys < min_tsys",
+            "Tsys > running median max",
+            "Feed 20",
+            "NaN or inf in TOD",
+            "Marked channels",
+        ]
         freqmask_reason = my_file["freqmask_reason"][()]
-        freqmask_reason_string = my_file["freqmask_reason_string"][()]
+        freqmask_reason_string = [reason.decode() for reason in my_file["freqmask_reason_string"][()]]
         specific_freqmask = np.ones_like(mask_full_ind)
-        for k in range(len(freqmask_reason_string)):
-            _freqmask = (freqmask_reason == 2**k) == 0
-            if freqmask_reason_string[k] not in [
-                "Aliasing suppression (AB_mask)",
-                "Aliasing suppression (leak_mask)",
-                "Tsys NaN or inf",
-                "Tsys < min_tsys",
-                "Tsys > running median max",
-                "Feed 20",
-                "NaN or inf in TOD",
-                "Marked channels",
-            ]:
-                specific_freqmask *= _freqmask
+        for k, reason in enumerate(freqmask_reason_string):
+            if reason not in generic_freqmask_reasons:
+                specific_freqmask *= (freqmask_reason & 2**k) == 0
         acc_ind_specific = np.mean(specific_freqmask, axis=-1)
 
         try:
