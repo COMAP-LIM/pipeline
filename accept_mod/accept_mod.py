@@ -1753,7 +1753,7 @@ def get_patch_info(path):
         my_dict = { y[0]: y[1:7] for y in my_list[:-1] }
     return my_dict
 
-def save_data_2_h5(params, scan_list, scan_data, fieldname, runid):
+def save_data_2_h5(params, scan_list, scan_data, fieldname):
     filename = data_folder + 'scan_data_' + id_string + fieldname + '.h5'
     f1 = h5py.File(filename, 'w')
     f1.create_dataset('scan_list', data=scan_list)
@@ -1761,7 +1761,6 @@ def save_data_2_h5(params, scan_list, scan_data, fieldname, runid):
     dt = h5py.special_dtype(vlen=str) 
     stats_list_arr = np.array(stats_list, dtype=dt)
     f1.create_dataset('stats_list', data=stats_list_arr)
-    f1.create_dataset("runID", data = runid)
     for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
         if getattr(params, key) == None:  # hdf5 didn't like the None type.
             f1[f"params/{key}"] = "None"
@@ -2347,7 +2346,7 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
     return jk_list
 
 
-def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runID): 
+def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname): 
     filename = data_folder + 'jk_data_' + id_string + jk_string + fieldname + '.h5'
     f1 = h5py.File(filename, 'w')
     f1.create_dataset('scan_list', data=scan_list)
@@ -2361,7 +2360,6 @@ def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_
     f1.create_dataset('stats_list', data=stats_list_arr)
     split_list_arr = np.array(split_list, dtype=dt)
     f1.create_dataset('split_list', data=split_list_arr)
-    f1.create_dataset("runID", data = runid)
     for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
         if getattr(params, key) == None:  # hdf5 didn't like the None type.
             f1[f"params/{key}"] = "None"
@@ -2370,15 +2368,6 @@ def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_
     f1.close()
     return filename
 
-def get_max_runID(folder):
-    file_list = os.listdir(folder)
-    file_list = [i for i in file_list if "param" in i]
-    runid_list = [int(i[:-4].split("_")[-1]) for i in file_list]
-    if len(runid_list) == 0:
-        maxid = 0
-    else:
-        maxid = np.max(np.array(runid_list))
-    return maxid
 
 if __name__ == "__main__":
     comm = MPI.COMM_WORLD
@@ -2422,12 +2411,6 @@ if __name__ == "__main__":
 
     scan_data_data_name_list = []
     jk_data_name_list   = []
-    copy_folder = data_folder + "parameter_copies/"
-    
-    if not os.path.isdir(copy_folder):
-        os.mkdir(copy_folder)
-
-    runid = get_max_runID(copy_folder) + 1
 
     for fieldname in fields:
         if data_from_file:
@@ -2445,7 +2428,7 @@ if __name__ == "__main__":
 
         if rank == 0:
             if not data_from_file:
-                scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
+                scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname)
                 scan_data_data_name_list.append(scan_data_data_name)
             print('Saved scan data')
             accept_list, reject_reason, acc = make_accept_list(params, accept_params, scan_data)
@@ -2454,7 +2437,7 @@ if __name__ == "__main__":
             print('Made jk_list')
             
           
-            jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
+            jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname)
             jk_data_name_list.append(jk_data_name)
 
 
@@ -2465,27 +2448,6 @@ if __name__ == "__main__":
             
             accept_params_name_raw = params.accept_mod_params[:-3]
             stats_list_name_raw = params.stats_list[:-3]
-
-            # param_file_copy_raw = param_file.split("/")
-            # param_file_copy_raw = param_file_copy_raw[-1][:-4]
-            runlist_name    = params.runlist
-            runlist_copy_raw    = runlist_name.split("/")[-1][:-4]
-            jk_def_raw    = jk_param_list_file.split("/")[-1][:-4]
-
-            # param_file_copy = copy_folder + param_file_copy_raw + f"_{runid:06d}" + ".txt"
-            runlist_copy = copy_folder + runlist_copy_raw + f"_{runid:06d}" + ".txt"
-            jk_def_copy = copy_folder + jk_def_raw + f"_{runid:06d}" + ".txt"
-            accept_params_name_copy = copy_folder + accept_params_name_raw + f"_{runid:06d}" + ".py"
-            stats_list_name_copy = copy_folder + stats_list_name_raw + f"_{runid:06d}" + ".py"
-
-
-            # shutil.copyfile(param_file, param_file_copy)
-            #shutil.copyfile(runlist_name, runlist_copy)
-            #shutil.copyfile(jk_param_list_file, jk_def_copy)
-            #shutil.copyfile(accept_params_name, accept_params_name_copy)
-            #shutil.copyfile(stats_list_name, stats_list_name_copy)
-        
-
                 
             if params.make_accept_mod_plots:
                 ### Making scan data plots ###
