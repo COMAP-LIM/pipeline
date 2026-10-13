@@ -8,13 +8,15 @@ import numpy.fft as fft
 import scipy.stats as stats
 from scipy.optimize import curve_fit
 from astropy.time import Time                                                                                                                                             
-import astropy.coordinates as coord 
-import astropy.units as u 
+import astropy.coordinates as coord
+import astropy.units as u
 from astropy.coordinates import SkyCoord
+
 from astropy.coordinates import solar_system_ephemeris, EarthLocation                                                                                                    
 from astropy.coordinates import get_body_barycentric, get_body
 from astropy.coordinates import AltAz
 from scipy.interpolate import CubicSpline
+import healpy as hp
 import glob
 import os
 import pwd
@@ -28,6 +30,13 @@ import warnings
 import shutil
 from tqdm import trange, tqdm
 from mpi4py import MPI
+
+from pixell import utils
+
+# Suppress numpy divide-by-zero / invalid-value RuntimeWarnings globally.
+warnings.filterwarnings("ignore", message="invalid value encountered in divide")
+np.seterr(invalid="ignore")
+
 # from accept_params import stats_cut as accept_params
 # from stats_list import stats_list
 # sys.path.append("/mn/stornext/d22/cmbco/comap/jonas/pipeline/")  # TODO: Find better solution
@@ -35,6 +44,7 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent_directory = os.path.dirname(current)
 sys.path.append(parent_directory)
 from tools.read_runlist import read_runlist as ext_read_runlist
+
 warnings.filterwarnings("ignore", message="invalid value encountered in true_divide")
 warnings.filterwarnings("ignore", message="invalid value encountered in power")
 warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
@@ -42,23 +52,31 @@ warnings.filterwarnings("ignore", message="invalid value encountered in multiply
 warnings.filterwarnings("ignore", message="Mean of empty slice.")
 warnings.filterwarnings("ignore", message="Mean of empty slice")
 warnings.filterwarnings("ignore", message="divide by zero encountered in true_divide")
-warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated")
+warnings.filterwarnings("ignore", message="divide by zero encountered in true_divide")
+warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
+warnings.filterwarnings(
+    "ignore", message="Covariance of the parameters could not be estimated"
+)
 warnings.filterwarnings("ignore", message="Degrees of freedom <= 0 for slice.")
 os.environ["OMP_NUM_THREADS"] = "1"
 
-class spike_data():
+
+m_planck30ghz = hp.read_map("/mn/stornext/d16/cmbco/comap/data/aux_data/planck_maps/LFI_SkyMap_030-BPassCorrected-field-IQU_1024_R3.00_full.fits")
+
+class spike_data:
     def __init__(self):
-        self.spike_types = ['spike', 'jump', 'anomaly', 'edge spike']
+        self.spike_types = ["spike", "jump", "anomaly", "edge spike"]
         pass
 
-class spike_list():
+
+class spike_list:
     def __init__(self):
         self.spikes = []
-        self.spike_types = ['spike', 'jump', 'anomaly', 'edge spike']
-    
+        self.spike_types = ["spike", "jump", "anomaly", "edge spike"]
+
     def add(self, spike):
         self.spikes.append(spike)
-    
+
     def addlist(self, sp_list):
         for sp in sp_list:
             self.add(sp)
@@ -68,8 +86,11 @@ class spike_list():
         for spike in self.spikes:
             lists[spike.type].append(spike)
         for typelist in lists:
-            typelist.sort(key=lambda x: np.abs(x.amp), reverse=True)  # hat tip: https://stackoverflow.com/a/403426/5238625
+            typelist.sort(
+                key=lambda x: np.abs(x.amp), reverse=True
+            )  # hat tip: https://stackoverflow.com/a/403426/5238625
         return lists
+
 
 def get_spike_list(sb_mean, sd, scan_id, mjd):
     # cutoff = 0.0015 * 8.0
@@ -86,14 +107,16 @@ def get_spike_list(sb_mean, sd, scan_id, mjd):
             s.sbs = sbs
             s.ind = np.array((max_sb[0], max_sb[1], max_ind))  # feed, sb, ind
             s.mjd = mjd[max_ind]
-            s.data = sb_mean[max_sb[0], max_sb[1], max_ind - 200:max_ind + 200]
+            s.data = sb_mean[max_sb[0], max_sb[1], max_ind - 200 : max_ind + 200]
             s.type = spike_type
             s.scanid = scan_id
             my_spikes.add(s)
     return my_spikes
 
+
 def get_sid(mjd):
     return 360 * ((1.002737811 * mjd) % 1)
+
 
 def make_map(ra, dec, ra_bins, dec_bins, tod, mask):
     n_freq, n_samp = tod.shape
@@ -110,7 +133,12 @@ def make_map(ra, dec, ra_bins, dec_bins, tod, mask):
         if mask[i] == 1.0:
             nhit[:, :, i] = np.histogram2d(ra, dec, bins=[ra_bins, dec_bins])[0]
             where = np.where(nhit[:, :, i] > 0)
-            map[:, :, i][where] = np.histogram2d(ra, dec, bins=[ra_bins, dec_bins], weights=tod[i, :])[0][where] / nhit[:, :, i][where]
+            map[:, :, i][where] = (
+                np.histogram2d(ra, dec, bins=[ra_bins, dec_bins], weights=tod[i, :])[0][
+                    where
+                ]
+                / nhit[:, :, i][where]
+            )
     return map, nhit
 
 
@@ -122,14 +150,18 @@ def compute_power_spec3d(x, k_bin_edges, dx=1, dy=1, dz=1):
     ky = np.fft.fftfreq(n_y, dy) * 2 * np.pi
     kz = np.fft.fftfreq(n_z, dz) * 2 * np.pi
 
-    kgrid = np.sqrt(sum(ki ** 2 for ki in np.meshgrid(kx, ky, kz, indexing='ij')))
+    kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, kz, indexing="ij")))
 
-    Pk_nmodes = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges, weights=Pk_3D[kgrid > 0])[0]
+    Pk_nmodes = np.histogram(
+        kgrid[kgrid > 0], bins=k_bin_edges, weights=Pk_3D[kgrid > 0]
+    )[0]
     nmodes = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
 
     k = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
     Pk = np.zeros_like(k)
-    Pk[np.where(nmodes > 0)] = Pk_nmodes[np.where(nmodes > 0)] / nmodes[np.where(nmodes > 0)]
+    Pk[np.where(nmodes > 0)] = (
+        Pk_nmodes[np.where(nmodes > 0)] / nmodes[np.where(nmodes > 0)]
+    )
     return Pk, k, nmodes
 
 
@@ -145,34 +177,46 @@ def compute_power_spec1d_2d(x, k_bin_edges, dx=1, dy=1, dz=1):
     kx = np.fft.fftfreq(n_x, dx) * 2 * np.pi
     ky = np.fft.fftfreq(n_y, dy) * 2 * np.pi
 
-    kgrid = np.sqrt(sum(ki ** 2 for ki in np.meshgrid(kx, ky, indexing='ij')))
+    kgrid = np.sqrt(sum(ki**2 for ki in np.meshgrid(kx, ky, indexing="ij")))
 
     Pk_2D = Pk_2D.mean(2)
 
-    Pk_nmodes = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges, weights=Pk_2D[kgrid > 0])[0]
+    Pk_nmodes = np.histogram(
+        kgrid[kgrid > 0], bins=k_bin_edges, weights=Pk_2D[kgrid > 0]
+    )[0]
     nmodes = np.histogram(kgrid[kgrid > 0], bins=k_bin_edges)[0]
 
     k = (k_bin_edges[1:] + k_bin_edges[:-1]) / 2.0
     Pk = np.zeros_like(k)
-    Pk[np.where(nmodes > 0)] = Pk_nmodes[np.where(nmodes > 0)] / nmodes[np.where(nmodes > 0)]
+    Pk[np.where(nmodes > 0)] = (
+        Pk_nmodes[np.where(nmodes > 0)] / nmodes[np.where(nmodes > 0)]
+    )
     return Pk_1D, Pk, k, nmodes
 
 
-def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10, is_slow=False):
+def get_sb_ps(
+    ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10, is_slow=False
+):
     if is_slow:
-        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/dummy_pipeline/power_spectrum/transfer_functions/tf_all_ones.h5", "r") as f:
-        #with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_slow_scans.h5", "r") as f:
+        with h5py.File(
+            "/mn/stornext/d5/data/nilsoles/nils/dummy_pipeline/power_spectrum/transfer_functions/tf_all_ones.h5",
+            "r",
+        ) as f:
+            # with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_slow_scans.h5", "r") as f:
             tf = f["/spherically_averaged/transfer_function"][2:]
             k_tf = f["/spherically_averaged/k_bin_centers"][2:]
     else:
-        with h5py.File("/mn/stornext/d5/data/nilsoles/nils/dummy_pipeline/power_spectrum/transfer_functions/tf_all_ones.h5", "r") as f:
-        #with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_fast_scans.h5", "r") as f:
+        with h5py.File(
+            "/mn/stornext/d5/data/nilsoles/nils/dummy_pipeline/power_spectrum/transfer_functions/tf_all_ones.h5",
+            "r",
+        ) as f:
+            # with h5py.File("/mn/stornext/d5/data/nilsoles/nils/pipeline/power_spectrum/transfer_functions/tf_fast_scans.h5", "r") as f:
             tf = f["/spherically_averaged/transfer_function"][2:]
             k_tf = f["/spherically_averaged/k_bin_centers"][2:]
     tf_interp_log = CubicSpline(np.log10(k_tf), np.log10(tf))
-    def tf_interp(k_tf):
-        return 10**tf_interp_log(np.log10(k_tf))
 
+    def tf_interp(k_tf):
+        return 10 ** tf_interp_log(np.log10(k_tf))
 
     map, nhit = make_map(ra, dec, ra_bins, dec_bins, tod, mask)
     h = 0.7
@@ -186,7 +230,7 @@ def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10, is_sl
     k_bin_edges = np.logspace(-1.8, np.log10(0.5), n_k)
     where = np.where(nhit > 0)
     rms = np.zeros_like(nhit)
-    rms[where] = (sigma[None, None, :]/ np.sqrt(nhit))[where]
+    rms[where] = (sigma[None, None, :] / np.sqrt(nhit))[where]
     w = np.zeros_like(nhit)
     w[where] = 1 / rms[where] ** 2
     # w = w / np.
@@ -197,18 +241,21 @@ def get_sb_ps(ra, dec, ra_bins, dec_bins, tod, mask, sigma, d_dec, n_k=10, is_sl
     for l in range(n_sim):
         map_n = np.random.randn(*rms.shape) * rms
         ps_arr[l] = compute_power_spec3d(w * map_n, k_bin_edges, d_th, d_th, dz)[0]
-    
+
     # transfer = 1.0 / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
     transfer = tf_interp(k)
-    
+
     ps_mean = np.mean(ps_arr, axis=0)
     ps_std = np.std(ps_arr, axis=0) / transfer
     Pk = Pk / transfer
 
     n_chi2 = len(k)
-    chi = np.sum(((Pk - ps_mean)/ ps_std) ** 3)
-    chi2 = np.sign(chi) * np.abs((np.sum(((Pk - ps_mean)/ ps_std) ** 2) - n_chi2) / np.sqrt(2 * n_chi2))
+    chi = np.sum(((Pk - ps_mean) / ps_std) ** 3)
+    chi2 = np.sign(chi) * np.abs(
+        (np.sum(((Pk - ps_mean) / ps_std) ** 2) - n_chi2) / np.sqrt(2 * n_chi2)
+    )
     return chi2, Pk, ps_mean, ps_std, transfer, map, rms
+
 
 # From Tony Li
 def ensure_dir_exists(path):
@@ -243,6 +290,7 @@ def ensure_dir_exists(path):
 #                     pass
 #     return params
 
+
 def read_runlist(params):
     fields = {}
     if rank == 0:
@@ -259,7 +307,7 @@ def read_runlist(params):
             n_scans_in_this_field = 0
             for scan in runlist:
                 if scan[4] == field:
-                    obsid = str(scan[0]//100)
+                    obsid = str(scan[0] // 100)
                     if not obsid in scans:
                         obsids_in_this_field.append(obsid)
                         scans[obsid] = []
@@ -269,10 +317,11 @@ def read_runlist(params):
     fields = comm.bcast(fields, root=0)
     return fields
 
+
 def read_runlist_old(params):
-    filename = params['runlist']
-    obsid_start = int(params['obsid_start'])
-    obsid_stop = int(params['obsid_stop'])
+    filename = params["runlist"]
+    obsid_start = int(params["obsid_start"])
+    obsid_stop = int(params["obsid_stop"])
 
     with open(filename) as my_file:
         lines = [line.split() for line in my_file]
@@ -294,14 +343,14 @@ def read_runlist_old(params):
             n_scans = int(lines[i][3])
             o_scans = []
             for k in range(1, n_scans - 1):
-                if lines[i+k+1][0] != 8192:
+                if lines[i + k + 1][0] != 8192:
                     if obsid_start <= int(obsid) <= obsid_stop:
-                        o_scans.append(lines[i+k+1][0])
+                        o_scans.append(lines[i + k + 1][0])
                         n_scans_tot += 1
             scans[obsid] = o_scans
-            i = i + n_scans + 1 
+            i = i + n_scans + 1
         fields[fieldname] = [obsids, scans, n_scans_tot]
-        print(fieldname, n_scans_tot) 
+        print(fieldname, n_scans_tot)
     return fields
 
 
@@ -312,45 +361,40 @@ def insert_data_in_array(data, indata, stats_string, obsid=False):
             data[:, :, :, index] = indata
         else:
             data[:, :, index] = indata
-    except ValueError: 
+    except ValueError:
         print('Did not find statistic "' + stats_string + '" in stats list.')
 
 
 def extract_data_from_array(data, stats_string):
     try:
         index = stats_list.index(stats_string)
-        outdata = data[:,:,:, index]
+        outdata = data[:, :, :, index]
         return outdata
     except ValueError:
         print('Did not find statistic "' + stats_string + '" in stats list.')
         return 0
 
 
-def get_farsidelobe_in_galactic(time, ra, dec):
-    """Return the galactic coordinate of the four 65 degree
+def get_farsidelobe_altaz(ra, dec, altaz, sidelobe_angle=65):
+    """Return the AltAz coordinates of the four 65 degree
     far-sidelobes of the COMAP Pathfinder/wide telescopes
 
     Args:
         time (astropy.Time): Time of a given scan in astropy.Time
         ra (float): Mean scan RA coordinate
         dec (float): Mean scan Dec coordinate
+        altaz (AltAz): Astropy AltAz frame for local horizontal telescope coordinate system
+        sidelobe_angle(float): Far sidelobe angle of COMAP telescope (default 65 degrees)
 
     Returns:
         dict: Dictionary of SkyCoords of each of the four far-sidelobes
         of the COMAP Pathfinder/wide telescope
     """
-    from astropy.time import Time
-    from astropy.coordinates import EarthLocation, AltAz, SkyCoord
-    from pixell import utils
-
-    loc = EarthLocation.of_site("OVRO")
-    altaz = AltAz(obstime=time, location=loc)
 
     mean_pointing = SkyCoord(ra=ra, dec=dec, frame="icrs", unit=(u.deg, u.deg))
 
     comap_fields_altaz = mean_pointing.transform_to(altaz)
 
-    sidelobe_angle = 65
     sidelobe1 = np.array([0, 90 - sidelobe_angle]) * u.deg
     sidelobe2 = np.array([180, 90 - sidelobe_angle]) * u.deg
     sidelobe3 = np.array([90, 90 - sidelobe_angle]) * u.deg
@@ -362,9 +406,8 @@ def get_farsidelobe_in_galactic(time, ra, dec):
     vector_sidelobe4 = utils.ang2rect((sidelobe4.to(u.rad)).value)
 
     sidelobes = [vector_sidelobe1, vector_sidelobe2, vector_sidelobe3, vector_sidelobe4]
-    new_sidelobes = []
 
-    new_sidelobes_galactic = []
+    new_sidelobes = []
 
     rotation_y = utils.rotmatrix(np.pi / 2 - comap_fields_altaz.alt.radian, raxis="y")
 
@@ -376,15 +419,35 @@ def get_farsidelobe_in_galactic(time, ra, dec):
 
         new_sidelobe = np.einsum("kij,j->ki", rotation, sidelobe).T
         new_sidelobe_ang = np.rad2deg(utils.rect2ang(new_sidelobe))
-        new_sidelobes.append(new_sidelobe_ang)
         new_coords = SkyCoord(
             az=new_sidelobe_ang[0, :] * u.deg,
             alt=new_sidelobe_ang[1, :] * u.deg,
             frame=comap_fields_altaz.frame,
         )
-        new_sidelobes_galactic.append(new_coords.transform_to("galactic"))
+        new_sidelobes.append(new_coords)
 
-    return new_sidelobes_galactic
+    return new_sidelobes
+
+def read_off_galactic_emission(gal_coords):
+    """
+    Read in Planck 30 GHz map and return the emission at the given galactic coordinates
+
+    Args:
+        gal_coords (SkyCoord): Galactic coordinates of the telescope pointing
+
+    Returns:
+        float: Sidelobe signal at the given galactic coordinates
+    """
+    
+    sidelobe_efficiency = 0.004
+    
+
+    sidelobe_signal = hp.get_interp_val(1e6 * m_planck30ghz, gal_coords.l.degree, gal_coords.b.degree, lonlat=True)
+    sidelobe_signal *= sidelobe_efficiency
+    
+    return sidelobe_signal
+
+    
 
 
 def get_scan_stats(filepath, map_grid=None):
@@ -470,25 +533,22 @@ def get_scan_stats(filepath, map_grid=None):
             acc_ind = np.zeros_like(tod_ind[:, :, 0, 0])
             print("Found no acceptrate")
 
-        # Acceptrate counting only the "specific" cuts, i.e. ignoring the broad cuts below, which are
-        # expected to remove large, well-understood parts of the band. freqmask_reason is a bitmask,
-        # so reason k applies to a channel when bit k is set.
-        generic_freqmask_reasons = [
-            "Aliasing suppression (AB_mask)",
-            "Aliasing suppression (leak_mask)",
-            "Tsys NaN or inf",
-            "Tsys < min_tsys",
-            "Tsys > running median max",
-            "Feed 20",
-            "NaN or inf in TOD",
-            "Marked channels",
-        ]
         freqmask_reason = my_file["freqmask_reason"][()]
-        freqmask_reason_string = [reason.decode() for reason in my_file["freqmask_reason_string"][()]]
+        freqmask_reason_string = my_file["freqmask_reason_string"][()]
         specific_freqmask = np.ones_like(mask_full_ind)
-        for k, reason in enumerate(freqmask_reason_string):
-            if reason not in generic_freqmask_reasons:
-                specific_freqmask *= (freqmask_reason & 2**k) == 0
+        for k in range(len(freqmask_reason_string)):
+            _freqmask = (freqmask_reason == 2**k) == 0
+            if freqmask_reason_string[k] not in [
+                "Aliasing suppression (AB_mask)",
+                "Aliasing suppression (leak_mask)",
+                "Tsys NaN or inf",
+                "Tsys < min_tsys",
+                "Tsys > running median max",
+                "Feed 20",
+                "NaN or inf in TOD",
+                "Marked channels",
+            ]:
+                specific_freqmask *= _freqmask
         acc_ind_specific = np.mean(specific_freqmask, axis=-1)
 
         try:
@@ -1034,7 +1094,7 @@ def get_scan_stats(filepath, map_grid=None):
     sun_elevation = np.zeros((n_det, n_sb))
 
     with solar_system_ephemeris.set("builtin"):
-        loc = coord.EarthLocation(lon=-118.283 * u.deg, lat=37.2313 * u.deg)
+        loc = coord.EarthLocation.of_site("OVRO")
         time = Time(scan_mjd, format="mjd")
         pole = np.array([mean_el, mean_az])
         aa = AltAz(location=loc, obstime=time)
@@ -1089,64 +1149,128 @@ def get_scan_stats(filepath, map_grid=None):
 
     insert_data_in_array(data, sun_elevation, "sun_el")
 
-
     mean_ra = np.mean(ra, axis=1)
     mean_dec = np.mean(dec, axis=1)
 
-    galaxy_sl1_lon = np.ones((n_det, n_sb))
+    # Ignoring first sidelobe because it always points to the ground. 
+    # We only care about the far sidelobes in the sky here.
+    
+    sidelobe_coord = get_farsidelobe_altaz(mean_ra, mean_dec, aa, sidelobe_angle=65)[1:]
+
+    sl2_lon = np.ones((n_det, n_sb))
+    sl3_lon = np.ones((n_det, n_sb))
+    sl4_lon = np.ones((n_det, n_sb))
+
+    sl2_lat = np.ones((n_det, n_sb))
+    sl3_lat = np.ones((n_det, n_sb))
+    sl4_lat = np.ones((n_det, n_sb))
+
+    sl2_lon = sl2_lon * sidelobe_coord[0].az.radian[:, None]
+    sl3_lon = sl3_lon * sidelobe_coord[1].az.radian[:, None]
+    sl4_lon = sl4_lon * sidelobe_coord[2].az.radian[:, None]
+
+    sl2_lat = sl2_lat * sidelobe_coord[0].alt.radian[:, None]
+    sl3_lat = sl3_lat * sidelobe_coord[1].alt.radian[:, None]
+    sl4_lat = sl4_lat * sidelobe_coord[2].alt.radian[:, None] 
+
+
+    sun_dist_sl2 = np.rad2deg(
+        coord.angular_separation(sl2_lon, sl2_lat, cs.az.radian, cs.alt.radian)
+    )
+    sun_dist_sl3 = np.rad2deg(
+        coord.angular_separation(sl3_lon, sl3_lat, cs.az.radian, cs.alt.radian)
+    )
+    sun_dist_sl4 = np.rad2deg(
+        coord.angular_separation(sl4_lon, sl4_lat, cs.az.radian, cs.alt.radian)
+    )
+
+
+    moon_dist_sl2 = np.rad2deg(
+        coord.angular_separation(sl2_lon, sl2_lat, cm.az.radian, cm.alt.radian)
+    )
+    moon_dist_sl3 = np.rad2deg(
+        coord.angular_separation(sl3_lon, sl3_lat, cm.az.radian, cm.alt.radian)
+    )
+    moon_dist_sl4 = np.rad2deg(
+        coord.angular_separation(sl4_lon, sl4_lat, cm.az.radian, cm.alt.radian)
+    )
+
+    insert_data_in_array(data, sun_dist_sl2, "sun_dist_sl2")
+    insert_data_in_array(data, sun_dist_sl3, "sun_dist_sl3")
+    insert_data_in_array(data, sun_dist_sl4, "sun_dist_sl4")
+
+    insert_data_in_array(data, moon_dist_sl2, "moon_dist_sl2")
+    insert_data_in_array(data, moon_dist_sl3, "moon_dist_sl3")
+    insert_data_in_array(data, moon_dist_sl4, "moon_dist_sl4")
+
+    sidelobe_coord_galactic = [c.transform_to("galactic") for c in sidelobe_coord]
+
     galaxy_sl2_lon = np.ones((n_det, n_sb))
     galaxy_sl3_lon = np.ones((n_det, n_sb))
     galaxy_sl4_lon = np.ones((n_det, n_sb))
 
-    galaxy_sl1_lat = np.ones((n_det, n_sb))
     galaxy_sl2_lat = np.ones((n_det, n_sb))
     galaxy_sl3_lat = np.ones((n_det, n_sb))
     galaxy_sl4_lat = np.ones((n_det, n_sb))
 
-    sidelobe_coord_galactic = get_farsidelobe_in_galactic(time, mean_ra, mean_dec)
+    galaxy_sl2_lon = galaxy_sl2_lon * sidelobe_coord_galactic[0].l.degree[:, None]
+    galaxy_sl3_lon = galaxy_sl3_lon * sidelobe_coord_galactic[1].l.degree[:, None]
+    galaxy_sl4_lon = galaxy_sl4_lon * sidelobe_coord_galactic[2].l.degree[:, None]
 
-    galaxy_sl1_lon = galaxy_sl1_lon * sidelobe_coord_galactic[0].l.degree[:, None]
-    galaxy_sl2_lon = galaxy_sl2_lon * sidelobe_coord_galactic[1].l.degree[:, None]
-    galaxy_sl3_lon = galaxy_sl3_lon * sidelobe_coord_galactic[2].l.degree[:, None]
-    galaxy_sl4_lon = galaxy_sl4_lon * sidelobe_coord_galactic[3].l.degree[:, None]
+    galaxy_sl2_lat = galaxy_sl2_lat * sidelobe_coord_galactic[0].b.degree[:, None]
+    galaxy_sl3_lat = galaxy_sl3_lat * sidelobe_coord_galactic[1].b.degree[:, None]
+    galaxy_sl4_lat = galaxy_sl4_lat * sidelobe_coord_galactic[2].b.degree[:, None]
 
-    galaxy_sl1_lat = galaxy_sl1_lat * sidelobe_coord_galactic[0].b.degree[:, None]
-    galaxy_sl2_lat = galaxy_sl2_lat * sidelobe_coord_galactic[1].b.degree[:, None]
-    galaxy_sl3_lat = galaxy_sl3_lat * sidelobe_coord_galactic[2].b.degree[:, None]
-    galaxy_sl4_lat = galaxy_sl4_lat * sidelobe_coord_galactic[3].b.degree[:, None]
+    galactic_center_dist_sl2 = np.rad2deg(
+        coord.angular_separation(
+            np.deg2rad(galaxy_sl2_lon), np.deg2rad(galaxy_sl2_lat), 0, 0
+        )
+    )
+    galactic_center_dist_sl3 = np.rad2deg(
+        coord.angular_separation(
+            np.deg2rad(galaxy_sl3_lon), np.deg2rad(galaxy_sl3_lat), 0, 0
+        )
+    )
+    galactic_center_dist_sl4 = np.rad2deg(
+        coord.angular_separation(
+            np.deg2rad(galaxy_sl4_lon), np.deg2rad(galaxy_sl4_lat), 0, 0
+        )
+    )
 
-    galactic_center_dist_sl1 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl1_lon), np.deg2rad(galaxy_sl1_lat), 0, 0))
-    galactic_center_dist_sl2 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl2_lon), np.deg2rad(galaxy_sl2_lat), 0, 0))
-    galactic_center_dist_sl3 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl3_lon), np.deg2rad(galaxy_sl3_lat), 0, 0))
-    galactic_center_dist_sl4 = np.rad2deg(coord.angular_separation(np.deg2rad(galaxy_sl4_lon), np.deg2rad(galaxy_sl4_lat), 0, 0))
+    insert_data_in_array(data, galaxy_sl2_lat, "galaxy_sl2_lat")
+    insert_data_in_array(data, galaxy_sl3_lat, "galaxy_sl3_lat")
+    insert_data_in_array(data, galaxy_sl4_lat, "galaxy_sl4_lat")
 
-    insert_data_in_array(data, galaxy_sl1_lon, "galaxy_sl1_lon")
-    insert_data_in_array(data, galaxy_sl2_lon, "galaxy_sl2_lon")
-    insert_data_in_array(data, galaxy_sl3_lon, "galaxy_sl3_lon")
-    insert_data_in_array(data, galaxy_sl4_lon, "galaxy_sl4_lon")
-
-    insert_data_in_array(data, galactic_center_dist_sl1, "galactic_center_dist_sl1") 
     insert_data_in_array(data, galactic_center_dist_sl2, "galactic_center_dist_sl2")
     insert_data_in_array(data, galactic_center_dist_sl3, "galactic_center_dist_sl3")
     insert_data_in_array(data, galactic_center_dist_sl4, "galactic_center_dist_sl4")
 
+    
+    galactic_sl_signal = np.array([read_off_galactic_emission(sl) for sl in sidelobe_coord_galactic])
+    galactic_sl_signal = np.sum(galactic_sl_signal, axis=0)[:, None] * np.ones((n_det, n_sb))
+    insert_data_in_array(data, galactic_sl_signal, "galactic_sl_signal")
+    
+
+
     ### perhaps a ps_xy and ps_z to distinguish frequency residuals from angular ones
 
-    filename = '/mn/stornext/d22/cmbco/comap/d16/protodir/sw_complete_' + fieldname + '.h5'
+    filename = (
+        "/mn/stornext/d22/cmbco/comap/d16/protodir/sw_complete_" + fieldname + ".h5"
+    )
     i_scan = int(str(scanid)[-2:]) - 2  # goes from 0 to n_scan
     # print(scanid, i_scan)
     n_sw = 14
     sw_array = np.zeros((n_det, n_sw, n_sb))
     try:
         with h5py.File(filename, mode="r") as my_file:
-            sw = my_file['%07i/sw_stats' % obsid][()][:, i_scan]
+            sw = my_file["%07i/sw_stats" % obsid][()][:, i_scan]
         sw_array[:, :, :] = sw[:, :, None]
     except:
         # print('problems with standing waves')
         sw_array[:, :, :] = np.nan
 
     for i in range(n_sw):
-        sw_str = 'sw_%02i' % (i + 1)
+        sw_str = "sw_%02i" % (i + 1)
         insert_data_in_array(data, sw_array[:, i, :], sw_str)
 
     ######## Here you can add new statistics  ##########
@@ -1160,7 +1284,7 @@ def move_to_frame(ang_cent, ang):
     lon = ang[1] * np.pi / 180.0
 
     pos = np.zeros((3))
-    
+
     pos[0] = np.cos(lat) * np.cos(lon)
     pos[1] = np.cos(lat) * np.sin(lon)
     pos[2] = np.sin(lat)
@@ -1171,25 +1295,34 @@ def move_to_frame(ang_cent, ang):
     pos_rotx = np.zeros((3, len(ang_cent[0])))
     # rotate around z-axis
     pos_rotx[0] = np.cos(lon_frame) * pos[0] + np.sin(lon_frame) * pos[1]
-    pos_rotx[1] = - np.sin(lon_frame) * pos[0] + np.cos(lon_frame) * pos[1]
+    pos_rotx[1] = -np.sin(lon_frame) * pos[0] + np.cos(lon_frame) * pos[1]
     pos_rotx[2] = pos[2]
 
     pos_roty = np.zeros_like(pos_rotx)
     # rotate around new y-axis
-    pos_roty[0] = np.cos(np.pi / 2 - lat_frame) * pos_rotx[0] - np.sin(np.pi /2 - lat_frame) * pos_rotx[2]
-    pos_roty[2] = np.sin(np.pi / 2 - lat_frame) * pos_rotx[0] + np.cos(np.pi /2 - lat_frame) * pos_rotx[2]
+    pos_roty[0] = (
+        np.cos(np.pi / 2 - lat_frame) * pos_rotx[0]
+        - np.sin(np.pi / 2 - lat_frame) * pos_rotx[2]
+    )
+    pos_roty[2] = (
+        np.sin(np.pi / 2 - lat_frame) * pos_rotx[0]
+        + np.cos(np.pi / 2 - lat_frame) * pos_rotx[2]
+    )
     pos_roty[1] = pos_rotx[1]
 
     out_ang = np.zeros((2, len(ang_cent[0])))
-    out_ang[0] = np.arctan2(pos_roty[2], np.sqrt(pos_roty[0] ** 2 + pos_roty[1] ** 2)) #np.arccos(pos_roty[2])
+    out_ang[0] = np.arctan2(
+        pos_roty[2], np.sqrt(pos_roty[0] ** 2 + pos_roty[1] ** 2)
+    )  # np.arccos(pos_roty[2])
     out_ang[1] = np.arctan2(pos_roty[1], pos_roty[0])
 
     return out_ang * 180 / np.pi
 
+
 def pad_nans(tod):
     n_pad = 10
     nan_indices = np.argwhere(np.isnan(tod))
-    
+
     for nan_index in nan_indices:
         start_ind = int(max([nan_index - n_pad, 0]))
         end_ind = int(min(([nan_index + n_pad, len(tod) - 1])))
@@ -1216,23 +1349,27 @@ def get_noise_params(tod, samprate=50.0):
     sigma0 = np.std(tod[1:] - tod[:-1]) / np.sqrt(2)
 
     def one_over_f(freq, alpha, fknee):
-        return sigma0 ** 2 * (1.0 + (freq / fknee) ** alpha)
+        return sigma0**2 * (1.0 + (freq / fknee) ** alpha)
 
-    try: 
+    try:
         p0 = (-2, 5)
-        
-        popt, pcov = curve_fit(one_over_f, bin_freqs, ps, p0=p0, sigma=ps/np.sqrt(nmodes))
+
+        popt, pcov = curve_fit(
+            one_over_f, bin_freqs, ps, p0=p0, sigma=ps / np.sqrt(nmodes)
+        )
         alpha = popt[0]
         fknee = popt[1]
     except:
         try:
             a = -1  # solve for alpha
             p0 = (a, 10)
-            
-            popt, pcov = curve_fit(one_over_f, bin_freqs, ps, p0=p0, sigma=ps/np.sqrt(nmodes))
+
+            popt, pcov = curve_fit(
+                one_over_f, bin_freqs, ps, p0=p0, sigma=ps / np.sqrt(nmodes)
+            )
             alpha = popt[0]
             fknee = popt[1]
-        except: 
+        except:
             return np.inf, np.inf, np.inf
     #     print('unable to fit noise parameters')
     #     print(ps)
@@ -1240,17 +1377,19 @@ def get_noise_params(tod, samprate=50.0):
     #     p0 = (-1, 10)
     #     plt.loglog(freq, p)
     #     plt.loglog(freq, sigma0 ** 2 + 0.0 * freq)
-    #     plt.loglog(bin_freqs, ps) 
+    #     plt.loglog(bin_freqs, ps)
     #     plt.loglog(bin_freqs, one_over_f(bin_freqs, *p0), 'g--', label='fit: alpha=%5.3f, fknee=%5.3f' % tuple(p0))
     #     plt.show()
     #     popt, pcov = curve_fit(one_over_f, bin_freqs, ps, p0=p0, sigma=ps/np.sqrt(nmodes))
     #     sys.exit()
-    #     # 
+    #     #
     return sigma0, fknee, alpha
 
-class ObsidData():
+
+class ObsidData:
     def __init__(self):
         pass
+
 
 def get_scan_data(params, fields, fieldname, paralellize=True):
     WORK_TAG = 1
@@ -1264,7 +1403,7 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
         n_feeds = 20
         n_sb = 4
         n_stats = len(stats_list)
-        
+
         scan_list = np.zeros((tot_scans), dtype=np.int32)
         scan_data = np.zeros((tot_scans, n_feeds, n_sb, n_stats), dtype=np.float32)
 
@@ -1280,8 +1419,8 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             obsid_info.l2_path = l2_path
             obsid_infos.append(obsid_info)
             i_scan += n_scans
-        
-        n_tasks = len(obsid_infos) 
+
+        n_tasks = len(obsid_infos)
         print(f"Total of {n_tasks} tasks (obsids).")
         i_scan = 0
         tasks_done = 0
@@ -1290,11 +1429,13 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
         np.random.shuffle(proc_order)
 
         progress_bar = tqdm(total=n_tasks, ncols=80)
-        for iproc in range(Nproc-1):
+        for iproc in range(Nproc - 1):
             comm.send(obsid_infos[tasks_started], dest=proc_order[iproc], tag=WORK_TAG)
             tasks_started += 1
-            if tasks_started == n_tasks:  # If we have more processes than tasks, kill the rest, and break the task-assigment loop.
-                for iirank in range(iproc, Nproc-1):
+            if (
+                tasks_started == n_tasks
+            ):  # If we have more processes than tasks, kill the rest, and break the task-assigment loop.
+                for iirank in range(iproc, Nproc - 1):
                     comm.send(-1, dest=proc_order[iirank], tag=DIE_TAG)
                 break
             if params.distributed_starting:
@@ -1309,8 +1450,10 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             comm.send(obsid_infos[tasks_started], dest=workerID, tag=WORK_TAG)
             tasks_started += 1
             n_scans = len(scan_data_list)
-            scan_data[i_scan:i_scan+n_scans] = scan_data_list
-            scan_list[i_scan:i_scan+n_scans] = [int(scaninfo[0,0,1]) for scaninfo in scan_data_list]
+            scan_data[i_scan : i_scan + n_scans] = scan_data_list
+            scan_list[i_scan : i_scan + n_scans] = [
+                int(scaninfo[0, 0, 1]) for scaninfo in scan_data_list
+            ]
             i_scan += n_scans
             progress_bar.update(1)
 
@@ -1320,14 +1463,15 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
             tasks_done += 1
             workerID = status.Get_source()
             n_scans = len(scan_data_list)
-            scan_data[i_scan:i_scan+n_scans] = scan_data_list
-            scan_list[i_scan:i_scan+n_scans] = [int(scaninfo[0,0,1]) for scaninfo in scan_data_list]
+            scan_data[i_scan : i_scan + n_scans] = scan_data_list
+            scan_list[i_scan : i_scan + n_scans] = [
+                int(scaninfo[0, 0, 1]) for scaninfo in scan_data_list
+            ]
             i_scan += n_scans
             progress_bar.update(1)
             workerID = status.Get_source()
             comm.send(-1, dest=workerID, tag=DIE_TAG)
             time.sleep(0.01)
-
 
         for iproc in range(1, Nproc):
             comm.send(-1, dest=iproc, tag=DIE_TAG)
@@ -1338,11 +1482,10 @@ def get_scan_data(params, fields, fieldname, paralellize=True):
         # print("Finalizing MPI section.")
         # for iscan in range(tot_scans):
         #     scan_data[iscan] = scan_data[iscan,0,0,1]
-        
+
         # print(scan_data.shape)
         # print(scan_data[0,0,0])
 
-    
     else:
         while True:
             status = MPI.Status()
@@ -1366,7 +1509,7 @@ def get_obsid_data(obsid_info):
     fieldname = obsid_info.field
     l2_path = obsid_info.l2_path
     n_freqs = obsid_info.n_freqs
-    
+
     ## set up map grid
     info = patch_info[fieldname]
     if fieldname == "NCP":
@@ -1391,24 +1534,35 @@ def get_obsid_data(obsid_info):
     maps = []
     i_scan = 0
     for scanid in scans:
-        filepath = os.path.join(l2_path, fieldname) + '/' + fieldname + '_0' + scanid + '.h5'
-        #filepath = l2_path + '/' + fieldname + '_0' + scanid + '.h5'
+        filepath = (
+            os.path.join(l2_path, fieldname) + "/" + fieldname + "_0" + scanid + ".h5"
+        )
+        # filepath = l2_path + '/' + fieldname + '_0' + scanid + '.h5'
         data, map = get_scan_stats(filepath, map_grid)
         scan_data[i_scan] = data
         maps.append(map)
         i_scan += 1
-    
-    ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2, ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2 = get_power_spectra(maps, map_grid, n_freqs, obsid_info)
 
-    insert_data_in_array(scan_data, ps_s_sb_chi2, 'ps_s_sb_chi2', obsid=True)
-    insert_data_in_array(scan_data, ps_s_feed_chi2, 'ps_s_feed_chi2', obsid=True)
-    insert_data_in_array(scan_data, ps_s_chi2, 'ps_s_chi2', obsid=True)
-    insert_data_in_array(scan_data, ps_o_sb_chi2, 'ps_o_sb_chi2', obsid=True)
-    insert_data_in_array(scan_data, ps_o_feed_chi2, 'ps_o_feed_chi2', obsid=True)
-    insert_data_in_array(scan_data, ps_o_chi2, 'ps_o_chi2', obsid=True)
+    (
+        ps_s_sb_chi2,
+        ps_s_feed_chi2,
+        ps_s_chi2,
+        ps_o_sb_chi2,
+        ps_o_feed_chi2,
+        ps_o_chi2,
+        ps_z_s_sb_chi2,
+        ps_xy_s_sb_chi2,
+    ) = get_power_spectra(maps, map_grid, n_freqs, obsid_info)
 
-    insert_data_in_array(scan_data, ps_z_s_sb_chi2, 'ps_z_s_sb_chi2', obsid=True)
-    insert_data_in_array(scan_data, ps_xy_s_sb_chi2, 'ps_xy_s_sb_chi2', obsid=True)
+    insert_data_in_array(scan_data, ps_s_sb_chi2, "ps_s_sb_chi2", obsid=True)
+    insert_data_in_array(scan_data, ps_s_feed_chi2, "ps_s_feed_chi2", obsid=True)
+    insert_data_in_array(scan_data, ps_s_chi2, "ps_s_chi2", obsid=True)
+    insert_data_in_array(scan_data, ps_o_sb_chi2, "ps_o_sb_chi2", obsid=True)
+    insert_data_in_array(scan_data, ps_o_feed_chi2, "ps_o_feed_chi2", obsid=True)
+    insert_data_in_array(scan_data, ps_o_chi2, "ps_o_chi2", obsid=True)
+
+    insert_data_in_array(scan_data, ps_z_s_sb_chi2, "ps_z_s_sb_chi2", obsid=True)
+    insert_data_in_array(scan_data, ps_xy_s_sb_chi2, "ps_xy_s_sb_chi2", obsid=True)
 
     ## [map_list, indices]
     # ## map_list[i][j] = [map, rms]
@@ -1419,9 +1573,9 @@ def get_obsid_data(obsid_info):
 
 def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
     if int(obsid_info.scans[0][:-2]) > 28500:
-        is_slow=True
+        is_slow = True
     else:
-        is_slow=False
+        is_slow = False
     n_feeds = 20
     n_sb = 4
     n_k = 10
@@ -1444,25 +1598,31 @@ def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
     ps_o_sb_chi2 = np.zeros((n_scans, n_feeds, n_sb))
     ps_o_feed_chi2 = np.zeros((n_scans, n_feeds, n_sb))
     ps_o_chi2 = np.zeros((n_scans, n_feeds, n_sb))
-    
+
     ps_xy_s_sb_chi2 = np.zeros((n_scans, n_feeds, n_sb))
     ps_z_s_sb_chi2 = np.zeros((n_scans, n_feeds, n_sb))
-    
+
     # ps_o_stackp_chi2 = np.zeros((n_scans, n_feeds, n_sb))
     # ps_o_stackfp_chi2 = np.zeros((n_scans, n_feeds, n_sb))
-    sum_obsid = np.zeros((len(ra) - 1, len(dec) - 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
+    sum_obsid = np.zeros(
+        (len(ra) - 1, len(dec) - 1, n_sb, n_freqs)
+    )  # np.zeros((len(ra), len(dec), 64))
     div_obsid = np.zeros_like(sum_obsid)
-    sum_sb_obsid = np.zeros((n_feeds, len(ra) - 1, len(dec) - 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
+    sum_sb_obsid = np.zeros(
+        (n_feeds, len(ra) - 1, len(dec) - 1, n_sb, n_freqs)
+    )  # np.zeros((len(ra), len(dec), 64))
     div_sb_obsid = np.zeros_like(sum_sb_obsid)
     ind_feed = []  # np.zeros((n_scans, n_feeds, 2, 2)).astype(int)
     accepted = np.zeros((n_scans, n_feeds, n_sb))
-    for l in range(n_scans):  # need tests for if a scan is 
+    for l in range(n_scans):  # need tests for if a scan is
         map_list, indices = maps[l]
         # if l == 0:
         #     with open('scan1map.pkl','wb') as my_file:
         #         pickle.dump(maps[l],my_file)
-            # np.save('scan1map.npy', maps[l])
-        sum_scan = np.zeros((len(ra) - 1, len(dec) - 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
+        # np.save('scan1map.npy', maps[l])
+        sum_scan = np.zeros(
+            (len(ra) - 1, len(dec) - 1, n_sb, n_freqs)
+        )  # np.zeros((len(ra), len(dec), 64))
         div_scan = np.zeros_like(sum_scan)
         ind_feed.append(indices)
         for i in range(n_feeds):
@@ -1470,7 +1630,9 @@ def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
             # dec_bins = map_grid[1][indices[i, 1, 0] - 1:indices[i, 1, 1] + 1]
             ind = indices[i]
             # print(indices)
-            map_feed = np.zeros((ind[0, 1] - ind[0, 0] + 1, ind[1, 1] - ind[1, 0] + 1, n_sb, n_freqs))  # np.zeros((len(ra), len(dec), 64))
+            map_feed = np.zeros(
+                (ind[0, 1] - ind[0, 0] + 1, ind[1, 1] - ind[1, 0] + 1, n_sb, n_freqs)
+            )  # np.zeros((len(ra), len(dec), 64))
             rms_feed = np.zeros_like(map_feed)
             for j in range(n_sb):
                 if not map_list[i][j]:
@@ -1479,38 +1641,74 @@ def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
                     ps_xy_s_sb_chi2[l, i, j] = np.nan
                 else:
                     accepted[l, i, j] = 1.0
-                    map, rms = map_list[i][j]   ######### ######################### flip frequencies!! ############################# #################
-                    
-                    
+                    map, rms = map_list[i][
+                        j
+                    ]  ######### ######################### flip frequencies!! ############################# #################
+
                     # print(map[:,:,10])
                     # print(rms[:,:,10])
-                    ps_s_sb_chi2[l, i, j] = get_ps_chi2(map, rms, n_k, d_th, dz, is_slow=is_slow, name="s_sb")  # , Pk, ps_mean, ps_std, transfer
+                    ps_s_sb_chi2[l, i, j] = get_ps_chi2(
+                        map, rms, n_k, d_th, dz, is_slow=is_slow, name="s_sb"
+                    )  # , Pk, ps_mean, ps_std, transfer
                     if len(params.accept_mod_debug_maps_dir) > 0:
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_chi2.npy", ps_s_sb_chi2)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_map.npy", map)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_map_rms.npy", rms)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_misc.npy", np.array([n_k, d_th, dz]))
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_chi2.npy",
+                            ps_s_sb_chi2,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_map.npy",
+                            map,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_map_rms.npy",
+                            rms,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_sb_misc.npy",
+                            np.array([n_k, d_th, dz]),
+                        )
 
-                    ps_z_s_sb_chi2[l, i, j], ps_xy_s_sb_chi2[l, i, j] = get_ps_1d2d_chi2(map, rms, n_k, d_th, dz)
+                    ps_z_s_sb_chi2[l, i, j], ps_xy_s_sb_chi2[l, i, j] = (
+                        get_ps_1d2d_chi2(map, rms, n_k, d_th, dz)
+                    )
                     if len(params.accept_mod_debug_maps_dir) > 0:
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_s_sb_chi2.npy", ps_z_s_sb_chi2)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_xy_s_sb_chi2.npy", ps_xy_s_sb_chi2)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_map.npy", map)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_map_rms.npy", rms)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_misc.npy", np.array([n_k, d_th, dz]))
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_s_sb_chi2.npy",
+                            ps_z_s_sb_chi2,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_xy_s_sb_chi2.npy",
+                            ps_xy_s_sb_chi2,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_map.npy",
+                            map,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_map_rms.npy",
+                            rms,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_z_xy_s_sb_misc.npy",
+                            np.array([n_k, d_th, dz]),
+                        )
 
                     chi2 = ps_s_sb_chi2[l, i, j]
                     # if np.isnan(chi2):
                     #     print("Nan in chi2")
                     #     print(map[np.isnan(map)])
                     #     print(rms[np.isnan(rms)])
-                        # sys.exit()
+                    # sys.exit()
                     map_feed[:, :, j, :] = map
                     rms_feed[:, :, j, :] = rms
-                    
+
                     where = np.where(rms > 0)
-                    sum_sb_obsid[i, ind[0, 0] - 1:ind[0, 1], ind[1, 0] - 1:ind[1, 1], j, :][where] += map[where] / rms[where] ** 2
-                    div_sb_obsid[i, ind[0, 0] - 1:ind[0, 1], ind[1, 0] - 1:ind[1, 1], j, :][where] += 1.0 / rms[where] ** 2 
+                    sum_sb_obsid[
+                        i, ind[0, 0] - 1 : ind[0, 1], ind[1, 0] - 1 : ind[1, 1], j, :
+                    ][where] += (map[where] / rms[where] ** 2)
+                    div_sb_obsid[
+                        i, ind[0, 0] - 1 : ind[0, 1], ind[1, 0] - 1 : ind[1, 1], j, :
+                    ][where] += (1.0 / rms[where] ** 2)
             if np.sum(accepted[l, i, :]) == 0:
                 ps_s_feed_chi2[l, i, :] = np.nan
             else:
@@ -1523,18 +1721,50 @@ def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
                 ps_s_feed_chi2[l, i, :] = get_ps_chi2(
                     map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
                     rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
-                    n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="s_feed")
+                    n_k,
+                    d_th,
+                    dz,
+                    is_feed=True,
+                    is_slow=is_slow,
+                    name="s_feed",
+                )
                 if len(params.accept_mod_debug_maps_dir) > 0:
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_chi2.npy", ps_s_feed_chi2)
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_map.npy", map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_map_rms.npy", rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_misc.npy", np.array([n_k, d_th, dz]))
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_chi2.npy",
+                        ps_s_feed_chi2,
+                    )
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_map.npy",
+                        map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    )
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_map_rms.npy",
+                        rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    )
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_feed_misc.npy",
+                        np.array([n_k, d_th, dz]),
+                    )
                 where = np.where(rms_feed > 0.0)
-                sum_scan[indices[i, 0, 0] - 1:indices[i, 0, 1], indices[i, 1, 0] - 1:indices[i, 1, 1], :, :][where] += map_feed[where] / rms_feed[where] ** 2 
-                div_scan[indices[i, 0, 0] - 1:indices[i, 0, 1], indices[i, 1, 0] - 1:indices[i, 1, 1], :, :][where] += 1.0 / rms_feed[where] ** 2 
+                sum_scan[
+                    indices[i, 0, 0] - 1 : indices[i, 0, 1],
+                    indices[i, 1, 0] - 1 : indices[i, 1, 1],
+                    :,
+                    :,
+                ][where] += (
+                    map_feed[where] / rms_feed[where] ** 2
+                )
+                div_scan[
+                    indices[i, 0, 0] - 1 : indices[i, 0, 1],
+                    indices[i, 1, 0] - 1 : indices[i, 1, 1],
+                    :,
+                    :,
+                ][where] += (
+                    1.0 / rms_feed[where] ** 2
+                )
         if np.sum(accepted[l, :, :].flatten()) == 0:
             ps_s_chi2[l, :, :] = np.nan
-        else:        
+        else:
             map_scan = np.zeros_like(sum_scan)
             rms_scan = np.zeros_like(sum_scan)
             where = np.where(div_scan > 0.0)
@@ -1544,19 +1774,39 @@ def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
             map_scan = map_scan.reshape((sh[0], sh[1], n_sb * n_freqs))
             rms_scan = rms_scan.reshape((sh[0], sh[1], n_sb * n_freqs))
             indices = np.ma.masked_equal(indices, 0, copy=False).astype(int)
-            min_ind = np.min(indices[:, :, 0], axis=0)  ## only use the non-masked sidebands
+            min_ind = np.min(
+                indices[:, :, 0], axis=0
+            )  ## only use the non-masked sidebands
             max_ind = np.max(indices[:, :, 1], axis=0)
             # print(min_ind, max_ind)
             # print(map_scan.shape)
             ps_s_chi2[l, :, :] = get_ps_chi2(
-                    map_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                    rms_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                    n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="s")
+                map_scan[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+                rms_scan[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+                n_k,
+                d_th,
+                dz,
+                is_feed=True,
+                is_slow=is_slow,
+                name="s",
+            )
             if len(params.accept_mod_debug_maps_dir) > 0:
-                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_chi2.npy", ps_s_chi2)
-                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_map.npy", map_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
-                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_map_rms.npy", rms_scan[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
-                np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_misc.npy", np.array([n_k, d_th, dz]))
+                np.save(
+                    f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_chi2.npy",
+                    ps_s_chi2,
+                )
+                np.save(
+                    f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_map.npy",
+                    map_scan[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+                )
+                np.save(
+                    f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_map_rms.npy",
+                    rms_scan[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+                )
+                np.save(
+                    f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[l]}_ps_s_misc.npy",
+                    np.array([n_k, d_th, dz]),
+                )
             sum_obsid[where] += sum_scan[where]
             div_obsid[where] += div_scan[where]
     if np.sum(accepted[:, :, :].flatten()) == 0:
@@ -1578,65 +1828,146 @@ def get_power_spectra(maps, map_grid, n_freqs, obsid_info):
         min_ind = np.min(ind_feed[:, :, :, 0], axis=(0, 1))
         max_ind = np.max(ind_feed[:, :, :, 1], axis=(0, 1))
         ps_o_chi2[:, :, :] = get_ps_chi2(
-                    map_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                    rms_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                    n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="o")
+            map_obsid[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+            rms_obsid[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+            n_k,
+            d_th,
+            dz,
+            is_feed=True,
+            is_slow=is_slow,
+            name="o",
+        )
         if len(params.accept_mod_debug_maps_dir) > 0:
-            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_chi2.npy", ps_o_chi2)
-            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_map.npy", map_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
-            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_map_rms.npy", rms_obsid[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
-            np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_misc.npy", np.array([n_k, d_th, dz]))
+            np.save(
+                f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_chi2.npy",
+                ps_o_chi2,
+            )
+            np.save(
+                f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_map.npy",
+                map_obsid[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+            )
+            np.save(
+                f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_map_rms.npy",
+                rms_obsid[min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]],
+            )
+            np.save(
+                f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_ps_o_misc.npy",
+                np.array([n_k, d_th, dz]),
+            )
 
-        # sum_sb_obsid = np.zeros((n_feeds, len(ra), len(dec), n_sb, 64)) 
+        # sum_sb_obsid = np.zeros((n_feeds, len(ra), len(dec), n_sb, 64))
         for i in range(n_feeds):
             min_ind = np.min(ind_feed[:, i, :, 0], axis=0)
             max_ind = np.max(ind_feed[:, i, :, 1], axis=0)
-                
+
             for j in range(n_sb):
                 if np.sum(accepted[:, i, j]) == 0:
                     ps_o_sb_chi2[:, i, j] = np.nan
-                else: 
+                else:
                     map_sb = np.zeros((len(ra), len(dec), n_freqs))
                     rms_sb = np.zeros((len(ra), len(dec), n_freqs))
                     where = np.where(div_sb_obsid[i, :, :, j, :] > 0)
-                    map_sb[where] = sum_sb_obsid[i, :, :, j, :][where] / div_sb_obsid[i, :, :, j, :][where]
+                    map_sb[where] = (
+                        sum_sb_obsid[i, :, :, j, :][where]
+                        / div_sb_obsid[i, :, :, j, :][where]
+                    )
                     rms_sb[where] = np.sqrt(1.0 / div_sb_obsid[i, :, :, j, :][where])
                     ps_o_sb_chi2[:, i, j] = get_ps_chi2(
-                        map_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                        rms_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]],
-                        n_k, d_th, dz, is_slow=is_slow, name="o_sb")
+                        map_sb[
+                            min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]
+                        ],
+                        rms_sb[
+                            min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]
+                        ],
+                        n_k,
+                        d_th,
+                        dz,
+                        is_slow=is_slow,
+                        name="o_sb",
+                    )
                     if len(params.accept_mod_debug_maps_dir) > 0:
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_chi2.npy", ps_o_sb_chi2)
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_map.npy", map_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_map_rms.npy", rms_sb[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]])
-                        np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_misc.npy", np.array([n_k, d_th, dz]))
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_chi2.npy",
+                            ps_o_sb_chi2,
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_map.npy",
+                            map_sb[
+                                min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]
+                            ],
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_map_rms.npy",
+                            rms_sb[
+                                min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]
+                            ],
+                        )
+                        np.save(
+                            f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_sb{j}_ps_o_sb_misc.npy",
+                            np.array([n_k, d_th, dz]),
+                        )
 
             if np.sum(accepted[:, i, :].flatten()) == 0:
                 ps_o_feed_chi2[:, i, :] = np.nan
-            else:   
-                map_feed = np.zeros((len(ra), len(dec), n_sb, n_freqs)) #np.zeros((max_ind[0] - min_ind[0] + 2, max_ind[1] - min_ind[1] + 2, n_sb, 64)) #np.zeros((len(ra), len(dec), n_sb, 64))        
+            else:
+                map_feed = np.zeros(
+                    (len(ra), len(dec), n_sb, n_freqs)
+                )  # np.zeros((max_ind[0] - min_ind[0] + 2, max_ind[1] - min_ind[1] + 2, n_sb, 64)) #np.zeros((len(ra), len(dec), n_sb, 64))
                 rms_feed = np.zeros_like(map_feed)
                 where = where = np.where(div_sb_obsid[i, :, :, :, :] > 0)
-                map_feed[where] = sum_sb_obsid[i, :, :, :, :][where] / div_sb_obsid[i, :, :, :, :][where]
+                map_feed[where] = (
+                    sum_sb_obsid[i, :, :, :, :][where]
+                    / div_sb_obsid[i, :, :, :, :][where]
+                )
                 rms_feed[where] = np.sqrt(1.0 / div_sb_obsid[i, :, :, :, :][where])
-                map_feed = map_feed[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]]
-                rms_feed = rms_feed[min_ind[0] -1:max_ind[0], min_ind[1] -1:max_ind[1]]
+                map_feed = map_feed[
+                    min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]
+                ]
+                rms_feed = rms_feed[
+                    min_ind[0] - 1 : max_ind[0], min_ind[1] - 1 : max_ind[1]
+                ]
                 sh = map_feed.shape
                 ps_o_feed_chi2[:, i, :] = get_ps_chi2(
-                        map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
-                        rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
-                        n_k, d_th, dz, is_feed=True, is_slow=is_slow, name="o_feed")
+                    map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    n_k,
+                    d_th,
+                    dz,
+                    is_feed=True,
+                    is_slow=is_slow,
+                    name="o_feed",
+                )
                 if len(params.accept_mod_debug_maps_dir) > 0:
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_chi2.npy", ps_o_feed_chi2)
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_map.npy", map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_map_rms.npy", rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)))
-                    np.save(f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_misc.npy", np.array([n_k, d_th, dz]))
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_chi2.npy",
+                        ps_o_feed_chi2,
+                    )
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_map.npy",
+                        map_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    )
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_map_rms.npy",
+                        rms_feed.reshape((sh[0], sh[1], n_sb * n_freqs)),
+                    )
+                    np.save(
+                        f"{params.accept_mod_debug_maps_dir}/{obsid_info.scans[0][:-2]}_f{i}_ps_o_feed_misc.npy",
+                        np.array([n_k, d_th, dz]),
+                    )
 
-
-    return (ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_o_sb_chi2,
-            ps_o_feed_chi2, ps_o_chi2, ps_z_s_sb_chi2, ps_xy_s_sb_chi2)
-                # return (ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_s_stackp_chi2, ps_s_stackfp_chi2, ps_o_sb_chi2,
+    return (
+        ps_s_sb_chi2,
+        ps_s_feed_chi2,
+        ps_s_chi2,
+        ps_o_sb_chi2,
+        ps_o_feed_chi2,
+        ps_o_chi2,
+        ps_z_s_sb_chi2,
+        ps_xy_s_sb_chi2,
+    )
+    # return (ps_s_sb_chi2, ps_s_feed_chi2, ps_s_chi2, ps_s_stackp_chi2, ps_s_stackfp_chi2, ps_o_sb_chi2,
     #         ps_o_feed_chi2, ps_o_chi2, ps_o_stackp_chi2, ps_o_stackfp_chi2)
+
 
 def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False, is_slow=False, name=""):
     # if is_slow:
@@ -1653,9 +1984,9 @@ def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False, is_slow=False, name=""):
     #     return 10**tf_interp_log(np.log10(k_tf))
 
     if is_slow:
-        speed="slow"
+        speed = "slow"
     else:
-        speed="fast"
+        speed = "fast"
     transfer = np.load(f"{current}/TFs/{name}_tf_median_{speed}.npy")
 
     where = np.where(rms > 0)
@@ -1665,23 +1996,23 @@ def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False, is_slow=False, name=""):
 
     Pk, k, nmodes = compute_power_spec3d(w * map, k_bin_edges, d_th, d_th, dz)
     # print(n_k, Pk.shape, transfer.shape)
-    where = np.where((Pk > 0)*np.isfinite(transfer))
+    where = np.where((Pk > 0) * np.isfinite(transfer))
 
-    n_sim = 100 #20
+    n_sim = 100  # 20
     ps_arr = np.zeros((n_sim, n_k - 1))
     for l in range(n_sim):
         map_n = np.random.randn(*rms.shape) * rms
         ps_arr[l] = compute_power_spec3d(w * map_n, k_bin_edges, d_th, d_th, dz)[0]
 
     # transfer = 1.0 / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
-    
+
     ps_mean = np.mean(ps_arr, axis=0)
 
     # if is_feed:
-        # transfer4 = 1.0 / np.exp((0.050/k) ** 5.5)  + 1e-6 
-        # transfer = np.array([7.08265320e-07, 1.30980902e-06, 1.87137602e-01, 4.91884922e-01, 6.48433271e-01, 8.27296733e-01, 8.85360854e-01, 8.14043197e-01, 8.03513664e-01]) #1.0 / np.exp((0.050/k) ** 5.5) + 1e-6
-        # with open("feed_ps.txt", "ab") as myfile:
-        #     np.savetxt(myfile, np.array([Pk, ps_mean]).T)
+    # transfer4 = 1.0 / np.exp((0.050/k) ** 5.5)  + 1e-6
+    # transfer = np.array([7.08265320e-07, 1.30980902e-06, 1.87137602e-01, 4.91884922e-01, 6.48433271e-01, 8.27296733e-01, 8.85360854e-01, 8.14043197e-01, 8.03513664e-01]) #1.0 / np.exp((0.050/k) ** 5.5) + 1e-6
+    # with open("feed_ps.txt", "ab") as myfile:
+    #     np.savetxt(myfile, np.array([Pk, ps_mean]).T)
 
     ps_std = np.std(ps_arr, axis=0) / transfer
     Pk = Pk / transfer
@@ -1689,8 +2020,11 @@ def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False, is_slow=False, name=""):
     n_chi2 = len(Pk[where])
     if n_chi2 < 5:
         return np.nan
-    chi = np.sum(((Pk[where] - ps_mean[where])/ ps_std[where]) ** 3)
-    chi2 = np.sign(chi) * np.abs((np.sum(((Pk[where] - ps_mean[where])/ ps_std[where]) ** 2) - n_chi2) / np.sqrt(2 * n_chi2))
+    chi = np.sum(((Pk[where] - ps_mean[where]) / ps_std[where]) ** 3)
+    chi2 = np.sign(chi) * np.abs(
+        (np.sum(((Pk[where] - ps_mean[where]) / ps_std[where]) ** 2) - n_chi2)
+        / np.sqrt(2 * n_chi2)
+    )
 
     # if (chi2 > 20.0) and is_feed:
     #     plt.errorbar(k, Pk * transfer, ps_std)
@@ -1702,7 +2036,7 @@ def get_ps_chi2(map, rms, n_k, d_th, dz, is_feed=False, is_slow=False, name=""):
 
     #     plt.imshow(map[3, :, :] * w[3, :, :], interpolation=None)
     #     plt.show()
-    return chi2 #, Pk, ps_mean, ps_std, transfer
+    return chi2  # , Pk, ps_mean, ps_std, transfer
 
 
 def get_ps_1d2d_chi2(map, rms, n_k, d_th, dz, is_feed=False):
@@ -1716,14 +2050,16 @@ def get_ps_1d2d_chi2(map, rms, n_k, d_th, dz, is_feed=False):
 
     where = np.where(Pk > 0)
 
-    n_sim = 100 #20
+    n_sim = 100  # 20
     ps_arr = np.zeros((n_sim, n_k - 1))
     ps_arr_1D = np.zeros((n_sim, len(Pk_1D)))
     for l in range(n_sim):
         map_n = np.random.randn(*rms.shape) * rms
-        ps_arr_1D[l], ps_arr[l] = compute_power_spec1d_2d(w * map_n, k_bin_edges, d_th, d_th, dz)[:2]
+        ps_arr_1D[l], ps_arr[l] = compute_power_spec1d_2d(
+            w * map_n, k_bin_edges, d_th, d_th, dz
+        )[:2]
 
-    transfer = 1.0 #/ np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
+    transfer = 1.0  # / np.exp((0.055/k) ** 2.5)  # 6.7e5 / np.exp((0.055/k) ** 2.5)#1.0 / np.exp((0.03/k) ** 2)   ######## Needs to be tested!
 
     ps_mean = np.mean(ps_arr, axis=0)
     ps_1D_mean = np.mean(ps_arr_1D, axis=0)
@@ -1733,37 +2069,43 @@ def get_ps_1d2d_chi2(map, rms, n_k, d_th, dz, is_feed=False):
 
     ps_1D_std = np.std(ps_arr_1D, axis=0)
 
-
     n_chi2 = len(Pk[where])
-    
 
-    chi = np.sum(((Pk[where] - ps_mean[where])/ ps_std[where]) ** 3)
-    chi2 = np.sign(chi) * np.abs((np.sum(((Pk[where] - ps_mean[where])/ ps_std[where]) ** 2) - n_chi2) / np.sqrt(2 * n_chi2))
+    chi = np.sum(((Pk[where] - ps_mean[where]) / ps_std[where]) ** 3)
+    chi2 = np.sign(chi) * np.abs(
+        (np.sum(((Pk[where] - ps_mean[where]) / ps_std[where]) ** 2) - n_chi2)
+        / np.sqrt(2 * n_chi2)
+    )
 
     n_chi2_1D = len(Pk_1D)
-    chi_1D = np.sum(((Pk_1D - ps_1D_mean)/ ps_1D_std) ** 3)
+    chi_1D = np.sum(((Pk_1D - ps_1D_mean) / ps_1D_std) ** 3)
 
-    chi2_1D = np.sign(chi_1D) * np.abs((np.sum(((Pk_1D - ps_1D_mean)/ ps_1D_std) ** 2) - n_chi2_1D) / np.sqrt(2 * n_chi2_1D))
+    chi2_1D = np.sign(chi_1D) * np.abs(
+        (np.sum(((Pk_1D - ps_1D_mean) / ps_1D_std) ** 2) - n_chi2_1D)
+        / np.sqrt(2 * n_chi2_1D)
+    )
     if n_chi2 < 2:
         return chi2_1D, np.nan
     return chi2_1D, chi2
 
 
 def get_patch_info(path):
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         lines = f.read().splitlines()
         my_list = [[x for x in line.split()] for line in lines]
-        my_dict = { y[0]: y[1:7] for y in my_list[:-1] }
+        my_dict = {y[0]: y[1:7] for y in my_list[:-1]}
     return my_dict
 
-def save_data_2_h5(params, scan_list, scan_data, fieldname):
-    filename = data_folder + 'scan_data_' + id_string + fieldname + '.h5'
-    f1 = h5py.File(filename, 'w')
-    f1.create_dataset('scan_list', data=scan_list)
-    f1.create_dataset('scan_data', data=scan_data)
-    dt = h5py.special_dtype(vlen=str) 
+
+def save_data_2_h5(params, scan_list, scan_data, fieldname, runid):
+    filename = data_folder + "scan_data_" + id_string + fieldname + ".h5"
+    f1 = h5py.File(filename, "w")
+    f1.create_dataset("scan_list", data=scan_list)
+    f1.create_dataset("scan_data", data=scan_data)
+    dt = h5py.special_dtype(vlen=str)
     stats_list_arr = np.array(stats_list, dtype=dt)
-    f1.create_dataset('stats_list', data=stats_list_arr)
+    f1.create_dataset("stats_list", data=stats_list_arr)
+    f1.create_dataset("runID", data=runid)
     for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
         if getattr(params, key) == None:  # hdf5 didn't like the None type.
             f1[f"params/{key}"] = "None"
@@ -1781,18 +2123,18 @@ def make_accept_list(params, accept_params, scan_data):
     temp_bool = np.zeros((n_scans, n_det, n_sb), dtype=bool)
 
     # decline all sidebands that are entirely masked
-    acceptrate = extract_data_from_array(scan_data, 'acceptrate')
+    acceptrate = extract_data_from_array(scan_data, "acceptrate")
 
-    # accept_list[:, 7, :] = False    
-    
+    # accept_list[:, 7, :] = False
+
     acc = np.zeros(len(stats_list) + 1)
     acc[0] = np.nansum(acceptrate[accept_list]) / (n_scans * 19 * 4)
-    print(acc[0], 'before cuts')
+    print(acc[0], "before cuts")
     for i, stat_string in enumerate(stats_list):
         stats = extract_data_from_array(scan_data, stat_string)
         cuts = accept_params.stats_cut[stat_string]
         temp_bool[:, :, :] = False
-        if (not np.isnan(cuts[0])):
+        if not np.isnan(cuts[0]):
             accept_list[np.where(stats < cuts[0])] = False
             accept_list[np.where(np.isnan(stats))] = False
             temp_bool[np.where(stats < cuts[0])] = True
@@ -1800,7 +2142,7 @@ def make_accept_list(params, accept_params, scan_data):
             reject_reason[:, :, :, i] = temp_bool
             # reject_reason[:, :, :, i][np.argwhere(stats < cuts[0])] = True
             # reject_reason[:, :, :, i][np.argwhere(np.isnan(stats))] = True
-        if (not np.isnan(cuts[1])):
+        if not np.isnan(cuts[1]):
             accept_list[np.where(stats > cuts[1])] = False
             accept_list[np.where(np.isnan(stats))] = False
             temp_bool[np.where(stats > cuts[1])] = True
@@ -1808,9 +2150,9 @@ def make_accept_list(params, accept_params, scan_data):
             reject_reason[:, :, :, i] = temp_bool
             # reject_reason[:, :, :, i][np.argwhere(stats < cuts[1])] = True
             # reject_reason[:, :, :, i][np.argwhere(np.isnan(stats))] = True
-        
-        acc[i+1] = np.nansum(acceptrate[accept_list]) / (n_scans * 19 * 4)
-        print(acc[i+1], stat_string, cuts)
+
+        acc[i + 1] = np.nansum(acceptrate[accept_list]) / (n_scans * 19 * 4)
+        print(acc[i + 1], stat_string, cuts)
 
     return accept_list, reject_reason, acc
 
@@ -1821,7 +2163,7 @@ def read_jk_param(filepath):
         lines = [line for line in raw_lines if "$" not in line]
         n_temporal_splits = len(raw_lines) - len(lines)
         n_split = int(lines[0][0]) - n_temporal_splits
-        lines = lines[2:n_split+1]
+        lines = lines[2 : n_split + 1]
         strings = [l[0] for l in lines]
         types = [int(l[1]) for l in lines]
 
@@ -1830,32 +2172,32 @@ def read_jk_param(filepath):
 
 def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
     strings, types, n_split = read_jk_param(jk_param)
-    
-    cutoff_list = np.zeros((n_split-1, 20, 4), dtype='f')
-    
+
+    cutoff_list = np.zeros((n_split - 1, 20, 4), dtype="f")
+
     n_scans, n_det, n_sb, _ = scan_data.shape
     jk_list = np.zeros((n_scans, n_det, n_sb), dtype=np.int64)
 
     if not np.any(accept_list.flatten()):
-        jk_list[:] = 0 
+        jk_list[:] = 0
         return jk_list, cutoff_list, strings
-    
-    el = extract_data_from_array(scan_data, 'el').copy()
+
+    el = extract_data_from_array(scan_data, "el").copy()
     el[~accept_list] = np.nan
     cutoff = np.nanpercentile(el, 50.0, axis=0)
     el0_mask = el < cutoff
 
     if True:
         jk_list_test = jk_list.copy()
-        sid = extract_data_from_array(scan_data, 'sidereal').copy()
+        sid = extract_data_from_array(scan_data, "sidereal").copy()
         sid[~accept_list] = np.nan
-        if fieldname == 'co2':
+        if fieldname == "co2":
             cutoff = 87
-        elif fieldname == 'co6':
+        elif fieldname == "co6":
             wh = np.where(sid < 50)
             sid[wh] += 360
             cutoff = 290
-        elif fieldname == 'co7':
+        elif fieldname == "co7":
             cutoff = 231
 
         rise0_mask = sid < cutoff
@@ -1873,14 +2215,50 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
         accept_list10[~el1_rise0_mask] = False
         accept_list11[~el1_rise1_mask] = False
         for j, string in enumerate(strings):
-            print(j+1, string)
-            if string == "elev":  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
-                implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, j+1)
+            print(j + 1, string)
+            if (
+                string == "elev"
+            ):  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
+                implement_split(
+                    params, accept_list, scan_data, jk_list, cutoff_list, string, j + 1
+                )
             else:
-                implement_split(params, accept_list00, scan_data, jk_list, cutoff_list, string, j+1)
-                implement_split(params, accept_list01, scan_data, jk_list, cutoff_list, string, j+1)
-                implement_split(params, accept_list10, scan_data, jk_list, cutoff_list, string, j+1)
-                implement_split(params, accept_list11, scan_data, jk_list, cutoff_list, string, j+1)
+                implement_split(
+                    params,
+                    accept_list00,
+                    scan_data,
+                    jk_list,
+                    cutoff_list,
+                    string,
+                    j + 1,
+                )
+                implement_split(
+                    params,
+                    accept_list01,
+                    scan_data,
+                    jk_list,
+                    cutoff_list,
+                    string,
+                    j + 1,
+                )
+                implement_split(
+                    params,
+                    accept_list10,
+                    scan_data,
+                    jk_list,
+                    cutoff_list,
+                    string,
+                    j + 1,
+                )
+                implement_split(
+                    params,
+                    accept_list11,
+                    scan_data,
+                    jk_list,
+                    cutoff_list,
+                    string,
+                    j + 1,
+                )
 
     else:
         # The old method, only ensuring that splits were even in elev.
@@ -1895,35 +2273,67 @@ def make_jk_list(params, accept_list, scan_list, scan_data, jk_param):
         accept_list0[~el0_mask] = False
         accept_list1[el0_mask] = False
         for j, string in enumerate(strings):
-            if string == "elev":  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
-                implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, j+1)
+            if (
+                string == "elev"
+            ):  # Hacky solution to have the split be evenly distributed across the elevation PSX split.
+                implement_split(
+                    params, accept_list, scan_data, jk_list, cutoff_list, string, j + 1
+                )
             else:
-                implement_split(params, accept_list0, scan_data0, jk_list0, cutoff_list, string, j+1)
-                implement_split(params, accept_list1, scan_data1, jk_list1, cutoff_list, string, j+1)
+                implement_split(
+                    params,
+                    accept_list0,
+                    scan_data0,
+                    jk_list0,
+                    cutoff_list,
+                    string,
+                    j + 1,
+                )
+                implement_split(
+                    params,
+                    accept_list1,
+                    scan_data1,
+                    jk_list1,
+                    cutoff_list,
+                    string,
+                    j + 1,
+                )
         jk_list += jk_list0 + jk_list1
 
-    # insert 0 on rejected sidebands, add 1 on accepted 
+    # insert 0 on rejected sidebands, add 1 on accepted
     jk_list[np.invert(accept_list)] = 0
-    jk_list[accept_list] += 1 
-    
+    jk_list[accept_list] += 1
+
     assert np.max(jk_list) <= np.sum(2 ** np.arange(len(strings) + 1))
-    
+
     return jk_list, cutoff_list, strings
+
 
 def set_bit(jk_list, where, bit):
     assert np.all(jk_list[where] & bit == 0)
     jk_list[where] |= bit
 
+
 def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string, n):
-    
+
     check_bit = 1 << n
     # Generating all possible random split keys
     import itertools
-    rndstrings = ["rnd","RND","Rnd","RNd","rNd","RnD","rnD","rND",]
+
+    rndstrings = [
+        "rnd",
+        "RND",
+        "Rnd",
+        "RNd",
+        "rNd",
+        "RnD",
+        "rnD",
+        "rND",
+    ]
 
     capital_letter_range = list(range(65, 91))
     letter_range = list(range(97, 123))
-    total_range = capital_letter_range + letter_range 
+    total_range = capital_letter_range + letter_range
     combos = list(itertools.product(rndstrings, total_range))
     subseeds = []
     allstrings = []
@@ -1935,33 +2345,31 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         while subseed in subseeds:
             subseed += 1
         subseeds.append(subseed)
-        
+
     # even/odd
-    if string == 'odde':
+    if string == "odde":
         obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
         odd = np.array(obsid) % 2
-        odd = np.zeros((scan_data.shape[:-1]), dtype=int) + odd[:,None,None]
+        odd = np.zeros((scan_data.shape[:-1]), dtype=int) + odd[:, None, None]
         odd[~accept_list] = 0
         set_bit(jk_list, odd == 1, check_bit)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
+        cutoff_list[n - 1] = 0.0  # placeholder (no real cutoff value)
     elif "rnd" in string.casefold():
         # random scan split
         seed = params.jk_rnd_split_seed
         seed += subseeds[allstrings.index(string)]
         np.random.seed(seed)
-        
+
         bits = np.zeros((scan_data.shape[:-1]), dtype=np.int64)
         for ifeed in range(scan_data.shape[1]):
             for isb in range(scan_data.shape[2]):
                 indices = np.arange(scan_data.shape[0], dtype=np.int64)
                 indices = indices[accept_list[:, ifeed, isb]]
                 np.random.shuffle(indices)
-                bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
-        
-        
-        
+                bits[indices[: indices.shape[0] // 2], ifeed, isb] = 1
+
         set_bit(jk_list, np.where(bits == 1), check_bit)
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
+        cutoff_list[n - 1] = 0.0  # placeholder (no real cutoff value)
     elif "trtp" in string.casefold():
         # random scan split
         seed = 42
@@ -1970,386 +2378,429 @@ def implement_split(params, accept_list, scan_data, jk_list, cutoff_list, string
         for ifeed in range(scan_data.shape[1]):
             for isb in range(scan_data.shape[2]):
                 indices = np.arange(scan_data.shape[0], dtype=np.int64)
-                indices = indices[accept_list[:,ifeed,isb]]
+                indices = indices[accept_list[:, ifeed, isb]]
                 np.random.shuffle(indices)
-                bits[indices[:indices.shape[0]//2],ifeed,isb] = 1
+                bits[indices[: indices.shape[0] // 2], ifeed, isb] = 1
         set_bit(jk_list, bits == 1, check_bit)
-        
-        cutoff_list[n-1] = 0.0 # placeholder (no real cutoff value)
-    elif string == 'dayn':
+
+        cutoff_list[n - 1] = 0.0  # placeholder (no real cutoff value)
+    elif string == "dayn":
         # day/night split
-        closetonight = extract_data_from_array(scan_data, 'night').copy()
+        closetonight = extract_data_from_array(scan_data, "night").copy()
         closetonight[~accept_list] = np.nan
         closetonight += np.random.normal(0, 1e-6, closetonight.shape)
         cutoff = np.nanpercentile(closetonight, 50.0)
         set_bit(jk_list, np.where(closetonight > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'half':
+        cutoff_list[n - 1] = cutoff
+    elif string == "half":
         # halfmission split
-        mjd = extract_data_from_array(scan_data, 'mjd').copy()
+        mjd = extract_data_from_array(scan_data, "mjd").copy()
         mjd[~accept_list] = np.nan
         cutoff = np.nanpercentile(mjd, 50.0, axis=0)
         set_bit(jk_list, np.where(mjd > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'tsys':
+        cutoff_list[n - 1] = cutoff
+    elif string == "tsys":
         # halfmission split
-        tsys = extract_data_from_array(scan_data, 'tsys').copy()
-        tsys[~accept_list] = np.nan 
-        cutoff = np.nanpercentile(tsys, 50, axis = 0)
+        tsys = extract_data_from_array(scan_data, "tsys").copy()
+        tsys[~accept_list] = np.nan
+        cutoff = np.nanpercentile(tsys, 50, axis=0)
         set_bit(jk_list, np.where(tsys > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'sdlb':
+        cutoff_list[n - 1] = cutoff
+    elif string == "sdlb":
         # saddlebag split
-        saddlebags = extract_data_from_array(scan_data, 'saddlebag')
+        saddlebags = extract_data_from_array(scan_data, "saddlebag")
         set_bit(jk_list, np.where(saddlebags > 2.5), check_bit)
-        
-        cutoff_list[n-1] = 0.0 # placeholder
-    elif string == 'sidr':
-        # sidereal time split 
-        sid = extract_data_from_array(scan_data, 'sidereal')
+
+        cutoff_list[n - 1] = 0.0  # placeholder
+    elif string == "sidr":
+        # sidereal time split
+        sid = extract_data_from_array(scan_data, "sidereal")
         cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         set_bit(jk_list, np.where(sid > cutoff), check_bit)
-        
-        cutoff_list[n-1] = cutoff
-    elif string == 'sid1':
-        # sidereal time split 
-        sid = extract_data_from_array(scan_data, 'sidereal')
+
+        cutoff_list[n - 1] = cutoff
+    elif string == "sid1":
+        # sidereal time split
+        sid = extract_data_from_array(scan_data, "sidereal")
         sid = np.abs(sid - 160)
         cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         set_bit(jk_list, np.where(sid > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'sid2':
-        # sidereal time split 
-        sid = extract_data_from_array(scan_data, 'sidereal')
+        cutoff_list[n - 1] = cutoff
+    elif string == "sid2":
+        # sidereal time split
+        sid = extract_data_from_array(scan_data, "sidereal")
         sid = np.abs(sid - 200)
         cutoff = np.nanpercentile(sid[accept_list], 50.0)
         # print('Sidereal time cutoff: ', cutoff)
         set_bit(jk_list, np.where(sid > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'sid3':
-        # sidereal time split 
-        sid = extract_data_from_array(scan_data, 'sidereal').copy()
+        cutoff_list[n - 1] = cutoff
+    elif string == "sid3":
+        # sidereal time split
+        sid = extract_data_from_array(scan_data, "sidereal").copy()
         sid[~accept_list] = np.nan
         sid = np.abs(sid - 240)
         cutoff = np.nanpercentile(sid[accept_list], 50.0, axis=0)
         # print('Sidereal time cutoff: ', cutoff)
         set_bit(jk_list, np.where(sid > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'cesc':
-        fbit = extract_data_from_array(scan_data, 'fbit')
+        cutoff_list[n - 1] = cutoff
+    elif string == "cesc":
+        fbit = extract_data_from_array(scan_data, "fbit")
         set_bit(jk_list, np.where(fbit == 32), check_bit)
-        cutoff_list[n-1] = 0.0 # placeholder'
-    elif string == 'ambt':
-        # ambient temperature split 
-        ambt = extract_data_from_array(scan_data, 'airtemp').copy()
+        cutoff_list[n - 1] = 0.0  # placeholder'
+    elif string == "ambt":
+        # ambient temperature split
+        ambt = extract_data_from_array(scan_data, "airtemp").copy()
         ambt[~accept_list] = np.nan
         cutoff = np.nanpercentile(ambt, 50.0, axis=0)
         set_bit(jk_list, np.where(ambt > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'dtmp':
+        cutoff_list[n - 1] = cutoff
+    elif string == "dtmp":
         # dew temperature
-        #  temperature split 
-        dtmp = extract_data_from_array(scan_data, 'dewtemp').copy()
+        #  temperature split
+        dtmp = extract_data_from_array(scan_data, "dewtemp").copy()
         dtmp[~accept_list] = np.nan
         cutoff = np.nanpercentile(dtmp, 50.0, axis=0)
         set_bit(jk_list, np.where(dtmp > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'elev':
-        # elevation split 
-        el = extract_data_from_array(scan_data, 'el').copy()
+        cutoff_list[n - 1] = cutoff
+    elif string == "elev":
+        # elevation split
+        el = extract_data_from_array(scan_data, "el").copy()
         el[~accept_list] = np.nan
         cutoff = np.nanpercentile(el, 50.0, axis=0)
         set_bit(jk_list, np.where(el > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    elif string == 'wind':
-        # windspeed split 
-        wind = extract_data_from_array(scan_data, 'windspeed').copy()
+        cutoff_list[n - 1] = cutoff
+    elif string == "wind":
+        # windspeed split
+        wind = extract_data_from_array(scan_data, "windspeed").copy()
         wind[~accept_list] = np.nan
         cutoff = np.nanpercentile(wind, 50.0, axis=0)
         set_bit(jk_list, np.where(wind > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'widr':
-        # north-south wind direction split 
-        winddir = extract_data_from_array(scan_data, 'winddir').copy()
+    elif string == "widr":
+        # north-south wind direction split
+        winddir = extract_data_from_array(scan_data, "winddir").copy()
         winddir[~accept_list] = np.nan
         cutoff = np.nanpercentile(np.cos(np.radians(winddir)), 50.0, axis=0)
         set_bit(jk_list, np.where(winddir > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'hmty':
-        # humidity split 
-        humidity = extract_data_from_array(scan_data, 'humidity').copy()
+    elif string == "hmty":
+        # humidity split
+        humidity = extract_data_from_array(scan_data, "humidity").copy()
         humidity[~accept_list] = np.nan
         cutoff = np.nanpercentile(humidity, 50.0, axis=0)
         set_bit(jk_list, np.where(humidity > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'pres':
-        # pressure split 
-        pressure = extract_data_from_array(scan_data, 'pressure').copy()
+    elif string == "pres":
+        # pressure split
+        pressure = extract_data_from_array(scan_data, "pressure").copy()
         pressure[~accept_list] = np.nan
         cutoff = np.nanpercentile(pressure, 50.0, axis=0)
         set_bit(jk_list, np.where(pressure > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'rain':
-        # rain split 
-        rain = extract_data_from_array(scan_data, 'rain').copy()
+    elif string == "rain":
+        # rain split
+        rain = extract_data_from_array(scan_data, "rain").copy()
         rain[~accept_list] = np.nan
         rain += np.random.normal(0, 1e-6, rain.shape)
         cutoff = np.nanpercentile(rain, 50.0, axis=0)
         set_bit(jk_list, np.where(rain > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'wthr':
-        # weather split 
-        weather = extract_data_from_array(scan_data, 'weather').copy()
+    elif string == "wthr":
+        # weather split
+        weather = extract_data_from_array(scan_data, "weather").copy()
         weather[~accept_list] = np.nan
         cutoff = np.nanpercentile(weather, 50.0, axis=0)
         set_bit(jk_list, np.where(weather > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'sune':
-        # sun_elevation split 
-        sunel = extract_data_from_array(scan_data, 'sun_el').copy()
+    elif string == "sune":
+        # sun_elevation split
+        sunel = extract_data_from_array(scan_data, "sun_el").copy()
         sunel[~accept_list] = np.nan
         cutoff = np.nanpercentile(sunel, 50.0, axis=0)
         set_bit(jk_list, np.where(sunel > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'snup':
-        # sun_up split (sun elevation > -5 deg) 
-        sunel = extract_data_from_array(scan_data, 'sun_el').copy()
+    elif string == "snup":
+        # sun_up split (sun elevation > -5 deg)
+        sunel = extract_data_from_array(scan_data, "sun_el").copy()
         set_bit(jk_list, np.where(sunel > -5.0), check_bit)
-        cutoff_list[n-1] = 0.0 # placeholder
+        cutoff_list[n - 1] = 0.0  # placeholder
 
-    elif string == 'modi':
-        # distance to moon split 
-        moondist = extract_data_from_array(scan_data, 'moon_dist').copy()
+    elif string == "modi":
+        # distance to moon split
+        moondist = extract_data_from_array(scan_data, "moon_dist").copy()
         moondist[~accept_list] = np.nan
         cutoff = np.nanpercentile(moondist, 50.0, axis=0)
         set_bit(jk_list, np.where(moondist > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'sudi':
-        # distance to sun split 
-        sundist = extract_data_from_array(scan_data, 'sun_dist').copy()
+    elif string == "sudi":
+        # distance to sun split
+        sundist = extract_data_from_array(scan_data, "sun_dist").copy()
         sundist[~accept_list] = np.nan
         cutoff = np.nanpercentile(sundist, 50.0, axis=0)
         set_bit(jk_list, np.where(sundist > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'wint':
-        mjd = extract_data_from_array(scan_data, 'mjd').copy()
+    elif string == "wint":
+        mjd = extract_data_from_array(scan_data, "mjd").copy()
         mjd[~accept_list] = np.nan
         mid_winter = 58863  # 15. Jan 2020
-        days_since_mid_winter = (mjd - mid_winter) % 365                                                                                                                                                         
-        close_to_winter = np.minimum(np.abs(days_since_mid_winter), np.abs(365 - days_since_mid_winter))
+        days_since_mid_winter = (mjd - mid_winter) % 365
+        close_to_winter = np.minimum(
+            np.abs(days_since_mid_winter), np.abs(365 - days_since_mid_winter)
+        )
         cutoff = np.nanpercentile(close_to_winter, 50.0, axis=0)
         set_bit(jk_list, np.where(close_to_winter > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'rise':
-        sid = extract_data_from_array(scan_data, 'sidereal')
-        if fieldname == 'co2':
+    elif string == "rise":
+        sid = extract_data_from_array(scan_data, "sidereal")
+        if fieldname == "co2":
             cutoff = 87
-        elif fieldname == 'co6':
+        elif fieldname == "co6":
             wh = np.where(sid > 180)
             sid[wh] -= 360
             cutoff = -75
-        elif fieldname == 'co7':
+        elif fieldname == "co7":
             cutoff = 231
         else:
-            print('Unknown field: ', fieldname, ' rising split invalid')
+            print("Unknown field: ", fieldname, " rising split invalid")
             cutoff = 0
         set_bit(jk_list, np.where(sid < cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'azmp':  ## az filter amplitude
-        az_amp = extract_data_from_array(scan_data, 'az_amp').copy() 
+    elif string == "azmp":  ## az filter amplitude
+        az_amp = extract_data_from_array(scan_data, "az_amp").copy()
         az_amp[~accept_list] = np.nan
         cutoff = np.nanpercentile(az_amp, 50.0, axis=0)
         set_bit(jk_list, np.where(az_amp > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'fpol':  ## fknee of second polyfilter component
-        fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy() 
-        fknee[~accept_list] = np.nan 
+    elif string == "fpol":  ## fknee of second polyfilter component
+        fknee = extract_data_from_array(scan_data, "fknee_poly1").copy()
+        fknee[~accept_list] = np.nan
         cutoff = np.nanpercentile(fknee, 50.0, axis=0)
         set_bit(jk_list, np.where(fknee > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'fpoO':  ## fknee of first polyfilter component
-        fknee = extract_data_from_array(scan_data, 'fknee_poly0').copy()
-        fknee[~accept_list] = np.nan 
-        cutoff = np.nanpercentile(fknee, 50.0, axis = 0)
+    elif string == "fpoO":  ## fknee of first polyfilter component
+        fknee = extract_data_from_array(scan_data, "fknee_poly0").copy()
+        fknee[~accept_list] = np.nan
+        cutoff = np.nanpercentile(fknee, 50.0, axis=0)
         set_bit(jk_list, np.where(fknee > cutoff), check_bit)
-        
-        cutoff_list[n-1] = cutoff
 
-    elif string == 'fpoI':  ## fknee of second polyfilter component
-        fknee = extract_data_from_array(scan_data, 'fknee_poly1').copy()
-        fknee[~accept_list] = np.nan 
-        cutoff = np.nanpercentile(fknee, 50, axis = 0)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "fpoI":  ## fknee of second polyfilter component
+        fknee = extract_data_from_array(scan_data, "fknee_poly1").copy()
+        fknee[~accept_list] = np.nan
+        cutoff = np.nanpercentile(fknee, 50, axis=0)
         set_bit(jk_list, np.where(fknee > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'apoO':  ## alpha of second polyfilter component
-        alpha = extract_data_from_array(scan_data, 'alpha_poly0').copy()
+    elif string == "apoO":  ## alpha of second polyfilter component
+        alpha = extract_data_from_array(scan_data, "alpha_poly0").copy()
         alpha[~accept_list] = np.nan
-        cutoff = np.nanpercentile(alpha, 50.0, axis = 0)
+        cutoff = np.nanpercentile(alpha, 50.0, axis=0)
         set_bit(jk_list, np.where(alpha > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'apoI':  ## alpha of first polyfilter component
-        alpha = extract_data_from_array(scan_data, 'alpha_poly1').copy()
+    elif string == "apoI":  ## alpha of first polyfilter component
+        alpha = extract_data_from_array(scan_data, "alpha_poly1").copy()
         alpha[~accept_list] = np.nan
-        cutoff = np.nanpercentile(alpha, 50.0, axis = 0)
+        cutoff = np.nanpercentile(alpha, 50.0, axis=0)
         set_bit(jk_list, np.where(alpha > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'spoO':  ## sigma of second polyfilter component
-        sigma = extract_data_from_array(scan_data, 'sigma_poly0').copy()
+    elif string == "spoO":  ## sigma of second polyfilter component
+        sigma = extract_data_from_array(scan_data, "sigma_poly0").copy()
         sigma[~accept_list] = np.nan
-        cutoff = np.nanpercentile(sigma, 50.0, axis = 0)
+        cutoff = np.nanpercentile(sigma, 50.0, axis=0)
         set_bit(jk_list, np.where(sigma > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    
-    elif string == 'spoI':  ## sigma of first polyfilter component
-        sigma = extract_data_from_array(scan_data, 'sigma_poly1').copy()
-        sigma[~accept_list] = np.nan
-        cutoff = np.nanpercentile(sigma, 50.0, axis = 0)
-        set_bit(jk_list, np.where(sigma > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'npca':
-        npca = extract_data_from_array(scan_data, 'npca').copy()
-        npcaf = extract_data_from_array(scan_data, 'npcaf').copy()
+    elif string == "spoI":  ## sigma of first polyfilter component
+        sigma = extract_data_from_array(scan_data, "sigma_poly1").copy()
+        sigma[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sigma, 50.0, axis=0)
+        set_bit(jk_list, np.where(sigma > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "npca":
+        npca = extract_data_from_array(scan_data, "npca").copy()
+        npcaf = extract_data_from_array(scan_data, "npcaf").copy()
         npca_both = npca + npcaf
         npca_both[~accept_list] = np.nan
         npca_both += np.random.normal(0, 1e-4, npca_both.shape[0])[:, None, None]
-        cutoff = np.nanpercentile(npca_both, 50.0, axis = 0)
+        cutoff = np.nanpercentile(npca_both, 50.0, axis=0)
         set_bit(jk_list, np.where(npca_both > cutoff), check_bit)
 
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'pcaa':
-        pca_ampl_sum = extract_data_from_array(scan_data, 'pcsm').copy()
+    elif string == "pcaa":
+        pca_ampl_sum = extract_data_from_array(scan_data, "pcsm").copy()
         pca_ampl_sum[~accept_list] = np.nan
-        cutoff = np.nanpercentile(pca_ampl_sum, 50.0, axis = 0)
+        cutoff = np.nanpercentile(pca_ampl_sum, 50.0, axis=0)
         set_bit(jk_list, np.where(pca_ampl_sum > cutoff), check_bit)
-        
-        cutoff_list[n-1] = cutoff
 
-    elif string == 's01f':
-        sigma0_1f = extract_data_from_array(scan_data, 'sigma_mean').copy()
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "s01f":
+        sigma0_1f = extract_data_from_array(scan_data, "sigma_mean").copy()
         sigma0_1f[~accept_list] = np.nan
-        cutoff = np.nanpercentile(sigma0_1f, 50.0, axis = 0)
+        cutoff = np.nanpercentile(sigma0_1f, 50.0, axis=0)
         set_bit(jk_list, np.where(sigma0_1f > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'fk1f':
-        fknee_1f = extract_data_from_array(scan_data, 'fknee_mean').copy()
+    elif string == "fk1f":
+        fknee_1f = extract_data_from_array(scan_data, "fknee_mean").copy()
         fknee_1f[~accept_list] = np.nan
-        cutoff = np.nanpercentile(fknee_1f, 50.0, axis = 0)
+        cutoff = np.nanpercentile(fknee_1f, 50.0, axis=0)
         set_bit(jk_list, np.where(fknee_1f > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'al1f':
-        alpha_1f = extract_data_from_array(scan_data, 'alpha_mean').copy()
+    elif string == "al1f":
+        alpha_1f = extract_data_from_array(scan_data, "alpha_mean").copy()
         alpha_1f[~accept_list] = np.nan
-        cutoff = np.nanpercentile(alpha_1f, 50.0, axis = 0)
+        cutoff = np.nanpercentile(alpha_1f, 50.0, axis=0)
         set_bit(jk_list, np.where(alpha_1f > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'obhf':
+    elif string == "obhf":
         # obsid = [int(str(scanid)[:-2]) for scanid in scan_list]
         scanid = np.array([int(str(scanid)[-2:]) for scanid in scan_list])
-        scanid_recast = np.zeros(scan_data.shape[:-1]) + scanid[:,None,None]
+        scanid_recast = np.zeros(scan_data.shape[:-1]) + scanid[:, None, None]
         scanid_recast[~accept_list] = np.nan
         scanid_recast += np.random.normal(0, 1e-6, scanid_recast.shape)
         cutoff = np.nanpercentile(scanid_recast, 50.0, axis=0)
-        set_bit(jk_list, np.where(scanid_recast > cutoff), check_bit)        
-        cutoff_list[n-1] = cutoff
+        set_bit(jk_list, np.where(scanid_recast > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
 
         ######## Here you can add new jack-knives  ############
         ### elif .......:
         ###
 
-    elif string == 'gab1':
-        # Sidelobe 1 high vs low galactic lat
-        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl1_lat'))
-        glat[~accept_list] = np.nan
-        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
-        set_bit(jk_list, np.where(glat > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
 
-    elif string == 'gab2':
+    elif string == "gab2":
         # Sidelobe 2 high vs low galactic lat
-        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl2_lat'))
+        glat = np.abs(extract_data_from_array(scan_data, "galaxy_sl2_lat"))
         glat[~accept_list] = np.nan
-        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        cutoff = np.nanpercentile(glat, 50.0, axis=0)
         set_bit(jk_list, np.where(glat > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
-    
-    elif string == 'gab3':
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "gab3":
         # Sidelobe 3 high vs low galactic lat
-        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl3_lat'))
+        glat = np.abs(extract_data_from_array(scan_data, "galaxy_sl3_lat"))
         glat[~accept_list] = np.nan
-        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        cutoff = np.nanpercentile(glat, 50.0, axis=0)
         set_bit(jk_list, np.where(glat > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'gab4':
+    elif string == "gab4":
         # Sidelobe 4 high vs low galactic lat
-        glat = np.abs(extract_data_from_array(scan_data, 'galaxy_sl4_lat'))
+        glat = np.abs(extract_data_from_array(scan_data, "galaxy_sl4_lat"))
         glat[~accept_list] = np.nan
-        cutoff = np.nanpercentile(glat, 50.0, axis = 0)
+        cutoff = np.nanpercentile(glat, 50.0, axis=0)
         set_bit(jk_list, np.where(glat > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'gdi1':
-        # Sidelobe 1 high vs low galactic lat
-        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl1').copy()
-        gdist[~accept_list] = np.nan
-        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
-        set_bit(jk_list, np.where(gdist > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
 
-    elif string == 'gdi2':
+    elif string == "gdi2":
         # Sidelobe 2 high vs low galactic lat
-        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl2').copy()
+        gdist = extract_data_from_array(scan_data, "galactic_center_dist_sl2").copy()
         gdist[~accept_list] = np.nan
-        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        cutoff = np.nanpercentile(gdist, 50.0, axis=0)
         set_bit(jk_list, np.where(gdist > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'gdi3':
+    elif string == "gdi3":
         # Sidelobe 3 high vs low galactic lat
-        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl3').copy()
+        gdist = extract_data_from_array(scan_data, "galactic_center_dist_sl3").copy()
         gdist[~accept_list] = np.nan
-        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        cutoff = np.nanpercentile(gdist, 50.0, axis=0)
         set_bit(jk_list, np.where(gdist > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
-    elif string == 'gdi4':
+    elif string == "gdi4":
         # Sidelobe 4 high vs low galactic lat
-        gdist = extract_data_from_array(scan_data, 'galactic_center_dist_sl4').copy()
+        gdist = extract_data_from_array(scan_data, "galactic_center_dist_sl4").copy()
         gdist[~accept_list] = np.nan
-        cutoff = np.nanpercentile(gdist, 50.0, axis = 0)
+        cutoff = np.nanpercentile(gdist, 50.0, axis=0)
         set_bit(jk_list, np.where(gdist > cutoff), check_bit)
-        cutoff_list[n-1] = cutoff
+        cutoff_list[n - 1] = cutoff
 
+    elif string == "gasl":
+        # Approximate total sidelobe pickup from Planck LFI 30 GHz map
+        galactic_sl_signal = extract_data_from_array(scan_data, "galactic_sl_signal").copy()
+        galactic_sl_signal[~accept_list] = np.nan
+        cutoff = np.nanpercentile(galactic_sl_signal, 50.0, axis=0)
+        set_bit(jk_list, np.where(galactic_sl_signal > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "sdi2":
+        # Sidelobe 2 to sun distance
+        sun_distance = extract_data_from_array(scan_data, "sun_dist_sl2").copy()
+        sun_distance[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sun_distance, 50.0, axis=0)
+        set_bit(jk_list, np.where(sun_distance > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "sdi3":
+        # Sidelobe 3 to sun distance
+        sun_distance = extract_data_from_array(scan_data, "sun_dist_sl3").copy()
+        sun_distance[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sun_distance, 50.0, axis=0)
+        set_bit(jk_list, np.where(sun_distance > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "sdi4":
+        # Sidelobe 4 to sun distance
+        sun_distance = extract_data_from_array(scan_data, "sun_dist_sl4").copy()
+        sun_distance[~accept_list] = np.nan
+        cutoff = np.nanpercentile(sun_distance, 50.0, axis=0)
+        set_bit(jk_list, np.where(sun_distance > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "mdi2":
+        # Sidelobe 2 to moon distance
+        moon_distance = extract_data_from_array(scan_data, "moon_dist_sl2").copy()
+        moon_distance[~accept_list] = np.nan
+        cutoff = np.nanpercentile(moon_distance, 50.0, axis=0)
+        set_bit(jk_list, np.where(moon_distance > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "mdi3":
+        # Sidelobe 3 to moon distance
+        moon_distance = extract_data_from_array(scan_data, "moon_dist_sl3").copy()
+        moon_distance[~accept_list] = np.nan
+        cutoff = np.nanpercentile(moon_distance, 50.0, axis=0)
+        set_bit(jk_list, np.where(moon_distance > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
+
+    elif string == "mdi4":
+        # Sidelobe 4 to moon distance
+        moon_distance = extract_data_from_array(scan_data, "moon_dist_sl4").copy()
+        moon_distance[~accept_list] = np.nan
+        cutoff = np.nanpercentile(moon_distance, 50.0, axis=0)
+        set_bit(jk_list, np.where(moon_distance > cutoff), check_bit)
+        cutoff_list[n - 1] = cutoff
 
     else:
         print('Unknown split type: ', string)
     return jk_list
 
 
-def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname): 
+def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runID): 
     filename = data_folder + 'jk_data_' + id_string + jk_string + fieldname + '.h5'
     f1 = h5py.File(filename, 'w')
     f1.create_dataset('scan_list', data=scan_list)
@@ -2363,6 +2814,7 @@ def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_
     f1.create_dataset('stats_list', data=stats_list_arr)
     split_list_arr = np.array(split_list, dtype=dt)
     f1.create_dataset('split_list', data=split_list_arr)
+    f1.create_dataset("runID", data = runid)
     for key in vars(params):  # Writing entire parameter file to separate hdf5 group.
         if getattr(params, key) == None:  # hdf5 didn't like the None type.
             f1[f"params/{key}"] = "None"
@@ -2371,6 +2823,15 @@ def save_jk_2_h5(params, scan_list, acceptrates, accept_list, reject_reason, jk_
     f1.close()
     return filename
 
+def get_max_runID(folder):
+    file_list = os.listdir(folder)
+    file_list = [i for i in file_list if "param" in i]
+    runid_list = [int(i[:-4].split("_")[-1]) for i in file_list]
+    if len(runid_list) == 0:
+        maxid = 0
+    else:
+        maxid = np.max(np.array(runid_list))
+    return maxid
 
 if __name__ == "__main__":
     comm = MPI.COMM_WORLD
@@ -2414,6 +2875,12 @@ if __name__ == "__main__":
 
     scan_data_data_name_list = []
     jk_data_name_list   = []
+    copy_folder = data_folder + "parameter_copies/"
+    
+    if not os.path.isdir(copy_folder):
+        os.mkdir(copy_folder)
+
+    runid = get_max_runID(copy_folder) + 1
 
     for fieldname in fields:
         if data_from_file:
@@ -2431,7 +2898,7 @@ if __name__ == "__main__":
 
         if rank == 0:
             if not data_from_file:
-                scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname)
+                scan_data_data_name = save_data_2_h5(params, scan_list, scan_data, fieldname, runid)
                 scan_data_data_name_list.append(scan_data_data_name)
             print('Saved scan data')
             accept_list, reject_reason, acc = make_accept_list(params, accept_params, scan_data)
@@ -2440,7 +2907,7 @@ if __name__ == "__main__":
             print('Made jk_list')
             
           
-            jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname)
+            jk_data_name = save_jk_2_h5(params, scan_list, acc, accept_list, reject_reason, jk_list, cutoff_list, split_list, fieldname, runid)
             jk_data_name_list.append(jk_data_name)
 
 
@@ -2451,6 +2918,27 @@ if __name__ == "__main__":
             
             accept_params_name_raw = params.accept_mod_params[:-3]
             stats_list_name_raw = params.stats_list[:-3]
+
+            # param_file_copy_raw = param_file.split("/")
+            # param_file_copy_raw = param_file_copy_raw[-1][:-4]
+            runlist_name    = params.runlist
+            runlist_copy_raw    = runlist_name.split("/")[-1][:-4]
+            jk_def_raw    = jk_param_list_file.split("/")[-1][:-4]
+
+            # param_file_copy = copy_folder + param_file_copy_raw + f"_{runid:06d}" + ".txt"
+            runlist_copy = copy_folder + runlist_copy_raw + f"_{runid:06d}" + ".txt"
+            jk_def_copy = copy_folder + jk_def_raw + f"_{runid:06d}" + ".txt"
+            accept_params_name_copy = copy_folder + accept_params_name_raw + f"_{runid:06d}" + ".py"
+            stats_list_name_copy = copy_folder + stats_list_name_raw + f"_{runid:06d}" + ".py"
+
+
+            # shutil.copyfile(param_file, param_file_copy)
+            #shutil.copyfile(runlist_name, runlist_copy)
+            #shutil.copyfile(jk_param_list_file, jk_def_copy)
+            #shutil.copyfile(accept_params_name, accept_params_name_copy)
+            #shutil.copyfile(stats_list_name, stats_list_name_copy)
+        
+
                 
             if params.make_accept_mod_plots:
                 ### Making scan data plots ###
@@ -2523,6 +3011,19 @@ if __name__ == "__main__":
                     "sun_cent_sl" : [-0.1, 1.1],
                     "sun_outer_sl" : [-0.1, 2.1],
                     "sun_el" : [-91, 91],
+                    "galaxy_sl2_lat": [0, 90],  # 2nd sidelobe pointing in galactic lat
+                    "galaxy_sl3_lat": [0, 90],  # 3rd sidelobe pointing in galactic lat
+                    "galaxy_sl4_lat": [0, 90],  # 4th sidelobe pointing in galactic lat
+                    "galactic_center_dist_sl2": [0, 180],  # 2nd sidelobe distance to galactic center
+                    "galactic_center_dist_sl3": [0, 180],  # 3rd sidelobe distance to galactic center
+                    "galactic_center_dist_sl4": [0, 180],  # 4th sidelobe distance to galactic center
+                    "galactic_sl_signal": [-1, 50], # approximate galactic sidelobe signal 
+                    "sun_dist_sl2": [0, 180],  # 2nd sidelobe distance to sun 
+                    "sun_dist_sl3": [0, 180],  # 3rd sidelobe distance to sun
+                    "sun_dist_sl4": [0, 180],  # 4th sidelobe distance to sun
+                    "moon_dist_sl2": [0, 180],  # 2nd sidelobe distance to moon
+                    "moon_dist_sl3": [0, 180],  # 3rd sidelobe distance to moon
+                    "moon_dist_sl4": [0, 180],  # 4th sidelobe distance to moon
                     "ps_chi2" : [-20, 30],
                     "ps_s_sb_chi2" : [-20, 30],
                     "ps_s_feed_chi2" : [-20, 100],
