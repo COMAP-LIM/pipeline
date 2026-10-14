@@ -1,5 +1,6 @@
 from __future__ import print_function
 import pickle
+import random
 import errno
 import h5py
 import numpy as np
@@ -60,6 +61,16 @@ warnings.filterwarnings(
 warnings.filterwarnings("ignore", message="Degrees of freedom <= 0 for slice.")
 os.environ["OMP_NUM_THREADS"] = "1"
 
+terminal_colors = [
+        "\033[95m",
+        "\033[94m",
+        "\033[96m",
+        "\033[92m",
+        "\033[93m",
+        "\033[91m",
+        "\033[1m",
+        "\033[4m",
+    ]
 
 m_planck30ghz = hp.read_map("/mn/stornext/d16/cmbco/comap/data/aux_data/planck_maps/LFI_SkyMap_030-BPassCorrected-field-IQU_1024_R3.00_full.fits")
 
@@ -2130,8 +2141,6 @@ def make_accept_list(params, accept_params, scan_data):
     acc = np.zeros(len(stats_list) + 1)
     acc[0] = np.nansum(acceptrate[accept_list]) / (n_scans * 19 * 4)
     for i, stat_string in enumerate(stats_list):
-        if stat_string not in accept_params.stats_cut.keys():
-            raise ValueError(f"Your --accept_mod_params {accept_params.accept_mod_params} does not contain {stat_string}. Please uptade your accpet_params.py file to include this statistic.")
         stats = extract_data_from_array(scan_data, stat_string)
         cuts = accept_params.stats_cut[stat_string]
         temp_bool[:, :, :] = False
@@ -2887,6 +2896,15 @@ if __name__ == "__main__":
             with h5py.File(filepath, mode="r") as my_file:
                 scan_list = my_file['scan_list'][()]
                 scan_data = my_file['scan_data'][()]
+                scan_data_stats_list = list(my_file['stats_list'][()].astype(str))
+
+            stat_not_in_scan_data = False
+            for stat in zip(scan_data_stats_list, stats_list):
+                if stat[0] != stat[1]:
+                    stats_list = scan_data_stats_list.copy()
+                    if rank == 0:
+                        print(random.choice(terminal_colors) + f"WARNING: Mismatch between stats in scan_data and accept_param.py file detected (entry {stat[0]} not same as {stat[1]}). Setting accept_params.py stats list equal to scan_data-file stats list." + "\033[0m")
+
             scan_start = params.obsid_start * 100
             scan_stop = params.obsid_stop * 100
             scans_in_range = (scan_list <= scan_stop)*(scan_list >= scan_start)
