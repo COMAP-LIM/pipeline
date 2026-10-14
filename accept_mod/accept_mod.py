@@ -2129,8 +2129,9 @@ def make_accept_list(params, accept_params, scan_data):
 
     acc = np.zeros(len(stats_list) + 1)
     acc[0] = np.nansum(acceptrate[accept_list]) / (n_scans * 19 * 4)
-    print(acc[0], "before cuts")
     for i, stat_string in enumerate(stats_list):
+        if stat_string not in accept_params.stats_cut.keys():
+            raise ValueError(f"Your --accept_mod_params {accept_params.accept_mod_params} does not contain {stat_string}. Please uptade your accpet_params.py file to include this statistic.")
         stats = extract_data_from_array(scan_data, stat_string)
         cuts = accept_params.stats_cut[stat_string]
         temp_bool[:, :, :] = False
@@ -2849,11 +2850,9 @@ if __name__ == "__main__":
     spec = importlib.util.spec_from_file_location(params.accept_mod_params[:-3], os.path.join(current, params.accept_mod_params))
     accept_params = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(accept_params)
-    spec = importlib.util.spec_from_file_location(params.stats_list[:-3], os.path.join(current, params.stats_list))    
-    stats_list = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(stats_list)
-    stats_list = stats_list.stats_list
+    stats_list = list(accept_params.stats_cut.keys())
     fields = read_runlist(params)
+
     
     patch_filepath = params.patch_definition_file
     patch_info = get_patch_info(patch_filepath)
@@ -2945,7 +2944,7 @@ if __name__ == "__main__":
                 print("Making scan data plots")
                 plot_folder = os.path.join(data_folder, "plots", fieldname)
                 if not os.path.exists(plot_folder):
-                    os.mkdir(plot_folder)
+                    os.makedirs(plot_folder, exist_ok=True)
 
                 lims = {
                     "obsid" : [6000, 40000],
