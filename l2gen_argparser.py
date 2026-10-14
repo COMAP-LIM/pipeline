@@ -717,7 +717,7 @@ parser.add_argument(
     "--psx_rnd_path",
     type=str,
     default="",
-    help="(comap2fpxs) Path to RND files used to make error estimates. If not provided --power_spectrum_dir us used by default.",
+    help="(comap2fpxs) Path to RND files used to make error estimates. If not provided --power_spectrum_dir used by default.",
 )
 
 
@@ -1013,13 +1013,6 @@ parser.add_argument(
     type=float,
     default=2.9,
     help="(physics) Central redshift of CO maps. Default 2.9.",
-)
-
-parser.add_argument(
-    "--phy_cosmology_dir",
-    type=str,
-    default="./cosmologies/",
-    help="(physics) Path to pickled astropy cosmologies to be used. Defaults to repository directory containing defalt COMAP cosmology.",
 )
 
 parser.add_argument(

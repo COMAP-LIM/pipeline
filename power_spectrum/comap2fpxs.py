@@ -3187,8 +3187,8 @@ class COMAP2FPXS():
         Method that reads in the standard cosmology to use form pickled astropy object.
         """
 
-        cosmology_path = os.path.join(self.params.phy_cosmology_dir, self.params.phy_cosmology_name)
-
+        cosmology_path = os.path.join(parent_directory, "cosmologies/", self.params.phy_cosmology_name)
+        
         with open(cosmology_path, mode="rb") as file:
             self.cosmology = pickle.load(file)
 

@@ -37,7 +37,7 @@ from l2gen_argparser import parser
 params = parser.parse_args()
 
 # Opening pickled astropy cosmology to use
-cosmology_path = os.path.join(params.phy_cosmology_dir, params.phy_cosmology_name)
+cosmology_path = os.path.join(parent_directory, "cosmologies/", params.phy_cosmology_name)
 with open(cosmology_path, mode = "rb") as cosmofile:
     cosmology = pickle.load(cosmofile)
 
